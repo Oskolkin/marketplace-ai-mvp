@@ -13,11 +13,11 @@ type Server struct {
 	httpServer *http.Server
 }
 
-func New(port string) *Server {
+func New(port string, healthHandler *health.Handler) *Server {
 	r := chi.NewRouter()
 
-	r.Get("/health/live", health.Live)
-	r.Get("/health/ready", health.Ready)
+	r.Get("/health/live", healthHandler.Live)
+	r.Get("/health/ready", healthHandler.Ready)
 
 	r.Get("/version", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

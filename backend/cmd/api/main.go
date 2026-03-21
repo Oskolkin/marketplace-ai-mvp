@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/config"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/db"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/health"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/httpserver"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/logger"
 	"go.uber.org/zap"
@@ -27,33 +25,28 @@ func main() {
 	}
 	defer log.Sync()
 
+	ctx := context.Background()
+
+	postgres, err := db.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Fatal("failed to connect to postgres", zap.Error(err))
+	}
+	defer postgres.Close()
+
+	log.Info("postgres connected")
+
+	healthHandler := health.NewHandler(
+		health.NewPostgresChecker(postgres.Pool),
+	)
+
+	server := httpserver.New(cfg.BackendPort, healthHandler)
+
 	log.Info("starting backend",
 		zap.String("env", cfg.AppEnv),
 		zap.String("port", cfg.BackendPort),
 	)
 
-	server := httpserver.New(cfg.BackendPort)
-
-	// Запуск сервера в goroutine
-	go func() {
-		if err := server.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatal("server failed to start", zap.Error(err))
-		}
-	}()
-
-	// Ожидание сигнала остановки
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-
-	<-stop
-	log.Info("shutting down server...")
-
-	// graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// пока без Shutdown метода — добавим дальше
-	_ = ctx
-
-	log.Info("server stopped")
+	if err := server.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Fatal("server failed to start", zap.Error(err))
+	}
 }
