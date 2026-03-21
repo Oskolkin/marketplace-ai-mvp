@@ -1,8 +1,10 @@
+.PHONY: infra-up infra-down infra-logs
 
-.PHONY: up down
-
-up:
+infra-up:
 	docker compose up -d
 
-down:
+infra-down:
 	docker compose down
+
+infra-logs:
+	docker compose logs -f
