@@ -25,6 +25,12 @@ func main() {
 	}
 	defer log.Sync()
 
+	log.Info("config loaded",
+		zap.String("env", cfg.AppEnv),
+		zap.String("port", cfg.BackendPort),
+		zap.String("migrations_path", cfg.MigrationsPath),
+	)
+
 	ctx := context.Background()
 
 	postgres, err := db.New(ctx, cfg.DatabaseURL)
@@ -33,7 +39,13 @@ func main() {
 	}
 	defer postgres.Close()
 
-	log.Info("postgres connected")
+	log.Info("db connected")
+
+	if err := db.RunMigrations(postgres.SQLDB, cfg.MigrationsPath); err != nil {
+		log.Fatal("failed to run migrations", zap.Error(err))
+	}
+
+	log.Info("migrations ok")
 
 	healthHandler := health.NewHandler(
 		health.NewPostgresChecker(postgres.Pool),

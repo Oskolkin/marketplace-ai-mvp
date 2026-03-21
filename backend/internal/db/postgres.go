@@ -2,14 +2,17 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 )
 
 type Postgres struct {
-	Pool *pgxpool.Pool
+	Pool  *pgxpool.Pool
+	SQLDB *sql.DB
 }
 
 func New(ctx context.Context, databaseURL string) (*Postgres, error) {
@@ -37,13 +40,21 @@ func New(ctx context.Context, databaseURL string) (*Postgres, error) {
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 
+	sqlDB := stdlib.OpenDBFromPool(pool)
+
 	return &Postgres{
-		Pool: pool,
+		Pool:  pool,
+		SQLDB: sqlDB,
 	}, nil
 }
 
 func (p *Postgres) Close() {
-	if p != nil && p.Pool != nil {
-		p.Pool.Close()
+	if p != nil {
+		if p.SQLDB != nil {
+			_ = p.SQLDB.Close()
+		}
+		if p.Pool != nil {
+			p.Pool.Close()
+		}
 	}
 }
