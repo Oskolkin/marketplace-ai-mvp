@@ -15,6 +15,25 @@ type ReadinessChecker interface {
 	Check(ctx context.Context) error
 }
 
+type CompositeChecker struct {
+	checkers []ReadinessChecker
+}
+
+func NewCompositeChecker(checkers ...ReadinessChecker) *CompositeChecker {
+	return &CompositeChecker{
+		checkers: checkers,
+	}
+}
+
+func (c *CompositeChecker) Check(ctx context.Context) error {
+	for _, checker := range c.checkers {
+		if err := checker.Check(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type Handler struct {
 	readinessChecker ReadinessChecker
 }
