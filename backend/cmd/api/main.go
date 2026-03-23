@@ -12,7 +12,7 @@ import (
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/jobs"
 	appLogger "github.com/Oskolkin/marketplace-ai-mvp/backend/internal/logger"
 	appRedis "github.com/Oskolkin/marketplace-ai-mvp/backend/internal/redis"
-	"github.com/hibiken/asynq"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/storage"
 	"go.uber.org/zap"
 )
 
@@ -33,6 +33,7 @@ func main() {
 		zap.String("port", cfg.BackendPort),
 		zap.String("migrations_path", cfg.MigrationsPath),
 		zap.String("redis_addr", cfg.RedisAddr),
+		zap.String("s3_endpoint", cfg.S3Endpoint),
 	)
 
 	ctx := context.Background()
@@ -59,6 +60,27 @@ func main() {
 
 	log.Info("redis connected")
 
+	s3Client, err := storage.New(ctx, storage.S3Config{
+		Endpoint:        cfg.S3Endpoint,
+		AccessKey:       cfg.S3AccessKey,
+		SecretKey:       cfg.S3SecretKey,
+		UseSSL:          cfg.S3UseSSL,
+		BucketRaw:       cfg.S3BucketRaw,
+		BucketExports:   cfg.S3BucketExports,
+		BucketArtifacts: cfg.S3BucketArtifacts,
+	})
+	if err != nil {
+		log.Fatal("failed to connect to s3 storage", zap.Error(err))
+	}
+
+	log.Info("s3 connected")
+
+	if err := storage.RunSmokeTest(ctx, s3Client); err != nil {
+		log.Fatal("s3 smoke test failed", zap.Error(err))
+	}
+
+	log.Info("s3 smoke test ok")
+
 	readinessChecker := health.NewCompositeChecker(
 		health.NewPostgresChecker(postgres.Pool),
 		health.NewRedisChecker(redisClient.Raw),
@@ -78,7 +100,7 @@ func main() {
 		log.Fatal("failed to create demo task", zap.Error(err))
 	}
 
-	info, err := asynqClient.Enqueue(task, asynq.Queue("default"))
+	info, err := asynqClient.Enqueue(task)
 	if err != nil {
 		log.Fatal("failed to enqueue demo task", zap.Error(err))
 	}
