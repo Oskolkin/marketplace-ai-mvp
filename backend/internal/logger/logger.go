@@ -1,10 +1,29 @@
 package logger
 
-import "go.uber.org/zap"
+import (
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+)
 
-func New(env string) (*zap.Logger, error) {
+func New(env, service string) (*zap.Logger, error) {
+	cfg := zap.NewProductionConfig()
+
+	cfg.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
+	cfg.Encoding = "json"
+	cfg.OutputPaths = []string{"stderr"}
+	cfg.ErrorOutputPaths = []string{"stderr"}
+
 	if env == "local" {
-		return zap.NewDevelopment()
+		cfg.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
 	}
-	return zap.NewProduction()
+
+	base, err := cfg.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	return base.With(
+		zap.String("service", service),
+		zap.String("env", env),
+	), nil
 }

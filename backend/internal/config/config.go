@@ -7,67 +7,154 @@ import (
 )
 
 type Config struct {
-	AppEnv         string
-	BackendPort    string
-	DatabaseURL    string
+	App       AppConfig
+	Server    ServerConfig
+	DB        DBConfig
+	Redis     RedisConfig
+	S3        S3Config
+	Auth      AuthConfig
+	Sentry    SentryConfig
+	Telemetry TelemetryConfig
+}
+
+type AppConfig struct {
+	Env string
+}
+
+type ServerConfig struct {
+	Port              string
+	WorkerMetricsPort string
+}
+
+type DBConfig struct {
+	URL            string
 	MigrationsPath string
+}
 
-	RedisAddr     string
-	RedisPassword string
-	RedisDB       int
+type RedisConfig struct {
+	Addr     string
+	Password string
+	DB       int
+}
 
-	S3Endpoint        string
-	S3AccessKey       string
-	S3SecretKey       string
-	S3BucketRaw       string
-	S3BucketExports   string
-	S3BucketArtifacts string
-	S3UseSSL          bool
+type S3Config struct {
+	Endpoint        string
+	AccessKey       string
+	SecretKey       string
+	BucketRaw       string
+	BucketExports   string
+	BucketArtifacts string
+	UseSSL          bool
+}
+
+type AuthConfig struct {
+	JWTSecret     string
+	EncryptionKey string
+}
+
+type SentryConfig struct {
+	DSN string
+}
+
+type TelemetryConfig struct {
+	Enabled      bool
+	OTLPEndpoint string
+	ServiceName  string
 }
 
 func Load() (*Config, error) {
 	cfg := &Config{
-		AppEnv:         getEnv("APP_ENV", "local"),
-		BackendPort:    getEnv("BACKEND_PORT", "8080"),
-		DatabaseURL:    getEnv("DATABASE_URL", ""),
-		MigrationsPath: getEnv("MIGRATIONS_PATH", "./migrations"),
-
-		RedisAddr:     getEnv("REDIS_ADDR", "localhost:6379"),
-		RedisPassword: getEnv("REDIS_PASSWORD", ""),
-		RedisDB:       getEnvAsInt("REDIS_DB", 0),
-
-		S3Endpoint:        getEnv("S3_ENDPOINT", ""),
-		S3AccessKey:       getEnv("S3_ACCESS_KEY", ""),
-		S3SecretKey:       getEnv("S3_SECRET_KEY", ""),
-		S3BucketRaw:       getEnv("S3_BUCKET_RAW", "raw-payloads"),
-		S3BucketExports:   getEnv("S3_BUCKET_EXPORTS", "exports"),
-		S3BucketArtifacts: getEnv("S3_BUCKET_ARTIFACTS", "artifacts"),
-		S3UseSSL:          getEnvAsBool("S3_USE_SSL", false),
+		App: AppConfig{
+			Env: getEnv("APP_ENV", ""),
+		},
+		Server: ServerConfig{
+			Port:              getEnv("BACKEND_PORT", "8080"),
+			WorkerMetricsPort: getEnv("WORKER_METRICS_PORT", "9091"),
+		},
+		DB: DBConfig{
+			URL:            getEnv("DATABASE_URL", ""),
+			MigrationsPath: getEnv("MIGRATIONS_PATH", "./migrations"),
+		},
+		Redis: RedisConfig{
+			Addr:     getEnv("REDIS_ADDR", ""),
+			Password: getEnv("REDIS_PASSWORD", ""),
+			DB:       getEnvAsInt("REDIS_DB", 0),
+		},
+		S3: S3Config{
+			Endpoint:        getEnv("S3_ENDPOINT", ""),
+			AccessKey:       getEnv("S3_ACCESS_KEY", ""),
+			SecretKey:       getEnv("S3_SECRET_KEY", ""),
+			BucketRaw:       getEnv("S3_BUCKET_RAW", ""),
+			BucketExports:   getEnv("S3_BUCKET_EXPORTS", ""),
+			BucketArtifacts: getEnv("S3_BUCKET_ARTIFACTS", ""),
+			UseSSL:          getEnvAsBool("S3_USE_SSL", false),
+		},
+		Auth: AuthConfig{
+			JWTSecret:     getEnv("JWT_SECRET", ""),
+			EncryptionKey: getEnv("ENCRYPTION_KEY", ""),
+		},
+		Sentry: SentryConfig{
+			DSN: getEnv("SENTRY_DSN", ""),
+		},
+		Telemetry: TelemetryConfig{
+			Enabled:      getEnvAsBool("OTEL_ENABLED", false),
+			OTLPEndpoint: getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
+			ServiceName:  getEnv("OTEL_SERVICE_NAME", "marketplace-ai-backend"),
+		},
 	}
 
-	if cfg.BackendPort == "" {
-		return nil, fmt.Errorf("BACKEND_PORT is required")
-	}
-	if cfg.DatabaseURL == "" {
-		return nil, fmt.Errorf("DATABASE_URL is required")
-	}
-	if cfg.MigrationsPath == "" {
-		return nil, fmt.Errorf("MIGRATIONS_PATH is required")
-	}
-	if cfg.RedisAddr == "" {
-		return nil, fmt.Errorf("REDIS_ADDR is required")
-	}
-	if cfg.S3Endpoint == "" {
-		return nil, fmt.Errorf("S3_ENDPOINT is required")
-	}
-	if cfg.S3AccessKey == "" {
-		return nil, fmt.Errorf("S3_ACCESS_KEY is required")
-	}
-	if cfg.S3SecretKey == "" {
-		return nil, fmt.Errorf("S3_SECRET_KEY is required")
+	if err := validate(cfg); err != nil {
+		return nil, err
 	}
 
 	return cfg, nil
+}
+
+func validate(cfg *Config) error {
+	if cfg.Server.WorkerMetricsPort == "" {
+		return fmt.Errorf("WORKER_METRICS_PORT is required")
+	}
+	if cfg.App.Env == "" {
+		return fmt.Errorf("APP_ENV is required")
+	}
+	if cfg.Server.Port == "" {
+		return fmt.Errorf("BACKEND_PORT is required")
+	}
+	if cfg.DB.URL == "" {
+		return fmt.Errorf("DATABASE_URL is required")
+	}
+	if cfg.DB.MigrationsPath == "" {
+		return fmt.Errorf("MIGRATIONS_PATH is required")
+	}
+	if cfg.Redis.Addr == "" {
+		return fmt.Errorf("REDIS_ADDR is required")
+	}
+	if cfg.S3.Endpoint == "" {
+		return fmt.Errorf("S3_ENDPOINT is required")
+	}
+	if cfg.S3.AccessKey == "" {
+		return fmt.Errorf("S3_ACCESS_KEY is required")
+	}
+	if cfg.S3.SecretKey == "" {
+		return fmt.Errorf("S3_SECRET_KEY is required")
+	}
+	if cfg.S3.BucketRaw == "" {
+		return fmt.Errorf("S3_BUCKET_RAW is required")
+	}
+	if cfg.S3.BucketExports == "" {
+		return fmt.Errorf("S3_BUCKET_EXPORTS is required")
+	}
+	if cfg.S3.BucketArtifacts == "" {
+		return fmt.Errorf("S3_BUCKET_ARTIFACTS is required")
+	}
+
+	switch cfg.App.Env {
+	case "local", "test", "staging", "production":
+	default:
+		return fmt.Errorf("APP_ENV must be one of: local, test, staging, production")
+	}
+
+	return nil
 }
 
 func getEnv(key, fallback string) string {
@@ -88,7 +175,6 @@ func getEnvAsInt(key string, fallback int) int {
 	if err != nil {
 		return fallback
 	}
-
 	return parsed
 }
 
@@ -102,6 +188,5 @@ func getEnvAsBool(key string, fallback bool) bool {
 	if err != nil {
 		return fallback
 	}
-
 	return parsed
 }

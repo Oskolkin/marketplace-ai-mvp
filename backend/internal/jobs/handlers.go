@@ -25,7 +25,7 @@ func (h *Handler) HandleSystemPingTask(ctx context.Context, task *asynq.Task) er
 		return fmt.Errorf("unmarshal system ping payload: %w", err)
 	}
 
-	h.log.Info("processed system.ping task",
+	h.log.Info("system.ping business logic executed",
 		zap.String("message", payload.Message),
 	)
 

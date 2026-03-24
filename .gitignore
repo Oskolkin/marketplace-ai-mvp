@@ -7,6 +7,11 @@
 .env
 .env.local
 .env.*.local
+.env.test
+.env.staging
+.env.production
+backend/.env
+frontend/.env.local
 
 # Logs
 *.log
