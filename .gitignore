@@ -32,3 +32,6 @@ frontend/out/
 
 # Docker
 *.pid
+
+backend/bin/
+frontend/.next/

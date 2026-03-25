@@ -1,0 +1,27 @@
+name: Manual Staging Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Optional image tag or release label"
+        required: false
+        default: "manual"
+
+jobs:
+  staging-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show deploy intent
+        run: |
+          echo "Manual staging deploy triggered"
+          echo "Image tag: ${{ github.event.inputs.image_tag }}"
+          echo "Commit SHA: ${{ github.sha }}"
+
+      - name: Placeholder
+        run: |
+          echo "Add staging deploy steps later"
