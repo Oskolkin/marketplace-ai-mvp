@@ -53,7 +53,8 @@ type AuthConfig struct {
 }
 
 type SentryConfig struct {
-	DSN string
+	DSN     string
+	Release string
 }
 
 type TelemetryConfig struct {
@@ -94,7 +95,8 @@ func Load() (*Config, error) {
 			EncryptionKey: getEnv("ENCRYPTION_KEY", ""),
 		},
 		Sentry: SentryConfig{
-			DSN: getEnv("SENTRY_DSN", ""),
+			DSN:     getEnv("SENTRY_DSN", ""),
+			Release: getEnv("SENTRY_RELEASE", "dev"),
 		},
 		Telemetry: TelemetryConfig{
 			Enabled:      getEnvAsBool("OTEL_ENABLED", false),

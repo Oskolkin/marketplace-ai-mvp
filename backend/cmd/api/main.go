@@ -13,7 +13,9 @@ import (
 	appLogger "github.com/Oskolkin/marketplace-ai-mvp/backend/internal/logger"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/metrics"
 	appRedis "github.com/Oskolkin/marketplace-ai-mvp/backend/internal/redis"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/sentryx"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/storage"
+	"github.com/getsentry/sentry-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
@@ -25,6 +27,15 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	if err := sentryx.Init(sentryx.Config{
+		DSN:         cfg.Sentry.DSN,
+		Environment: cfg.App.Env,
+		Release:     cfg.Sentry.Release,
+	}); err != nil {
+		panic(err)
+	}
+	defer sentryx.Flush()
 
 	log, err := appLogger.New(cfg.App.Env, "backend-api")
 	if err != nil {
@@ -48,6 +59,7 @@ func main() {
 	postgres, err := db.New(ctx, cfg.DB.URL)
 	if err != nil {
 		m.DBUp.Set(0)
+		sentry.CaptureException(err)
 		log.Fatal("failed to connect to postgres", zap.Error(err))
 	}
 	defer postgres.Close()
@@ -56,6 +68,7 @@ func main() {
 	log.Info("db connected")
 
 	if err := db.RunMigrations(postgres.SQLDB, cfg.DB.MigrationsPath); err != nil {
+		sentry.CaptureException(err)
 		log.Fatal("failed to run migrations", zap.Error(err))
 	}
 
@@ -64,6 +77,7 @@ func main() {
 	redisClient, err := appRedis.New(ctx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
 	if err != nil {
 		m.RedisUp.Set(0)
+		sentry.CaptureException(err)
 		log.Fatal("failed to connect to redis", zap.Error(err))
 	}
 	defer redisClient.Close()
@@ -82,6 +96,7 @@ func main() {
 	})
 	if err != nil {
 		m.S3Up.Set(0)
+		sentry.CaptureException(err)
 		log.Fatal("failed to connect to s3 storage", zap.Error(err))
 	}
 
@@ -89,6 +104,7 @@ func main() {
 	log.Info("s3 connected")
 
 	if err := storage.RunSmokeTest(ctx, s3Client); err != nil {
+		sentry.CaptureException(err)
 		log.Fatal("s3 smoke test failed", zap.Error(err))
 	}
 
@@ -110,11 +126,13 @@ func main() {
 
 	task, err := jobs.NewSystemPingTask("hello from api startup")
 	if err != nil {
+		sentry.CaptureException(err)
 		log.Fatal("failed to create demo task", zap.Error(err))
 	}
 
 	info, err := asynqClient.Enqueue(task)
 	if err != nil {
+		sentry.CaptureException(err)
 		log.Fatal("failed to enqueue demo task", zap.Error(err))
 	}
 
@@ -131,6 +149,7 @@ func main() {
 	)
 
 	if err := server.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		sentry.CaptureException(err)
 		log.Fatal("server failed to start", zap.Error(err))
 	}
 }

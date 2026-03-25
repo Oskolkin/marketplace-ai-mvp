@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import { SentryInit } from "@/components/sentry-init";
 
 export const metadata: Metadata = {
   title: "Marketplace AI MVP",
@@ -13,7 +14,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <SentryInit />
+        {children}
+      </body>
     </html>
   );
 }

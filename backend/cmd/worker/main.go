@@ -7,6 +7,8 @@ import (
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/jobs"
 	appLogger "github.com/Oskolkin/marketplace-ai-mvp/backend/internal/logger"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/metrics"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/sentryx"
+	"github.com/getsentry/sentry-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
@@ -16,11 +18,23 @@ func main() {
 
 	cfg, err := config.Load()
 	if err != nil {
+		sentry.CaptureException(err)
 		log.Fatal(err)
 	}
 
+	if err := sentryx.Init(sentryx.Config{
+		DSN:         cfg.Sentry.DSN,
+		Environment: cfg.App.Env,
+		Release:     cfg.Sentry.Release,
+	}); err != nil {
+		sentry.CaptureException(err)
+		log.Fatal(err)
+	}
+	defer sentryx.Flush()
+
 	logger, err := appLogger.New(cfg.App.Env, "backend-worker")
 	if err != nil {
+		sentry.CaptureException(err)
 		log.Fatal(err)
 	}
 	defer logger.Sync()
@@ -49,6 +63,7 @@ func main() {
 	logger.Info("starting worker")
 
 	if err := server.Run(mux); err != nil {
+		sentry.CaptureException(err)
 		logger.Fatal("worker failed", zap.Error(err))
 	}
 }
