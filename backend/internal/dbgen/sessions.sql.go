@@ -42,10 +42,41 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 	return i, err
 }
 
-const getSessionByTokenHash = `-- name: GetSessionByTokenHash :one
+const deleteExpiredSessions = `-- name: DeleteExpiredSessions :exec
+DELETE FROM sessions
+WHERE expires_at < NOW()
+`
+
+func (q *Queries) DeleteExpiredSessions(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteExpiredSessions)
+	return err
+}
+
+const getActiveSessionByTokenHash = `-- name: GetActiveSessionByTokenHash :one
 SELECT id, user_id, token_hash, expires_at, created_at, revoked_at FROM sessions
 WHERE token_hash = $1
   AND revoked_at IS NULL
+  AND expires_at > NOW()
+LIMIT 1
+`
+
+func (q *Queries) GetActiveSessionByTokenHash(ctx context.Context, tokenHash string) (Session, error) {
+	row := q.db.QueryRow(ctx, getActiveSessionByTokenHash, tokenHash)
+	var i Session
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.TokenHash,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
+const getSessionByTokenHash = `-- name: GetSessionByTokenHash :one
+SELECT id, user_id, token_hash, expires_at, created_at, revoked_at FROM sessions
+WHERE token_hash = $1
 LIMIT 1
 `
 
@@ -61,4 +92,16 @@ func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash string) (
 		&i.RevokedAt,
 	)
 	return i, err
+}
+
+const revokeSessionByTokenHash = `-- name: RevokeSessionByTokenHash :exec
+UPDATE sessions
+SET revoked_at = NOW()
+WHERE token_hash = $1
+  AND revoked_at IS NULL
+`
+
+func (q *Queries) RevokeSessionByTokenHash(ctx context.Context, tokenHash string) error {
+	_, err := q.db.Exec(ctx, revokeSessionByTokenHash, tokenHash)
+	return err
 }

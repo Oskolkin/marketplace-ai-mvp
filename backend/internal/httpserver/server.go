@@ -56,6 +56,7 @@ func New(
 		r.Group(func(r chi.Router) {
 			r.Use(authMiddleware)
 			r.Get("/me", authHandler.Me)
+			r.Post("/logout", authHandler.Logout)
 		})
 	})
 

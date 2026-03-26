@@ -167,20 +167,12 @@ func (s *Service) GetCurrentUser(ctx context.Context, rawSessionToken string) (*
 
 	tokenHash := HashSessionToken(rawSessionToken)
 
-	session, err := s.queries.GetSessionByTokenHash(ctx, tokenHash)
+	session, err := s.queries.GetActiveSessionByTokenHash(ctx, tokenHash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrUnauthorized
 		}
-		return nil, fmt.Errorf("get session: %w", err)
-	}
-
-	if session.RevokedAt.Valid {
-		return nil, ErrUnauthorized
-	}
-
-	if !session.ExpiresAt.Valid || time.Now().After(session.ExpiresAt.Time) {
-		return nil, ErrUnauthorized
+		return nil, fmt.Errorf("get active session: %w", err)
 	}
 
 	user, err := s.queries.GetUserByID(ctx, session.UserID)
@@ -202,6 +194,27 @@ func (s *Service) GetCurrentUser(ctx context.Context, rawSessionToken string) (*
 		SellerAccount: sellerAccount,
 		SessionToken:  "",
 	}, nil
+}
+
+func (s *Service) Logout(ctx context.Context, rawSessionToken string) error {
+	if rawSessionToken == "" {
+		return ErrUnauthorized
+	}
+
+	tokenHash := HashSessionToken(rawSessionToken)
+
+	if err := s.queries.RevokeSessionByTokenHash(ctx, tokenHash); err != nil {
+		return fmt.Errorf("revoke session: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) DeleteExpiredSessions(ctx context.Context) error {
+	if err := s.queries.DeleteExpiredSessions(ctx); err != nil {
+		return fmt.Errorf("delete expired sessions: %w", err)
+	}
+	return nil
 }
 
 func isUniqueViolation(err error) bool {

@@ -123,6 +123,29 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie(h.cookieName)
+	if err != nil || cookie.Value == "" {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	if err := h.authService.Logout(r.Context(), cookie.Value); err != nil {
+		if errors.Is(err, auth.ErrUnauthorized) {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "failed to logout")
+		return
+	}
+
+	clearAuthCookie(w, h.cookieName)
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status": "logged_out",
+	})
+}
+
 func buildAuthResponse(result *auth.AuthResult) authResponse {
 	resp := authResponse{}
 	resp.User.ID = result.User.ID
@@ -142,6 +165,18 @@ func setAuthCookie(w http.ResponseWriter, cookieName, value string) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   false,
+	})
+}
+
+func clearAuthCookie(w http.ResponseWriter, cookieName string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   false,
+		MaxAge:   -1,
 	})
 }
 
