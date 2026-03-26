@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/health"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/httpserver/handlers"
 	appmw "github.com/Oskolkin/marketplace-ai-mvp/backend/internal/httpserver/middleware"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/metrics"
 	"github.com/go-chi/chi/v5"
@@ -18,7 +19,15 @@ type Server struct {
 	httpServer *http.Server
 }
 
-func New(port string, healthHandler *health.Handler, log *zap.Logger, m *metrics.Metrics, registry *prometheus.Registry) *Server {
+func New(
+	port string,
+	healthHandler *health.Handler,
+	authHandler *handlers.AuthHandler,
+	authMiddleware func(http.Handler) http.Handler,
+	log *zap.Logger,
+	m *metrics.Metrics,
+	registry *prometheus.Registry,
+) *Server {
 	r := chi.NewRouter()
 
 	r.Use(appmw.RequestID)
@@ -28,7 +37,6 @@ func New(port string, healthHandler *health.Handler, log *zap.Logger, m *metrics
 
 	r.Get("/health/live", healthHandler.Live)
 	r.Get("/health/ready", healthHandler.Ready)
-
 	r.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 
 	r.Get("/version", func(w http.ResponseWriter, r *http.Request) {
@@ -39,6 +47,16 @@ func New(port string, healthHandler *health.Handler, log *zap.Logger, m *metrics
 
 	r.Get("/panic", func(w http.ResponseWriter, r *http.Request) {
 		panic("test panic")
+	})
+
+	r.Route("/api/v1/auth", func(r chi.Router) {
+		r.Post("/register", authHandler.Register)
+		r.Post("/login", authHandler.Login)
+
+		r.Group(func(r chi.Router) {
+			r.Use(authMiddleware)
+			r.Get("/me", authHandler.Me)
+		})
 	})
 
 	return &Server{

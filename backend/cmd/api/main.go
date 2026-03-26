@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/auth"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/config"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/db"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/health"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/httpserver"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/httpserver/handlers"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/jobs"
 	appLogger "github.com/Oskolkin/marketplace-ai-mvp/backend/internal/logger"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/metrics"
@@ -52,6 +55,7 @@ func main() {
 		zap.String("migrations_path", cfg.DB.MigrationsPath),
 		zap.String("redis_addr", cfg.Redis.Addr),
 		zap.String("s3_endpoint", cfg.S3.Endpoint),
+		zap.String("auth_cookie_name", cfg.Auth.CookieName),
 	)
 
 	ctx := context.Background()
@@ -110,6 +114,14 @@ func main() {
 
 	log.Info("s3 smoke test ok")
 
+	authService := auth.NewService(
+		postgres.Pool,
+		time.Duration(cfg.Auth.SessionTTLHours)*time.Hour,
+	)
+
+	authHandler := handlers.NewAuthHandler(authService, cfg.Auth.CookieName)
+	authMiddleware := auth.Middleware(authService, cfg.Auth.CookieName)
+
 	readinessChecker := health.NewCompositeChecker(
 		health.NewPostgresChecker(postgres.Pool),
 		health.NewRedisChecker(redisClient.Raw),
@@ -142,7 +154,15 @@ func main() {
 		zap.String("type", task.Type()),
 	)
 
-	server := httpserver.New(cfg.Server.Port, healthHandler, log, m, registry)
+	server := httpserver.New(
+		cfg.Server.Port,
+		healthHandler,
+		authHandler,
+		authMiddleware,
+		log,
+		m,
+		registry,
+	)
 
 	log.Info("starting backend",
 		zap.String("port", cfg.Server.Port),

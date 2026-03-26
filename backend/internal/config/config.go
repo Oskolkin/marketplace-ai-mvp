@@ -48,8 +48,10 @@ type S3Config struct {
 }
 
 type AuthConfig struct {
-	JWTSecret     string
-	EncryptionKey string
+	JWTSecret       string
+	EncryptionKey   string
+	CookieName      string
+	SessionTTLHours int
 }
 
 type SentryConfig struct {
@@ -91,8 +93,10 @@ func Load() (*Config, error) {
 			UseSSL:          getEnvAsBool("S3_USE_SSL", false),
 		},
 		Auth: AuthConfig{
-			JWTSecret:     getEnv("JWT_SECRET", ""),
-			EncryptionKey: getEnv("ENCRYPTION_KEY", ""),
+			JWTSecret:       getEnv("JWT_SECRET", ""),
+			EncryptionKey:   getEnv("ENCRYPTION_KEY", ""),
+			CookieName:      getEnv("AUTH_COOKIE_NAME", "session_token"),
+			SessionTTLHours: getEnvAsInt("AUTH_SESSION_TTL_HOURS", 168),
 		},
 		Sentry: SentryConfig{
 			DSN:     getEnv("SENTRY_DSN", ""),
@@ -113,6 +117,13 @@ func Load() (*Config, error) {
 }
 
 func validate(cfg *Config) error {
+
+	if cfg.Auth.CookieName == "" {
+		return fmt.Errorf("AUTH_COOKIE_NAME is required")
+	}
+	if cfg.Auth.SessionTTLHours <= 0 {
+		return fmt.Errorf("AUTH_SESSION_TTL_HOURS must be greater than 0")
+	}
 	if cfg.Server.WorkerMetricsPort == "" {
 		return fmt.Errorf("WORKER_METRICS_PORT is required")
 	}
