@@ -6,12 +6,14 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/account"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/auth"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/config"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/db"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/health"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/httpserver"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/httpserver/handlers"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/integrations/ozon"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/jobs"
 	appLogger "github.com/Oskolkin/marketplace-ai-mvp/backend/internal/logger"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/metrics"
@@ -118,9 +120,18 @@ func main() {
 		postgres.Pool,
 		time.Duration(cfg.Auth.SessionTTLHours)*time.Hour,
 	)
-
 	authHandler := handlers.NewAuthHandler(authService, cfg.Auth.CookieName)
 	authMiddleware := auth.Middleware(authService, cfg.Auth.CookieName)
+
+	accountService := account.NewService(postgres.Pool)
+	accountHandler := handlers.NewAccountHandler(accountService)
+
+	ozonService, err := ozon.NewService(postgres.Pool, cfg.Auth.EncryptionKey)
+	if err != nil {
+		sentry.CaptureException(err)
+		log.Fatal("failed to initialize ozon service", zap.Error(err))
+	}
+	ozonHandler := handlers.NewOzonHandler(ozonService)
 
 	readinessChecker := health.NewCompositeChecker(
 		health.NewPostgresChecker(postgres.Pool),
@@ -158,6 +169,8 @@ func main() {
 		cfg.Server.Port,
 		healthHandler,
 		authHandler,
+		accountHandler,
+		ozonHandler,
 		authMiddleware,
 		log,
 		m,

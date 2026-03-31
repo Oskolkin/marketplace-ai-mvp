@@ -23,6 +23,8 @@ func New(
 	port string,
 	healthHandler *health.Handler,
 	authHandler *handlers.AuthHandler,
+	accountHandler *handlers.AccountHandler,
+	ozonHandler *handlers.OzonHandler,
 	authMiddleware func(http.Handler) http.Handler,
 	log *zap.Logger,
 	m *metrics.Metrics,
@@ -57,6 +59,18 @@ func New(
 			r.Use(authMiddleware)
 			r.Get("/me", authHandler.Me)
 			r.Post("/logout", authHandler.Logout)
+		})
+	})
+
+	r.Group(func(r chi.Router) {
+		r.Use(authMiddleware)
+
+		r.Get("/api/v1/account", accountHandler.GetCurrentAccount)
+
+		r.Route("/api/v1/integrations/ozon", func(r chi.Router) {
+			r.Get("/", ozonHandler.GetConnection)
+			r.Post("/", ozonHandler.CreateConnection)
+			r.Put("/", ozonHandler.UpdateConnection)
 		})
 	})
 

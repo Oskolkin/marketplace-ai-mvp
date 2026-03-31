@@ -12,3 +12,8 @@ RETURNING *;
 SELECT * FROM seller_accounts
 WHERE user_id = $1
 LIMIT 1;
+
+-- name: GetSellerAccountByID :one
+SELECT * FROM seller_accounts
+WHERE id = $1
+LIMIT 1;
