@@ -21,3 +21,10 @@ type upsertOzonConnectionRequest struct {
 	ClientID string `json:"client_id"`
 	APIKey   string `json:"api_key"`
 }
+
+type ozonCheckResponse struct {
+	Status    string  `json:"status"`
+	CheckedAt string  `json:"checked_at"`
+	Message   string  `json:"message"`
+	ErrorCode *string `json:"error_code"`
+}

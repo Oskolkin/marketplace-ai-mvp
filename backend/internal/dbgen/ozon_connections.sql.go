@@ -86,6 +86,50 @@ func (q *Queries) GetOzonConnectionBySellerAccountID(ctx context.Context, seller
 	return i, err
 }
 
+const updateOzonConnectionCheckResult = `-- name: UpdateOzonConnectionCheckResult :one
+UPDATE ozon_connections
+SET
+    status = $2,
+    last_check_at = $3,
+    last_check_result = $4,
+    last_error = $5,
+    updated_at = NOW()
+WHERE seller_account_id = $1
+RETURNING id, seller_account_id, client_id_encrypted, api_key_encrypted, status, last_check_at, last_check_result, last_error, created_at, updated_at
+`
+
+type UpdateOzonConnectionCheckResultParams struct {
+	SellerAccountID int64
+	Status          string
+	LastCheckAt     pgtype.Timestamptz
+	LastCheckResult pgtype.Text
+	LastError       pgtype.Text
+}
+
+func (q *Queries) UpdateOzonConnectionCheckResult(ctx context.Context, arg UpdateOzonConnectionCheckResultParams) (OzonConnection, error) {
+	row := q.db.QueryRow(ctx, updateOzonConnectionCheckResult,
+		arg.SellerAccountID,
+		arg.Status,
+		arg.LastCheckAt,
+		arg.LastCheckResult,
+		arg.LastError,
+	)
+	var i OzonConnection
+	err := row.Scan(
+		&i.ID,
+		&i.SellerAccountID,
+		&i.ClientIDEncrypted,
+		&i.ApiKeyEncrypted,
+		&i.Status,
+		&i.LastCheckAt,
+		&i.LastCheckResult,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateOzonConnectionCredentials = `-- name: UpdateOzonConnectionCredentials :one
 UPDATE ozon_connections
 SET

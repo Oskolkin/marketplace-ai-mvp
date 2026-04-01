@@ -71,6 +71,7 @@ func New(
 			r.Get("/", ozonHandler.GetConnection)
 			r.Post("/", ozonHandler.CreateConnection)
 			r.Put("/", ozonHandler.UpdateConnection)
+			r.Post("/check", ozonHandler.CheckConnection)
 		})
 	})
 

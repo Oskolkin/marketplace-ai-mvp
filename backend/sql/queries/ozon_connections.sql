@@ -29,3 +29,14 @@ SET
     updated_at = NOW()
 WHERE seller_account_id = $1
 RETURNING *;
+
+-- name: UpdateOzonConnectionCheckResult :one
+UPDATE ozon_connections
+SET
+    status = $2,
+    last_check_at = $3,
+    last_check_result = $4,
+    last_error = $5,
+    updated_at = NOW()
+WHERE seller_account_id = $1
+RETURNING *;

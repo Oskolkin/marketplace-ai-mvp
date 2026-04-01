@@ -140,3 +140,28 @@ func buildOzonConnectionResponse(connection dbgen.OzonConnection, service *ozon.
 		ClientIDMasked:  service.MaskedClientID(connection),
 	}
 }
+
+func (h *OzonHandler) CheckConnection(w http.ResponseWriter, r *http.Request) {
+	sellerAccount, ok := auth.SellerAccountFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	result, err := h.ozonService.CheckConnection(r.Context(), sellerAccount.ID)
+	if err != nil {
+		if err == ozon.ErrConnectionNotFound {
+			writeJSONError(w, http.StatusNotFound, "ozon connection not found")
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "failed to check ozon connection")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, ozonCheckResponse{
+		Status:    result.Status,
+		CheckedAt: result.CheckedAt.Format(time.RFC3339),
+		Message:   result.Message,
+		ErrorCode: result.ErrorCode,
+	})
+}
