@@ -20,6 +20,7 @@ type Server struct {
 }
 
 func New(
+	ozonSyncHandler *handlers.OzonSyncHandler,
 	port string,
 	healthHandler *health.Handler,
 	authHandler *handlers.AuthHandler,
@@ -32,6 +33,7 @@ func New(
 ) *Server {
 	r := chi.NewRouter()
 
+	r.Use(appmw.CORS("http://localhost:3000"))
 	r.Use(appmw.RequestID)
 	r.Use(appmw.Logging(log))
 	r.Use(appmw.Recovery(log))
@@ -72,6 +74,8 @@ func New(
 			r.Post("/", ozonHandler.CreateConnection)
 			r.Put("/", ozonHandler.UpdateConnection)
 			r.Post("/check", ozonHandler.CheckConnection)
+			r.Post("/initial-sync", ozonSyncHandler.StartInitialSync)
+			r.Get("/status", ozonSyncHandler.GetStatus)
 		})
 	})
 

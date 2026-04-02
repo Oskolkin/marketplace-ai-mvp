@@ -55,3 +55,22 @@ func NewSystemPingTask(message string) (*asynq.Task, error) {
 
 	return asynq.NewTask(TypeSystemPing, payload), nil
 }
+
+const TaskTypeOzonInitialSync = "ozon.initial_sync"
+
+type OzonInitialSyncPayload struct {
+	SellerAccountID int64 `json:"seller_account_id"`
+	SyncJobID       int64 `json:"sync_job_id"`
+}
+
+func NewOzonInitialSyncTask(sellerAccountID, syncJobID int64) (*asynq.Task, error) {
+	payload, err := json.Marshal(OzonInitialSyncPayload{
+		SellerAccountID: sellerAccountID,
+		SyncJobID:       syncJobID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal ozon initial sync payload: %w", err)
+	}
+
+	return asynq.NewTask(TaskTypeOzonInitialSync, payload), nil
+}

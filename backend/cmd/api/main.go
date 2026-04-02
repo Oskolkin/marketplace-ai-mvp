@@ -165,7 +165,10 @@ func main() {
 		zap.String("type", task.Type()),
 	)
 
+	syncService := ozon.NewSyncService(postgres.Pool, asynqClient)
+	ozonSyncHandler := handlers.NewOzonSyncHandler(syncService)
 	server := httpserver.New(
+		ozonSyncHandler,
 		cfg.Server.Port,
 		healthHandler,
 		authHandler,

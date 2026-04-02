@@ -179,3 +179,35 @@ func (q *Queries) UpdateOzonConnectionCredentials(ctx context.Context, arg Updat
 	)
 	return i, err
 }
+
+const updateOzonConnectionStatus = `-- name: UpdateOzonConnectionStatus :one
+UPDATE ozon_connections
+SET
+    status = $2,
+    updated_at = NOW()
+WHERE seller_account_id = $1
+RETURNING id, seller_account_id, client_id_encrypted, api_key_encrypted, status, last_check_at, last_check_result, last_error, created_at, updated_at
+`
+
+type UpdateOzonConnectionStatusParams struct {
+	SellerAccountID int64
+	Status          string
+}
+
+func (q *Queries) UpdateOzonConnectionStatus(ctx context.Context, arg UpdateOzonConnectionStatusParams) (OzonConnection, error) {
+	row := q.db.QueryRow(ctx, updateOzonConnectionStatus, arg.SellerAccountID, arg.Status)
+	var i OzonConnection
+	err := row.Scan(
+		&i.ID,
+		&i.SellerAccountID,
+		&i.ClientIDEncrypted,
+		&i.ApiKeyEncrypted,
+		&i.Status,
+		&i.LastCheckAt,
+		&i.LastCheckResult,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

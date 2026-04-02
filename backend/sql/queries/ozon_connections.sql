@@ -40,3 +40,11 @@ SET
     updated_at = NOW()
 WHERE seller_account_id = $1
 RETURNING *;
+
+-- name: UpdateOzonConnectionStatus :one
+UPDATE ozon_connections
+SET
+    status = $2,
+    updated_at = NOW()
+WHERE seller_account_id = $1
+RETURNING *;
