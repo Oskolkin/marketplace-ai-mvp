@@ -144,11 +144,39 @@ func (q *Queries) UpdateSyncJobToFailed(ctx context.Context, arg UpdateSyncJobTo
 	return i, err
 }
 
+const updateSyncJobToPending = `-- name: UpdateSyncJobToPending :one
+UPDATE sync_jobs
+SET
+    status = 'pending',
+    started_at = NULL,
+    finished_at = NULL,
+    error_message = NULL
+WHERE id = $1
+RETURNING id, seller_account_id, type, status, started_at, finished_at, error_message, created_at
+`
+
+func (q *Queries) UpdateSyncJobToPending(ctx context.Context, id int64) (SyncJob, error) {
+	row := q.db.QueryRow(ctx, updateSyncJobToPending, id)
+	var i SyncJob
+	err := row.Scan(
+		&i.ID,
+		&i.SellerAccountID,
+		&i.Type,
+		&i.Status,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const updateSyncJobToRunning = `-- name: UpdateSyncJobToRunning :one
 UPDATE sync_jobs
 SET
     status = 'running',
-    started_at = NOW()
+    started_at = NOW(),
+    error_message = NULL
 WHERE id = $1
 RETURNING id, seller_account_id, type, status, started_at, finished_at, error_message, created_at
 `

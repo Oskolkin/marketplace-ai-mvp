@@ -72,12 +72,34 @@ func main() {
 
 	server := jobs.NewAsynqServer(redisCfg)
 	handler := jobs.NewHandler(logger)
+	asynqClient := jobs.NewAsynqClient(redisCfg)
+	defer asynqClient.Close()
+
+	ozonSyncCoordinatorHandler := jobs.NewOzonSyncCoordinatorHandler(postgres.Pool, asynqClient, logger)
+	productsImportHandler := jobs.NewOzonImportHandler(postgres.Pool, logger, "products")
+	ordersImportHandler := jobs.NewOzonImportHandler(postgres.Pool, logger, "orders")
+	stocksImportHandler := jobs.NewOzonImportHandler(postgres.Pool, logger, "stocks")
 	mux := jobs.NewServeMux(handler, logger, m)
 
 	ozonInitialSyncHandler := jobs.NewOzonInitialSyncHandler(postgres.Pool, logger)
 
 	mux.HandleFunc(jobs.TaskTypeOzonInitialSync, func(ctx context.Context, t *asynq.Task) error {
 		return ozonInitialSyncHandler.Handle(ctx, t.Payload())
+	})
+	mux.HandleFunc(jobs.TaskTypeOzonSyncCoordinator, func(ctx context.Context, t *asynq.Task) error {
+		return ozonSyncCoordinatorHandler.Handle(ctx, t.Payload())
+	})
+
+	mux.HandleFunc(jobs.TaskTypeOzonImportProducts, func(ctx context.Context, t *asynq.Task) error {
+		return productsImportHandler.Handle(ctx, t.Payload())
+	})
+
+	mux.HandleFunc(jobs.TaskTypeOzonImportOrders, func(ctx context.Context, t *asynq.Task) error {
+		return ordersImportHandler.Handle(ctx, t.Payload())
+	})
+
+	mux.HandleFunc(jobs.TaskTypeOzonImportStocks, func(ctx context.Context, t *asynq.Task) error {
+		return stocksImportHandler.Handle(ctx, t.Payload())
 	})
 
 	logger.Info("starting worker")

@@ -1,7 +1,9 @@
 package ozon
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -27,8 +29,9 @@ func (e *ProviderError) Error() string {
 }
 
 type Client struct {
-	httpClient *http.Client
-	baseURL    string
+	httpClient  *http.Client
+	baseURL     string
+	retryConfig RetryConfig
 }
 
 func NewClient() *Client {
@@ -36,23 +39,44 @@ func NewClient() *Client {
 		httpClient: &http.Client{
 			Timeout: 15 * time.Second,
 		},
-		baseURL: "https://api-seller.ozon.ru",
+		baseURL:     "https://api-seller.ozon.ru",
+		retryConfig: DefaultRetryConfig(),
 	}
 }
 
-func (c *Client) CheckConnection(ctx context.Context, clientID, apiKey string) error {
-	// Временный safe test-call.
-	// Если endpoint окажется неудобным для health-check, его потом заменим в одном месте.
-	body := `{"language":"DEFAULT"}`
+func NewClientWithConfig(httpClient *http.Client, baseURL string, retryConfig RetryConfig) *Client {
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 15 * time.Second}
+	}
+	if baseURL == "" {
+		baseURL = "https://api-seller.ozon.ru"
+	}
 
-	req, err := http.NewRequestWithContext(
-		ctx,
-		http.MethodPost,
-		c.baseURL+"/v1/description-category/tree",
-		strings.NewReader(body),
-	)
+	return &Client{
+		httpClient:  httpClient,
+		baseURL:     baseURL,
+		retryConfig: retryConfig,
+	}
+}
+
+func (c *Client) doRequestOnce(
+	ctx context.Context,
+	clientID string,
+	apiKey string,
+	method string,
+	path string,
+	body []byte,
+) (*RawResponse, error) {
+	url := c.baseURL + path
+
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, url, reader)
 	if err != nil {
-		return fmt.Errorf("build ozon request: %w", err)
+		return nil, fmt.Errorf("build ozon request: %w", err)
 	}
 
 	req.Header.Set("Client-Id", clientID)
@@ -63,29 +87,99 @@ func (c *Client) CheckConnection(ctx context.Context, clientID, apiKey string) e
 	if err != nil {
 		var netErr net.Error
 		if errors.As(err, &netErr) {
-			return ErrNetworkError
+			return nil, ErrNetworkError
 		}
-		return ErrNetworkError
+		return nil, ErrNetworkError
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	bodyText := strings.TrimSpace(string(respBody))
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+	if err != nil {
+		return nil, fmt.Errorf("read ozon response body: %w", err)
+	}
+
+	meta := ResponseMeta{
+		StatusCode: resp.StatusCode,
+		RequestID:  resp.Header.Get("X-Request-Id"),
+	}
 
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
-		return nil
+		return &RawResponse{
+			Body: respBody,
+			Meta: meta,
+		}, nil
+
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return ErrInvalidCredentials
-	case resp.StatusCode >= 500:
-		return &ProviderError{
-			StatusCode: resp.StatusCode,
-			Body:       bodyText,
-		}
+		return nil, ErrInvalidCredentials
+
 	default:
-		return &ProviderError{
+		bodyText := strings.TrimSpace(string(respBody))
+		return nil, &ProviderError{
 			StatusCode: resp.StatusCode,
 			Body:       bodyText,
 		}
 	}
+}
+
+func (c *Client) doRequest(
+	ctx context.Context,
+	clientID string,
+	apiKey string,
+	method string,
+	path string,
+	body []byte,
+) (*RawResponse, error) {
+	return withRetry[*RawResponse](ctx, c.retryConfig, func() (*RawResponse, error) {
+		return c.doRequestOnce(ctx, clientID, apiKey, method, path, body)
+	})
+}
+
+func (c *Client) doJSON(
+	ctx context.Context,
+	clientID string,
+	apiKey string,
+	method string,
+	path string,
+	request any,
+	responseDest any,
+) (*RawResponse, error) {
+	body, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("marshal ozon request: %w", err)
+	}
+
+	rawResp, err := c.doRequest(ctx, clientID, apiKey, method, path, body)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal(rawResp.Body, responseDest); err != nil {
+		return nil, fmt.Errorf("unmarshal ozon response: %w", err)
+	}
+
+	return rawResp, nil
+}
+
+func (c *Client) CheckConnection(ctx context.Context, clientID, apiKey string) error {
+	type request struct {
+		Language string `json:"language"`
+	}
+	type response struct{}
+
+	var resp response
+
+	_, err := c.doJSON(
+		ctx,
+		clientID,
+		apiKey,
+		http.MethodPost,
+		"/v1/description-category/tree",
+		request{
+			Language: "DEFAULT",
+		},
+		&resp,
+	)
+
+	return err
 }

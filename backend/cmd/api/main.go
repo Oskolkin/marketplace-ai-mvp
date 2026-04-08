@@ -13,6 +13,7 @@ import (
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/health"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/httpserver"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/httpserver/handlers"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/ingestion"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/integrations/ozon"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/jobs"
 	appLogger "github.com/Oskolkin/marketplace-ai-mvp/backend/internal/logger"
@@ -77,7 +78,6 @@ func main() {
 		sentry.CaptureException(err)
 		log.Fatal("failed to run migrations", zap.Error(err))
 	}
-
 	log.Info("migrations ok")
 
 	redisClient, err := appRedis.New(ctx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
@@ -113,32 +113,7 @@ func main() {
 		sentry.CaptureException(err)
 		log.Fatal("s3 smoke test failed", zap.Error(err))
 	}
-
 	log.Info("s3 smoke test ok")
-
-	authService := auth.NewService(
-		postgres.Pool,
-		time.Duration(cfg.Auth.SessionTTLHours)*time.Hour,
-	)
-	authHandler := handlers.NewAuthHandler(authService, cfg.Auth.CookieName)
-	authMiddleware := auth.Middleware(authService, cfg.Auth.CookieName)
-
-	accountService := account.NewService(postgres.Pool)
-	accountHandler := handlers.NewAccountHandler(accountService)
-
-	ozonService, err := ozon.NewService(postgres.Pool, cfg.Auth.EncryptionKey)
-	if err != nil {
-		sentry.CaptureException(err)
-		log.Fatal("failed to initialize ozon service", zap.Error(err))
-	}
-	ozonHandler := handlers.NewOzonHandler(ozonService)
-
-	readinessChecker := health.NewCompositeChecker(
-		health.NewPostgresChecker(postgres.Pool),
-		health.NewRedisChecker(redisClient.Raw),
-	)
-
-	healthHandler := health.NewHandler(readinessChecker)
 
 	asynqClient := jobs.NewAsynqClient(jobs.RedisConfig{
 		Addr:     cfg.Redis.Addr,
@@ -165,15 +140,39 @@ func main() {
 		zap.String("type", task.Type()),
 	)
 
-	syncService := ozon.NewSyncService(postgres.Pool, asynqClient)
-	ozonSyncHandler := handlers.NewOzonSyncHandler(syncService)
+	authService := auth.NewService(
+		postgres.Pool,
+		time.Duration(cfg.Auth.SessionTTLHours)*time.Hour,
+	)
+	authHandler := handlers.NewAuthHandler(authService, cfg.Auth.CookieName)
+	authMiddleware := auth.Middleware(authService, cfg.Auth.CookieName)
+
+	accountService := account.NewService(postgres.Pool)
+	accountHandler := handlers.NewAccountHandler(accountService)
+
+	ozonService, err := ozon.NewService(postgres.Pool, cfg.Auth.EncryptionKey)
+	if err != nil {
+		sentry.CaptureException(err)
+		log.Fatal("failed to initialize ozon service", zap.Error(err))
+	}
+	ozonHandler := handlers.NewOzonHandler(ozonService)
+
+	orchestrationService := ingestion.NewOrchestrationService(postgres.Pool, asynqClient)
+	ozonIngestionSyncHandler := handlers.NewOzonIngestionSyncHandler(orchestrationService)
+
+	readinessChecker := health.NewCompositeChecker(
+		health.NewPostgresChecker(postgres.Pool),
+		health.NewRedisChecker(redisClient.Raw),
+	)
+	healthHandler := health.NewHandler(readinessChecker)
+
 	server := httpserver.New(
-		ozonSyncHandler,
 		cfg.Server.Port,
 		healthHandler,
 		authHandler,
 		accountHandler,
 		ozonHandler,
+		ozonIngestionSyncHandler,
 		authMiddleware,
 		log,
 		m,

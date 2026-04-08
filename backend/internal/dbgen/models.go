@@ -8,10 +8,41 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ImportJob struct {
+	ID              int64
+	SellerAccountID int64
+	SyncJobID       int64
+	Domain          string
+	Status          string
+	SourceCursor    pgtype.Text
+	RecordsReceived int32
+	RecordsImported int32
+	RecordsFailed   int32
+	StartedAt       pgtype.Timestamptz
+	FinishedAt      pgtype.Timestamptz
+	ErrorMessage    pgtype.Text
+	CreatedAt       pgtype.Timestamptz
+}
+
 type InternalMetum struct {
 	Key       string
 	Value     string
 	UpdatedAt pgtype.Timestamptz
+}
+
+type Order struct {
+	ID                int64
+	SellerAccountID   int64
+	OzonOrderID       string
+	PostingNumber     pgtype.Text
+	Status            pgtype.Text
+	CreatedAtSource   pgtype.Timestamptz
+	ProcessedAtSource pgtype.Timestamptz
+	TotalAmount       pgtype.Numeric
+	CurrencyCode      pgtype.Text
+	RawAttributes     []byte
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
 }
 
 type OzonConnection struct {
@@ -25,6 +56,49 @@ type OzonConnection struct {
 	LastError         pgtype.Text
 	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
+}
+
+type Product struct {
+	ID              int64
+	SellerAccountID int64
+	OzonProductID   int64
+	OfferID         pgtype.Text
+	Sku             pgtype.Int8
+	Name            string
+	Status          pgtype.Text
+	IsArchived      bool
+	RawAttributes   []byte
+	SourceUpdatedAt pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
+type RawPayload struct {
+	ID               int64
+	SellerAccountID  int64
+	ImportJobID      int64
+	Domain           string
+	Source           string
+	RequestKey       pgtype.Text
+	StorageBucket    string
+	StorageObjectKey string
+	PayloadHash      string
+	ReceivedAt       pgtype.Timestamptz
+}
+
+type Sale struct {
+	ID              int64
+	SellerAccountID int64
+	OzonSaleID      string
+	OzonOrderID     pgtype.Text
+	PostingNumber   pgtype.Text
+	Quantity        pgtype.Int4
+	Amount          pgtype.Numeric
+	CurrencyCode    pgtype.Text
+	SaleDate        pgtype.Timestamptz
+	RawAttributes   []byte
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
 }
 
 type SellerAccount struct {
@@ -43,6 +117,29 @@ type Session struct {
 	ExpiresAt pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
 	RevokedAt pgtype.Timestamptz
+}
+
+type Stock struct {
+	ID                  int64
+	SellerAccountID     int64
+	ProductExternalID   string
+	WarehouseExternalID string
+	QuantityTotal       pgtype.Int4
+	QuantityReserved    pgtype.Int4
+	QuantityAvailable   pgtype.Int4
+	SnapshotAt          pgtype.Timestamptz
+	RawAttributes       []byte
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+}
+
+type SyncCursor struct {
+	ID              int64
+	SellerAccountID int64
+	Domain          string
+	CursorType      string
+	CursorValue     pgtype.Text
+	UpdatedAt       pgtype.Timestamptz
 }
 
 type SyncJob struct {

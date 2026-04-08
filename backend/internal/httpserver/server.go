@@ -3,7 +3,6 @@ package httpserver
 import (
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/health"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/httpserver/handlers"
@@ -20,12 +19,12 @@ type Server struct {
 }
 
 func New(
-	ozonSyncHandler *handlers.OzonSyncHandler,
 	port string,
 	healthHandler *health.Handler,
 	authHandler *handlers.AuthHandler,
 	accountHandler *handlers.AccountHandler,
 	ozonHandler *handlers.OzonHandler,
+	ozonIngestionSyncHandler *handlers.OzonIngestionSyncHandler,
 	authMiddleware func(http.Handler) http.Handler,
 	log *zap.Logger,
 	m *metrics.Metrics,
@@ -35,37 +34,22 @@ func New(
 
 	r.Use(appmw.CORS("http://localhost:3000"))
 	r.Use(appmw.RequestID)
-	r.Use(appmw.Logging(log))
 	r.Use(appmw.Recovery(log))
+	r.Use(appmw.Logging(log))
 	r.Use(appmw.Metrics(m))
 
 	r.Get("/health/live", healthHandler.Live)
 	r.Get("/health/ready", healthHandler.Ready)
 	r.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 
-	r.Get("/version", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"service":"backend","version":"dev"}`))
-	})
-
-	r.Get("/panic", func(w http.ResponseWriter, r *http.Request) {
-		panic("test panic")
-	})
-
-	r.Route("/api/v1/auth", func(r chi.Router) {
-		r.Post("/register", authHandler.Register)
-		r.Post("/login", authHandler.Login)
-
-		r.Group(func(r chi.Router) {
-			r.Use(authMiddleware)
-			r.Get("/me", authHandler.Me)
-			r.Post("/logout", authHandler.Logout)
-		})
-	})
+	r.Post("/api/v1/auth/register", authHandler.Register)
+	r.Post("/api/v1/auth/login", authHandler.Login)
 
 	r.Group(func(r chi.Router) {
 		r.Use(authMiddleware)
+
+		r.Get("/api/v1/auth/me", authHandler.Me)
+		r.Post("/api/v1/auth/logout", authHandler.Logout)
 
 		r.Get("/api/v1/account", accountHandler.GetCurrentAccount)
 
@@ -74,16 +58,15 @@ func New(
 			r.Post("/", ozonHandler.CreateConnection)
 			r.Put("/", ozonHandler.UpdateConnection)
 			r.Post("/check", ozonHandler.CheckConnection)
-			r.Post("/initial-sync", ozonSyncHandler.StartInitialSync)
-			r.Get("/status", ozonSyncHandler.GetStatus)
+
+			r.Post("/initial-sync", ozonIngestionSyncHandler.StartInitialSync)
 		})
 	})
 
 	return &Server{
 		httpServer: &http.Server{
-			Addr:              fmt.Sprintf(":%s", port),
-			Handler:           r,
-			ReadHeaderTimeout: 5 * time.Second,
+			Addr:    fmt.Sprintf(":%s", port),
+			Handler: r,
 		},
 	}
 }

@@ -19,11 +19,23 @@ WHERE seller_account_id = $1
 ORDER BY created_at DESC
 LIMIT 1;
 
+
+-- name: UpdateSyncJobToPending :one
+UPDATE sync_jobs
+SET
+    status = 'pending',
+    started_at = NULL,
+    finished_at = NULL,
+    error_message = NULL
+WHERE id = $1
+RETURNING *;
+
 -- name: UpdateSyncJobToRunning :one
 UPDATE sync_jobs
 SET
     status = 'running',
-    started_at = NOW()
+    started_at = NOW(),
+    error_message = NULL
 WHERE id = $1
 RETURNING *;
 
