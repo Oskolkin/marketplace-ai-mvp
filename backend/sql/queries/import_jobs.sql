@@ -23,6 +23,12 @@ FROM import_jobs
 WHERE sync_job_id = $1
 ORDER BY id ASC;
 
+-- name: ListLatestImportJobsBySellerAccountID :many
+SELECT DISTINCT ON (domain) *
+FROM import_jobs
+WHERE seller_account_id = $1
+ORDER BY domain, created_at DESC, id DESC;
+
 -- name: GetImportJobByID :one
 SELECT *
 FROM import_jobs

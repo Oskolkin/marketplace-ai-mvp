@@ -25,6 +25,7 @@ func New(
 	accountHandler *handlers.AccountHandler,
 	ozonHandler *handlers.OzonHandler,
 	ozonIngestionSyncHandler *handlers.OzonIngestionSyncHandler,
+	ozonIngestionStatusHandler *handlers.OzonIngestionStatusHandler,
 	authMiddleware func(http.Handler) http.Handler,
 	log *zap.Logger,
 	m *metrics.Metrics,
@@ -60,6 +61,7 @@ func New(
 			r.Post("/check", ozonHandler.CheckConnection)
 
 			r.Post("/initial-sync", ozonIngestionSyncHandler.StartInitialSync)
+			r.Get("/status", ozonIngestionStatusHandler.GetStatus)
 		})
 	})
 

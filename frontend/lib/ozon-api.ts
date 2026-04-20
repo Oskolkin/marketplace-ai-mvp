@@ -35,13 +35,36 @@ export type OzonSyncStartResponse = {
   };
 };
 
-export type OzonSyncStatusResponse = {
+export type IngestionSyncJobDto = {
+  id: number;
+  type: string;
+  status: string;
+  started_at: string | null;
+  finished_at: string | null;
+  error_message: string | null;
+};
+
+export type IngestionImportJobDto = {
+  id: number;
+  domain: string;
+  status: string;
+  source_cursor: string | null;
+  records_received: number;
+  records_imported: number;
+  records_failed: number;
+  started_at: string | null;
+  finished_at: string | null;
+  error_message: string | null;
+};
+
+export type OzonIngestionStatusResponse = {
   connection_status: string;
   last_check_at: string | null;
   last_check_result: string | null;
   last_error: string | null;
-  initial_sync_status: string | null;
-  last_sync_error: string | null;
+  current_sync: IngestionSyncJobDto | null;
+  last_successful_sync_at: string | null;
+  latest_import_jobs: IngestionImportJobDto[];
 };
 
 export async function getOzonConnection(): Promise<GetOzonConnectionResponse> {
@@ -68,6 +91,6 @@ export async function startInitialSync(): Promise<OzonSyncStartResponse> {
   return apiPost<OzonSyncStartResponse>("/api/v1/integrations/ozon/initial-sync");
 }
 
-export async function getOzonSyncStatus(): Promise<OzonSyncStatusResponse> {
-  return apiGet<OzonSyncStatusResponse>("/api/v1/integrations/ozon/status");
+export async function getOzonIngestionStatus(): Promise<OzonIngestionStatusResponse> {
+  return apiGet<OzonIngestionStatusResponse>("/api/v1/integrations/ozon/status");
 }

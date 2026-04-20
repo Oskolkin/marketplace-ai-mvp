@@ -160,6 +160,9 @@ func main() {
 	orchestrationService := ingestion.NewOrchestrationService(postgres.Pool, asynqClient)
 	ozonIngestionSyncHandler := handlers.NewOzonIngestionSyncHandler(orchestrationService)
 
+	statusService := ingestion.NewStatusService(postgres.Pool)
+	ozonIngestionStatusHandler := handlers.NewOzonIngestionStatusHandler(statusService)
+
 	readinessChecker := health.NewCompositeChecker(
 		health.NewPostgresChecker(postgres.Pool),
 		health.NewRedisChecker(redisClient.Raw),
@@ -173,6 +176,7 @@ func main() {
 		accountHandler,
 		ozonHandler,
 		ozonIngestionSyncHandler,
+		ozonIngestionStatusHandler,
 		authMiddleware,
 		log,
 		m,

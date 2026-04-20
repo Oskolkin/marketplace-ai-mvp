@@ -13,9 +13,15 @@ type ListProductsRequest struct {
 }
 
 type ProductItem struct {
-	ID      int64  `json:"id"`
-	Name    string `json:"name"`
-	OfferID string `json:"offer_id"`
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	OfferID    string `json:"offer_id"`
+	SKU        int64  `json:"sku"`
+	Status     string `json:"status"`
+	State      string `json:"state"`
+	IsArchived bool   `json:"is_archived"`
+	Archived   bool   `json:"archived"`
+	UpdatedAt  string `json:"updated_at"`
 }
 
 type ListProductsResult struct {

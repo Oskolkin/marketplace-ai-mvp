@@ -57,12 +57,61 @@ func (q *Queries) CreateSyncJob(ctx context.Context, arg CreateSyncJobParams) (S
 	return i, err
 }
 
+const getLatestCompletedSyncJobBySellerAccountID = `-- name: GetLatestCompletedSyncJobBySellerAccountID :one
+SELECT id, seller_account_id, type, status, started_at, finished_at, error_message, created_at
+FROM sync_jobs
+WHERE seller_account_id = $1
+  AND status = 'completed'
+ORDER BY finished_at DESC NULLS LAST, id DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestCompletedSyncJobBySellerAccountID(ctx context.Context, sellerAccountID int64) (SyncJob, error) {
+	row := q.db.QueryRow(ctx, getLatestCompletedSyncJobBySellerAccountID, sellerAccountID)
+	var i SyncJob
+	err := row.Scan(
+		&i.ID,
+		&i.SellerAccountID,
+		&i.Type,
+		&i.Status,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getLatestSyncJobBySellerAccountID = `-- name: GetLatestSyncJobBySellerAccountID :one
+SELECT id, seller_account_id, type, status, started_at, finished_at, error_message, created_at
+FROM sync_jobs
+WHERE seller_account_id = $1
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestSyncJobBySellerAccountID(ctx context.Context, sellerAccountID int64) (SyncJob, error) {
+	row := q.db.QueryRow(ctx, getLatestSyncJobBySellerAccountID, sellerAccountID)
+	var i SyncJob
+	err := row.Scan(
+		&i.ID,
+		&i.SellerAccountID,
+		&i.Type,
+		&i.Status,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getLatestSyncJobBySellerAccountIDAndType = `-- name: GetLatestSyncJobBySellerAccountIDAndType :one
 SELECT id, seller_account_id, type, status, started_at, finished_at, error_message, created_at
 FROM sync_jobs
 WHERE seller_account_id = $1
   AND type = $2
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 LIMIT 1
 `
 

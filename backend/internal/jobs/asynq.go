@@ -8,7 +8,14 @@ import (
 )
 
 const (
-	TypeSystemPing = "system.ping"
+	TypeSystemPing          = "system.ping"
+	TaskTypeOzonInitialSync = "ozon.initial_sync"
+
+	TaskTypeOzonSyncCoordinator = "ozon.sync_coordinator"
+	TaskTypeOzonImportProducts  = "ozon.import.products"
+	TaskTypeOzonImportOrders    = "ozon.import.orders"
+	TaskTypeOzonImportStocks    = "ozon.import.stocks"
+	TaskTypeOzonImportAds       = "ozon.import.ads"
 )
 
 type RedisConfig struct {
@@ -19,6 +26,24 @@ type RedisConfig struct {
 
 type SystemPingPayload struct {
 	Message string `json:"message"`
+}
+
+type OzonInitialSyncPayload struct {
+	SellerAccountID int64 `json:"seller_account_id"`
+	SyncJobID       int64 `json:"sync_job_id"`
+}
+
+type OzonSyncCoordinatorPayload struct {
+	SellerAccountID int64  `json:"seller_account_id"`
+	SyncJobID       int64  `json:"sync_job_id"`
+	SyncType        string `json:"sync_type"`
+}
+
+type OzonImportJobPayload struct {
+	SellerAccountID int64  `json:"seller_account_id"`
+	SyncJobID       int64  `json:"sync_job_id"`
+	ImportJobID     int64  `json:"import_job_id"`
+	Domain          string `json:"domain"`
 }
 
 func NewAsynqClient(cfg RedisConfig) *asynq.Client {
@@ -56,13 +81,6 @@ func NewSystemPingTask(message string) (*asynq.Task, error) {
 	return asynq.NewTask(TypeSystemPing, payload), nil
 }
 
-const TaskTypeOzonInitialSync = "ozon.initial_sync"
-
-type OzonInitialSyncPayload struct {
-	SellerAccountID int64 `json:"seller_account_id"`
-	SyncJobID       int64 `json:"sync_job_id"`
-}
-
 func NewOzonInitialSyncTask(sellerAccountID, syncJobID int64) (*asynq.Task, error) {
 	payload, err := json.Marshal(OzonInitialSyncPayload{
 		SellerAccountID: sellerAccountID,
@@ -73,26 +91,6 @@ func NewOzonInitialSyncTask(sellerAccountID, syncJobID int64) (*asynq.Task, erro
 	}
 
 	return asynq.NewTask(TaskTypeOzonInitialSync, payload), nil
-}
-
-const (
-	TaskTypeOzonSyncCoordinator = "ozon.sync_coordinator"
-	TaskTypeOzonImportProducts  = "ozon.import_products"
-	TaskTypeOzonImportOrders    = "ozon.import_orders"
-	TaskTypeOzonImportStocks    = "ozon.import_stocks"
-)
-
-type OzonSyncCoordinatorPayload struct {
-	SellerAccountID int64  `json:"seller_account_id"`
-	SyncJobID       int64  `json:"sync_job_id"`
-	SyncType        string `json:"sync_type"`
-}
-
-type OzonImportJobPayload struct {
-	SellerAccountID int64  `json:"seller_account_id"`
-	SyncJobID       int64  `json:"sync_job_id"`
-	ImportJobID     int64  `json:"import_job_id"`
-	Domain          string `json:"domain"`
 }
 
 func NewOzonSyncCoordinatorTask(sellerAccountID, syncJobID int64, syncType string) (*asynq.Task, error) {
@@ -109,43 +107,31 @@ func NewOzonSyncCoordinatorTask(sellerAccountID, syncJobID int64, syncType strin
 }
 
 func NewOzonImportProductsTask(sellerAccountID, syncJobID, importJobID int64) (*asynq.Task, error) {
-	payload, err := json.Marshal(OzonImportJobPayload{
-		SellerAccountID: sellerAccountID,
-		SyncJobID:       syncJobID,
-		ImportJobID:     importJobID,
-		Domain:          "products",
-	})
-	if err != nil {
-		return nil, fmt.Errorf("marshal products import payload: %w", err)
-	}
-
-	return asynq.NewTask(TaskTypeOzonImportProducts, payload), nil
+	return newOzonImportTask(TaskTypeOzonImportProducts, sellerAccountID, syncJobID, importJobID, "products")
 }
 
 func NewOzonImportOrdersTask(sellerAccountID, syncJobID, importJobID int64) (*asynq.Task, error) {
-	payload, err := json.Marshal(OzonImportJobPayload{
-		SellerAccountID: sellerAccountID,
-		SyncJobID:       syncJobID,
-		ImportJobID:     importJobID,
-		Domain:          "orders",
-	})
-	if err != nil {
-		return nil, fmt.Errorf("marshal orders import payload: %w", err)
-	}
-
-	return asynq.NewTask(TaskTypeOzonImportOrders, payload), nil
+	return newOzonImportTask(TaskTypeOzonImportOrders, sellerAccountID, syncJobID, importJobID, "orders")
 }
 
 func NewOzonImportStocksTask(sellerAccountID, syncJobID, importJobID int64) (*asynq.Task, error) {
+	return newOzonImportTask(TaskTypeOzonImportStocks, sellerAccountID, syncJobID, importJobID, "stocks")
+}
+
+func NewOzonImportAdsTask(sellerAccountID, syncJobID, importJobID int64) (*asynq.Task, error) {
+	return newOzonImportTask(TaskTypeOzonImportAds, sellerAccountID, syncJobID, importJobID, "ads")
+}
+
+func newOzonImportTask(taskType string, sellerAccountID, syncJobID, importJobID int64, domain string) (*asynq.Task, error) {
 	payload, err := json.Marshal(OzonImportJobPayload{
 		SellerAccountID: sellerAccountID,
 		SyncJobID:       syncJobID,
 		ImportJobID:     importJobID,
-		Domain:          "stocks",
+		Domain:          domain,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("marshal stocks import payload: %w", err)
+		return nil, fmt.Errorf("marshal ozon import payload for %s: %w", domain, err)
 	}
 
-	return asynq.NewTask(TaskTypeOzonImportStocks, payload), nil
+	return asynq.NewTask(taskType, payload), nil
 }

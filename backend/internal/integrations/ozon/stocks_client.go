@@ -14,8 +14,8 @@ type StockItem struct {
 	ProductID   int64  `json:"product_id"`
 	OfferID     string `json:"offer_id"`
 	WarehouseID int64  `json:"warehouse_id"`
-	Present     int    `json:"present"`
-	Reserved    int    `json:"reserved"`
+	Present     int32  `json:"present"`
+	Reserved    int32  `json:"reserved"`
 }
 
 type ListStocksResult struct {

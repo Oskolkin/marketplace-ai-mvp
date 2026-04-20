@@ -147,6 +147,47 @@ func (q *Queries) ListImportJobsBySyncJobID(ctx context.Context, syncJobID int64
 	return items, nil
 }
 
+const listLatestImportJobsBySellerAccountID = `-- name: ListLatestImportJobsBySellerAccountID :many
+SELECT DISTINCT ON (domain) id, seller_account_id, sync_job_id, domain, status, source_cursor, records_received, records_imported, records_failed, started_at, finished_at, error_message, created_at
+FROM import_jobs
+WHERE seller_account_id = $1
+ORDER BY domain, created_at DESC, id DESC
+`
+
+func (q *Queries) ListLatestImportJobsBySellerAccountID(ctx context.Context, sellerAccountID int64) ([]ImportJob, error) {
+	rows, err := q.db.Query(ctx, listLatestImportJobsBySellerAccountID, sellerAccountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ImportJob
+	for rows.Next() {
+		var i ImportJob
+		if err := rows.Scan(
+			&i.ID,
+			&i.SellerAccountID,
+			&i.SyncJobID,
+			&i.Domain,
+			&i.Status,
+			&i.SourceCursor,
+			&i.RecordsReceived,
+			&i.RecordsImported,
+			&i.RecordsFailed,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.ErrorMessage,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateImportJobToCompleted = `-- name: UpdateImportJobToCompleted :one
 UPDATE import_jobs
 SET

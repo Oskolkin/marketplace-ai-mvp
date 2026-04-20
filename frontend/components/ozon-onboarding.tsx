@@ -5,17 +5,17 @@ import {
   checkOzonConnection,
   createOzonConnection,
   getOzonConnection,
-  getOzonSyncStatus,
+  getOzonIngestionStatus,
   startInitialSync,
   updateOzonConnection,
   type OzonConnectionDto,
-  type OzonSyncStatusResponse,
+  type OzonIngestionStatusResponse,
 } from "@/lib/ozon-api";
 import { mapConnectionStatus, mapSyncStatus } from "@/lib/ozon-ui";
 
 export default function OzonOnboarding() {
   const [connection, setConnection] = useState<OzonConnectionDto | null>(null);
-  const [syncStatus, setSyncStatus] = useState<OzonSyncStatusResponse | null>(null);
+  const [syncStatus, setSyncStatus] = useState<OzonIngestionStatusResponse | null>(null);
 
   const [clientId, setClientId] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -29,18 +29,19 @@ export default function OzonOnboarding() {
   const [successMessage, setSuccessMessage] = useState("");
 
   const hasConnection = !!connection;
-  const isConnectionValid = syncStatus?.connection_status === "valid" || connection?.status === "valid";
-  const syncInProgress =
-    syncStatus?.initial_sync_status === "pending" ||
-    syncStatus?.initial_sync_status === "running";
+  const isConnectionValid =
+    syncStatus?.connection_status === "valid" || connection?.status === "valid";
+
+  const currentSyncStatus = syncStatus?.current_sync?.status ?? null;
+  const syncInProgress = currentSyncStatus === "pending" || currentSyncStatus === "running";
 
   const connectionStatusLabel = useMemo(() => {
     return mapConnectionStatus(syncStatus?.connection_status ?? connection?.status);
   }, [connection, syncStatus]);
 
   const initialSyncLabel = useMemo(() => {
-    return mapSyncStatus(syncStatus?.initial_sync_status);
-  }, [syncStatus]);
+    return mapSyncStatus(currentSyncStatus);
+  }, [currentSyncStatus]);
 
   async function loadData() {
     setError("");
@@ -48,7 +49,7 @@ export default function OzonOnboarding() {
     try {
       const [connectionRes, syncRes] = await Promise.all([
         getOzonConnection(),
-        getOzonSyncStatus().catch(() => null),
+        getOzonIngestionStatus().catch(() => null),
       ]);
 
       setConnection(connectionRes.connection);
@@ -93,7 +94,7 @@ export default function OzonOnboarding() {
       setApiKey("");
       setSuccessMessage(hasConnection ? "Connection updated" : "Connection saved");
 
-      const syncRes = await getOzonSyncStatus().catch(() => null);
+      const syncRes = await getOzonIngestionStatus().catch(() => null);
       if (syncRes) {
         setSyncStatus(syncRes);
       }
@@ -115,7 +116,7 @@ export default function OzonOnboarding() {
 
       const [connectionRes, syncRes] = await Promise.all([
         getOzonConnection(),
-        getOzonSyncStatus(),
+        getOzonIngestionStatus(),
       ]);
 
       setConnection(connectionRes.connection);
@@ -139,7 +140,7 @@ export default function OzonOnboarding() {
 
       const [connectionRes, syncRes] = await Promise.all([
         getOzonConnection(),
-        getOzonSyncStatus(),
+        getOzonIngestionStatus(),
       ]);
 
       setConnection(connectionRes.connection);
@@ -158,7 +159,7 @@ export default function OzonOnboarding() {
     try {
       const [connectionRes, syncRes] = await Promise.all([
         getOzonConnection(),
-        getOzonSyncStatus(),
+        getOzonIngestionStatus(),
       ]);
 
       setConnection(connectionRes.connection);
@@ -200,6 +201,10 @@ export default function OzonOnboarding() {
           <p>
             <span className="font-medium">Last error:</span>{" "}
             {syncStatus?.last_error ?? connection?.last_error ?? "—"}
+          </p>
+          <p>
+            <span className="font-medium">Last successful update:</span>{" "}
+            {syncStatus?.last_successful_sync_at ?? "—"}
           </p>
         </div>
 
@@ -268,7 +273,19 @@ export default function OzonOnboarding() {
           </p>
           <p>
             <span className="font-medium">Last sync error:</span>{" "}
-            {syncStatus?.last_sync_error ?? "—"}
+            {syncStatus?.current_sync?.error_message ?? "—"}
+          </p>
+          <p>
+            <span className="font-medium">Current sync type:</span>{" "}
+            {syncStatus?.current_sync?.type ?? "—"}
+          </p>
+          <p>
+            <span className="font-medium">Current sync started at:</span>{" "}
+            {syncStatus?.current_sync?.started_at ?? "—"}
+          </p>
+          <p>
+            <span className="font-medium">Current sync finished at:</span>{" "}
+            {syncStatus?.current_sync?.finished_at ?? "—"}
           </p>
         </div>
 

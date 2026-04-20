@@ -1,4 +1,4 @@
-package ingestion
+package rawpayloads
 
 import (
 	"context"
@@ -15,21 +15,21 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type RawPayloadService struct {
+type Service struct {
 	queries *dbgen.Queries
 	s3      *storage.Client
 	bucket  string
 }
 
-func NewRawPayloadService(db *pgxpool.Pool, s3 *storage.Client, bucket string) *RawPayloadService {
-	return &RawPayloadService{
+func NewService(db *pgxpool.Pool, s3 *storage.Client, bucket string) *Service {
+	return &Service{
 		queries: dbgen.New(db),
 		s3:      s3,
 		bucket:  bucket,
 	}
 }
 
-type SaveRawPayloadInput struct {
+type SaveInput struct {
 	SellerAccountID int64
 	ImportJobID     int64
 	Domain          string
@@ -38,7 +38,7 @@ type SaveRawPayloadInput struct {
 	Body            []byte
 }
 
-func (s *RawPayloadService) Save(ctx context.Context, input SaveRawPayloadInput) (dbgen.RawPayload, error) {
+func (s *Service) Save(ctx context.Context, input SaveInput) (dbgen.RawPayload, error) {
 	hash := sha256.Sum256(input.Body)
 	payloadHash := hex.EncodeToString(hash[:])
 

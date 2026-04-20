@@ -31,3 +31,11 @@ migrate-force:
 
 migrate-create:
 	migrate create -ext sql -dir $(MIGRATIONS_DIR) -seq $(name)
+
+.PHONY: dev-db-reset dev-db-check-initial-sync
+
+dev-db-reset:
+	psql "$(DATABASE_URL)" -f scripts/dev/sql/reset_dev_data.sql
+
+dev-db-check-initial-sync:
+	psql "$(DATABASE_URL)" -f scripts/dev/sql/check_initial_sync.sql

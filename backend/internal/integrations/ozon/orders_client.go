@@ -12,15 +12,31 @@ type ListOrdersRequest struct {
 	Offset int    `json:"offset,omitempty"`
 }
 
+type OrderFinancialProduct struct {
+	Price        string `json:"price"`
+	Quantity     int32  `json:"quantity"`
+	CurrencyCode string `json:"currency_code"`
+}
+
+type OrderFinancialData struct {
+	Products []OrderFinancialProduct `json:"products"`
+}
+
 type OrderItem struct {
-	OrderID       string `json:"order_id"`
-	PostingNumber string `json:"posting_number"`
-	Status        string `json:"status"`
-	CreatedAt     string `json:"created_at"`
+	OrderID       int64              `json:"order_id"`
+	PostingNumber string             `json:"posting_number"`
+	Status        string             `json:"status"`
+	CreatedAt     string             `json:"created_at"`
+	InProcessAt   string             `json:"in_process_at"`
+	FinancialData OrderFinancialData `json:"financial_data"`
 }
 
 type ListOrdersResult struct {
-	Result []OrderItem `json:"result"`
+	Postings []OrderItem `json:"postings"`
+}
+
+type listOrdersEnvelope struct {
+	Result ListOrdersResult `json:"result"`
 }
 
 func (c *Client) ListOrders(
@@ -29,7 +45,7 @@ func (c *Client) ListOrders(
 	apiKey string,
 	req ListOrdersRequest,
 ) (*TypedResponse[ListOrdersResult], error) {
-	var parsed ListOrdersResult
+	var parsed listOrdersEnvelope
 
 	rawResp, err := c.doJSON(
 		ctx,
@@ -46,7 +62,7 @@ func (c *Client) ListOrders(
 
 	return &TypedResponse[ListOrdersResult]{
 		Raw:  rawResp.Body,
-		Data: parsed,
+		Data: parsed.Result,
 		Meta: rawResp.Meta,
 	}, nil
 }

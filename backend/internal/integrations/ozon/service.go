@@ -46,6 +46,11 @@ type CheckConnectionResult struct {
 	ErrorCode *string
 }
 
+type DecryptedCredentials struct {
+	ClientID string
+	APIKey   string
+}
+
 func (s *Service) GetBySellerAccountID(ctx context.Context, sellerAccountID int64) (dbgen.OzonConnection, error) {
 	connection, err := s.queries.GetOzonConnectionBySellerAccountID(ctx, sellerAccountID)
 	if err != nil {
@@ -56,6 +61,28 @@ func (s *Service) GetBySellerAccountID(ctx context.Context, sellerAccountID int6
 	}
 
 	return connection, nil
+}
+
+func (s *Service) GetDecryptedCredentials(ctx context.Context, sellerAccountID int64) (DecryptedCredentials, error) {
+	connection, err := s.GetBySellerAccountID(ctx, sellerAccountID)
+	if err != nil {
+		return DecryptedCredentials{}, err
+	}
+
+	clientID, err := s.secretCodec.Decrypt(connection.ClientIDEncrypted)
+	if err != nil {
+		return DecryptedCredentials{}, fmt.Errorf("decrypt client id: %w", err)
+	}
+
+	apiKey, err := s.secretCodec.Decrypt(connection.ApiKeyEncrypted)
+	if err != nil {
+		return DecryptedCredentials{}, fmt.Errorf("decrypt api key: %w", err)
+	}
+
+	return DecryptedCredentials{
+		ClientID: clientID,
+		APIKey:   apiKey,
+	}, nil
 }
 
 func (s *Service) Create(ctx context.Context, input UpsertConnectionInput) (dbgen.OzonConnection, error) {

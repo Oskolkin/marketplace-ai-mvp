@@ -16,9 +16,23 @@ SELECT *
 FROM sync_jobs
 WHERE seller_account_id = $1
   AND type = $2
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 LIMIT 1;
 
+-- name: GetLatestSyncJobBySellerAccountID :one
+SELECT *
+FROM sync_jobs
+WHERE seller_account_id = $1
+ORDER BY created_at DESC, id DESC
+LIMIT 1;
+
+-- name: GetLatestCompletedSyncJobBySellerAccountID :one
+SELECT *
+FROM sync_jobs
+WHERE seller_account_id = $1
+  AND status = 'completed'
+ORDER BY finished_at DESC NULLS LAST, id DESC
+LIMIT 1;
 
 -- name: UpdateSyncJobToPending :one
 UPDATE sync_jobs
