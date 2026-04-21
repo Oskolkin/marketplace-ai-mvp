@@ -29,6 +29,13 @@ export default async function AppPage() {
           </Link>
 
           <Link
+            href="/app/dashboard"
+            className="rounded border px-4 py-2 hover:bg-gray-50"
+          >
+            Open dashboard
+          </Link>
+
+          <Link
             href="/app/account"
             className="rounded border px-4 py-2 hover:bg-gray-50"
           >

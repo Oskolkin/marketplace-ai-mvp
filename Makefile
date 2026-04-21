@@ -39,3 +39,28 @@ dev-db-reset:
 
 dev-db-check-initial-sync:
 	psql "$(DATABASE_URL)" -f scripts/dev/sql/check_initial_sync.sql
+
+.PHONY: dev-seed-stage3
+
+dev-seed-stage3:
+	cd backend && go run ./cmd/dev-seed-stage3 --seller-account-id $(seller_account_id)
+
+.PHONY: dev-rebuild-account-metrics
+
+dev-rebuild-account-metrics:
+	cd backend && go run ./cmd/dev-rebuild-account-metrics --seller-account-id $(seller_account_id)
+
+.PHONY: dev-rebuild-sku-metrics
+
+dev-rebuild-sku-metrics:
+	cd backend && go run ./cmd/dev-rebuild-sku-metrics --seller-account-id $(seller_account_id)
+
+.PHONY: dev-check-stock-metrics
+
+dev-check-stock-metrics:
+	cd backend && go run ./cmd/dev-check-stock-metrics --seller-account-id $(seller_account_id)
+
+.PHONY: dev-check-dashboard-metrics
+
+dev-check-dashboard-metrics:
+	cd backend && go run ./cmd/dev-check-dashboard-metrics --seller-account-id $(seller_account_id)

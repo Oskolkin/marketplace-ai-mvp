@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/account"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/analytics"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/auth"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/config"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/db"
@@ -149,6 +150,9 @@ func main() {
 
 	accountService := account.NewService(postgres.Pool)
 	accountHandler := handlers.NewAccountHandler(accountService)
+	dashboardService := analytics.NewDashboardService(postgres.Pool)
+	stocksViewService := analytics.NewStocksViewService(postgres.Pool)
+	analyticsDashboardHandler := handlers.NewAnalyticsDashboardHandler(dashboardService, stocksViewService)
 
 	ozonService, err := ozon.NewService(postgres.Pool, cfg.Auth.EncryptionKey)
 	if err != nil {
@@ -174,6 +178,7 @@ func main() {
 		healthHandler,
 		authHandler,
 		accountHandler,
+		analyticsDashboardHandler,
 		ozonHandler,
 		ozonIngestionSyncHandler,
 		ozonIngestionStatusHandler,

@@ -23,6 +23,7 @@ func New(
 	healthHandler *health.Handler,
 	authHandler *handlers.AuthHandler,
 	accountHandler *handlers.AccountHandler,
+	analyticsDashboardHandler *handlers.AnalyticsDashboardHandler,
 	ozonHandler *handlers.OzonHandler,
 	ozonIngestionSyncHandler *handlers.OzonIngestionSyncHandler,
 	ozonIngestionStatusHandler *handlers.OzonIngestionStatusHandler,
@@ -53,6 +54,9 @@ func New(
 		r.Post("/api/v1/auth/logout", authHandler.Logout)
 
 		r.Get("/api/v1/account", accountHandler.GetCurrentAccount)
+		r.Get("/api/v1/analytics/dashboard", analyticsDashboardHandler.GetDashboardSummary)
+		r.Get("/api/v1/analytics/sku-table", analyticsDashboardHandler.GetSKUTable)
+		r.Get("/api/v1/analytics/stocks", analyticsDashboardHandler.GetStocksTable)
 
 		r.Route("/api/v1/integrations/ozon", func(r chi.Router) {
 			r.Get("/", ozonHandler.GetConnection)

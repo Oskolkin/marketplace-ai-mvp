@@ -8,6 +8,34 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type DailyAccountMetric struct {
+	ID              int64
+	SellerAccountID int64
+	MetricDate      pgtype.Date
+	Revenue         pgtype.Numeric
+	OrdersCount     int32
+	ReturnsCount    int32
+	CancelCount     int32
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
+type DailySkuMetric struct {
+	ID              int64
+	SellerAccountID int64
+	MetricDate      pgtype.Date
+	OzonProductID   int64
+	OfferID         pgtype.Text
+	Sku             pgtype.Int8
+	ProductName     pgtype.Text
+	Revenue         pgtype.Numeric
+	OrdersCount     int32
+	StockAvailable  int32
+	DaysOfCover     pgtype.Numeric
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
 type ImportJob struct {
 	ID              int64
 	SellerAccountID int64
