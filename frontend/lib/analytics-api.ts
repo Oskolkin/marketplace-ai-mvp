@@ -19,6 +19,10 @@ export type DashboardSummaryResponse = {
     last_successful_update: string | null;
     period_used: string;
     data_freshness: string;
+    as_of_date: string;
+    as_of_date_source: string;
+    kpi_semantics: string;
+    sku_orders_semantics: string;
   };
   top_skus: DashboardSkuRow[];
 };
@@ -68,6 +72,72 @@ export type SKUQueryParams = {
   sortOrder?: "asc" | "desc";
 };
 
+export type CriticalSKUItem = {
+  ozon_product_id: number;
+  offer_id: string | null;
+  sku: number | null;
+  product_name: string | null;
+  revenue: number;
+  sales_ops: number;
+  revenue_delta_day: number;
+  orders_delta_day: number;
+  stock_available: number;
+  days_of_cover: number | null;
+  importance: number;
+  out_of_stock_risk: number;
+  problem_score: number;
+  signals: string[] | null;
+  badges: string[] | null;
+};
+
+export type CriticalSKUsResponse = {
+  items: CriticalSKUItem[];
+  meta: {
+    as_of_date: string;
+    scoring_semantics: Record<string, string>;
+    latest_data_timestamp: string | null;
+    total: number;
+    limit: number;
+    offset: number;
+    sort_by: string;
+    sort_order: "asc" | "desc";
+  };
+};
+
+export type CriticalSKUsQueryParams = {
+  asOfDate?: string;
+  limit?: number;
+  offset?: number;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+};
+
+export type StocksReplenishmentItem = {
+  ozon_product_id: number;
+  offer_id: string | null;
+  sku: number | null;
+  product_name: string | null;
+  current_total_stock: number;
+  current_reserved_stock: number;
+  current_available_stock: number;
+  days_of_cover: number | null;
+  snapshot_at: string | null;
+  warehouse_count: number;
+  importance: number;
+  depletion_risk: string;
+  replenishment_priority: string;
+  signals: string[] | null;
+};
+
+export type StocksReplenishmentResponse = {
+  items: StocksReplenishmentItem[];
+  meta: {
+    stock_semantics: string;
+    as_of_date: string;
+    last_stock_update: string | null;
+  };
+};
+
 function buildQuery(params: Record<string, string | number | undefined>): string {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -102,4 +172,26 @@ export async function getDashboardSKUTable(
 
 export async function getDashboardStocks(): Promise<DashboardStocksResponse> {
   return apiGet<DashboardStocksResponse>("/api/v1/analytics/stocks");
+}
+
+export async function getCriticalSKUs(
+  params: CriticalSKUsQueryParams
+): Promise<CriticalSKUsResponse> {
+  const query = buildQuery({
+    as_of_date: params.asOfDate,
+    limit: params.limit,
+    offset: params.offset,
+    sort_by: params.sortBy,
+    sort_order: params.sortOrder,
+  });
+  return apiGet<CriticalSKUsResponse>(`/api/v1/analytics/critical-skus${query}`);
+}
+
+export async function getStocksReplenishment(
+  asOfDate?: string
+): Promise<StocksReplenishmentResponse> {
+  const query = buildQuery({ as_of_date: asOfDate });
+  return apiGet<StocksReplenishmentResponse>(
+    `/api/v1/analytics/stocks-replenishment${query}`
+  );
 }

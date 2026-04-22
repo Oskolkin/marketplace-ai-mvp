@@ -60,6 +60,16 @@ dev-rebuild-sku-metrics:
 dev-check-stock-metrics:
 	cd backend && go run ./cmd/dev-check-stock-metrics --seller-account-id $(seller_account_id)
 
+.PHONY: dev-check-critical-skus
+
+dev-check-critical-skus:
+	cd backend && go run ./cmd/dev-check-critical-skus --seller-account-id $(seller_account_id)
+
+.PHONY: dev-check-replenishment
+
+dev-check-replenishment:
+	cd backend && go run ./cmd/dev-check-replenishment --seller-account-id $(seller_account_id)
+
 .PHONY: dev-check-dashboard-metrics
 
 dev-check-dashboard-metrics:

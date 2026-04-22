@@ -12,17 +12,23 @@ import (
 )
 
 type AnalyticsDashboardHandler struct {
-	dashboardService *analytics.DashboardService
-	stocksService    *analytics.StocksViewService
+	dashboardService     *analytics.DashboardService
+	stocksService        *analytics.StocksViewService
+	criticalSKUService   *analytics.CriticalSKUService
+	replenishmentService *analytics.ReplenishmentService
 }
 
 func NewAnalyticsDashboardHandler(
 	dashboardService *analytics.DashboardService,
 	stocksService *analytics.StocksViewService,
+	criticalSKUService *analytics.CriticalSKUService,
+	replenishmentService *analytics.ReplenishmentService,
 ) *AnalyticsDashboardHandler {
 	return &AnalyticsDashboardHandler{
-		dashboardService: dashboardService,
-		stocksService:    stocksService,
+		dashboardService:     dashboardService,
+		stocksService:        stocksService,
+		criticalSKUService:   criticalSKUService,
+		replenishmentService: replenishmentService,
 	}
 }
 
@@ -40,6 +46,10 @@ type dashboardSummaryResponse struct {
 		LastSuccessfulUpdate *string `json:"last_successful_update"`
 		PeriodUsed           string  `json:"period_used"`
 		DataFreshness        string  `json:"data_freshness"`
+		AsOfDate             string  `json:"as_of_date"`
+		AsOfDateSource       string  `json:"as_of_date_source"`
+		KPISemantics         string  `json:"kpi_semantics"`
+		SKUOrdersSemantics   string  `json:"sku_orders_semantics"`
 	} `json:"summary"`
 	TopSKUs []analytics.DashboardSKUMetricsItem `json:"top_skus"`
 }
@@ -66,6 +76,32 @@ type stockTableWarehouseRow struct {
 type stocksTableResponse struct {
 	Items []stockTableWarehouseRow `json:"items"`
 	Total int                      `json:"total"`
+	Meta  struct {
+		Semantics string `json:"semantics"`
+	} `json:"meta"`
+}
+
+type criticalSKUsResponse struct {
+	Items []analytics.CriticalSKUCard `json:"items"`
+	Meta  struct {
+		AsOfDate            string            `json:"as_of_date"`
+		ScoringSemantics    map[string]string `json:"scoring_semantics"`
+		LatestDataTimestamp *string           `json:"latest_data_timestamp"`
+		Total               int               `json:"total"`
+		Limit               int               `json:"limit"`
+		Offset              int               `json:"offset"`
+		SortBy              string            `json:"sort_by"`
+		SortOrder           string            `json:"sort_order"`
+	} `json:"meta"`
+}
+
+type stocksReplenishmentResponse struct {
+	Items []analytics.ReplenishmentSKUItem `json:"items"`
+	Meta  struct {
+		StockSemantics  string  `json:"stock_semantics"`
+		AsOfDate        string  `json:"as_of_date"`
+		LastStockUpdate *string `json:"last_stock_update"`
+	} `json:"meta"`
 }
 
 func (h *AnalyticsDashboardHandler) GetDashboardSummary(w http.ResponseWriter, r *http.Request) {
@@ -75,15 +111,10 @@ func (h *AnalyticsDashboardHandler) GetDashboardSummary(w http.ResponseWriter, r
 		return
 	}
 
-	asOf := time.Now().UTC()
-	asOfRaw := r.URL.Query().Get("as_of_date")
-	if asOfRaw != "" {
-		parsed, err := time.Parse("2006-01-02", asOfRaw)
-		if err != nil {
-			writeJSONError(w, http.StatusBadRequest, "invalid as_of_date, expected YYYY-MM-DD")
-			return
-		}
-		asOf = parsed
+	asOf, err := parseAsOfDate(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid as_of_date, expected YYYY-MM-DD")
+		return
 	}
 
 	dto, err := h.dashboardService.BuildDashboardMetrics(r.Context(), sellerAccount.ID, asOf)
@@ -176,7 +207,74 @@ func (h *AnalyticsDashboardHandler) GetStocksTable(w http.ResponseWriter, r *htt
 	writeJSON(w, http.StatusOK, stocksTableResponse{
 		Items: flatRows,
 		Total: len(flatRows),
+		Meta: struct {
+			Semantics string `json:"semantics"`
+		}{
+			Semantics: "Current-state snapshot view from latest row per product+warehouse; not historical stock timeline.",
+		},
 	})
+}
+
+func (h *AnalyticsDashboardHandler) GetCriticalSKUs(w http.ResponseWriter, r *http.Request) {
+	sellerAccount, ok := auth.SellerAccountFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	asOfDate := time.Now().UTC()
+	asOf, err := parseAsOfDate(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid as_of_date, expected YYYY-MM-DD")
+		return
+	}
+	if asOf != nil {
+		asOfDate = *asOf
+	}
+
+	result, err := h.criticalSKUService.ListCriticalSKUsForSellerAccount(r.Context(), sellerAccount.ID, asOfDate)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to build critical skus")
+		return
+	}
+
+	rows := append([]analytics.CriticalSKUCard(nil), result.Items...)
+	limit, offset := parsePaginationParams(r)
+	sortBy := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort_by")))
+	sortOrder := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort_order")))
+	sortCriticalSKURows(rows, sortBy, sortOrder)
+
+	total := len(rows)
+	start := minInt(offset, total)
+	end := minInt(start+limit, total)
+
+	writeJSON(w, http.StatusOK, mapCriticalSKUsResponse(result, rows[start:end], total, limit, offset, sortBy, sortOrder))
+}
+
+func (h *AnalyticsDashboardHandler) GetStocksReplenishment(w http.ResponseWriter, r *http.Request) {
+	sellerAccount, ok := auth.SellerAccountFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	asOfDate := time.Now().UTC()
+	asOf, err := parseAsOfDate(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid as_of_date, expected YYYY-MM-DD")
+		return
+	}
+	if asOf != nil {
+		asOfDate = *asOf
+	}
+
+	result, err := h.replenishmentService.ListReplenishmentForSellerAccount(r.Context(), sellerAccount.ID, asOfDate)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to build stocks replenishment")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, mapStocksReplenishmentResponse(result))
 }
 
 func mapDashboardSummaryResponse(dto analytics.DashboardMetricsDTO) dashboardSummaryResponse {
@@ -190,8 +288,12 @@ func mapDashboardSummaryResponse(dto analytics.DashboardMetricsDTO) dashboardSum
 	response.KPI.CancelsCurrent = dto.Account.CancelsToday
 
 	response.Summary.LastSuccessfulUpdate = dto.LastUpdatedAt
-	response.Summary.PeriodUsed = buildPeriodUsed(dto.AsOfDate)
-	response.Summary.DataFreshness = resolveDataFreshness(dto.AsOfDate)
+	response.Summary.PeriodUsed = dto.Summary.PeriodUsed
+	response.Summary.DataFreshness = dto.Summary.DataFreshness
+	response.Summary.AsOfDate = dto.AsOfDate
+	response.Summary.AsOfDateSource = dto.AsOfDateSource
+	response.Summary.KPISemantics = dto.Summary.KPISemantics
+	response.Summary.SKUOrdersSemantics = dto.Summary.SKUOrdersSemantics
 
 	top := dto.SKUs
 	if len(top) > 5 {
@@ -201,12 +303,55 @@ func mapDashboardSummaryResponse(dto analytics.DashboardMetricsDTO) dashboardSum
 	return response
 }
 
-func parseAsOfDate(r *http.Request) (time.Time, error) {
+func mapCriticalSKUsResponse(
+	result analytics.CriticalSKUResult,
+	items []analytics.CriticalSKUCard,
+	total int,
+	limit int,
+	offset int,
+	sortBy string,
+	sortOrder string,
+) criticalSKUsResponse {
+	response := criticalSKUsResponse{
+		Items: items,
+	}
+	response.Meta.AsOfDate = result.AsOfDate
+	response.Meta.ScoringSemantics = result.ScoringSemantics
+	response.Meta.LatestDataTimestamp = result.LatestDataTimestamp
+	response.Meta.Total = total
+	response.Meta.Limit = limit
+	response.Meta.Offset = offset
+	response.Meta.SortBy = sortBy
+	if response.Meta.SortBy == "" {
+		response.Meta.SortBy = "problem_score"
+	}
+	response.Meta.SortOrder = sortOrder
+	if response.Meta.SortOrder == "" {
+		response.Meta.SortOrder = "desc"
+	}
+	return response
+}
+
+func mapStocksReplenishmentResponse(result analytics.ReplenishmentResult) stocksReplenishmentResponse {
+	response := stocksReplenishmentResponse{
+		Items: result.Items,
+	}
+	response.Meta.StockSemantics = result.StockSemantics
+	response.Meta.AsOfDate = result.AsOfDate
+	response.Meta.LastStockUpdate = result.LastStockUpdate
+	return response
+}
+
+func parseAsOfDate(r *http.Request) (*time.Time, error) {
 	asOfRaw := r.URL.Query().Get("as_of_date")
 	if strings.TrimSpace(asOfRaw) == "" {
-		return time.Now().UTC(), nil
+		return nil, nil
 	}
-	return time.Parse("2006-01-02", asOfRaw)
+	parsed, err := time.Parse("2006-01-02", asOfRaw)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
 }
 
 func parsePaginationParams(r *http.Request) (int, int) {
@@ -303,6 +448,60 @@ func sortSKURows(rows []analytics.DashboardSKUMetricsItem, sortBy string, sortOr
 	})
 }
 
+func sortCriticalSKURows(rows []analytics.CriticalSKUCard, sortBy string, sortOrder string) {
+	desc := sortOrder != "asc"
+	if sortBy == "" {
+		sortBy = "problem_score"
+	}
+
+	sort.Slice(rows, func(i, j int) bool {
+		left := rows[i]
+		right := rows[j]
+		switch sortBy {
+		case "importance":
+			if left.Importance == right.Importance {
+				return left.OzonProductID < right.OzonProductID
+			}
+			if desc {
+				return left.Importance > right.Importance
+			}
+			return left.Importance < right.Importance
+		case "out_of_stock_risk":
+			if left.OutOfStockRisk == right.OutOfStockRisk {
+				return left.OzonProductID < right.OzonProductID
+			}
+			if desc {
+				return left.OutOfStockRisk > right.OutOfStockRisk
+			}
+			return left.OutOfStockRisk < right.OutOfStockRisk
+		case "revenue_delta_day":
+			if left.RevenueDeltaDay == right.RevenueDeltaDay {
+				return left.OzonProductID < right.OzonProductID
+			}
+			if desc {
+				return left.RevenueDeltaDay > right.RevenueDeltaDay
+			}
+			return left.RevenueDeltaDay < right.RevenueDeltaDay
+		case "stock_available":
+			if left.StockAvailable == right.StockAvailable {
+				return left.OzonProductID < right.OzonProductID
+			}
+			if desc {
+				return left.StockAvailable > right.StockAvailable
+			}
+			return left.StockAvailable < right.StockAvailable
+		default:
+			if left.ProblemScore == right.ProblemScore {
+				return left.OzonProductID < right.OzonProductID
+			}
+			if desc {
+				return left.ProblemScore > right.ProblemScore
+			}
+			return left.ProblemScore < right.ProblemScore
+		}
+	})
+}
+
 func safeFloat(v *float64) float64 {
 	if v == nil {
 		return 0
@@ -322,25 +521,4 @@ func minInt(a int, b int) int {
 		return a
 	}
 	return b
-}
-
-func buildPeriodUsed(asOfDate string) string {
-	return asOfDate + " (d) / last 7 days for WoW"
-}
-
-func resolveDataFreshness(asOfDate string) string {
-	asOf, err := time.Parse("2006-01-02", asOfDate)
-	if err != nil {
-		return "unknown"
-	}
-
-	daysLag := int(time.Since(asOf.UTC()).Hours() / 24)
-	switch {
-	case daysLag <= 0:
-		return "fresh"
-	case daysLag <= 1:
-		return "stale_1d"
-	default:
-		return "stale"
-	}
 }

@@ -152,7 +152,14 @@ func main() {
 	accountHandler := handlers.NewAccountHandler(accountService)
 	dashboardService := analytics.NewDashboardService(postgres.Pool)
 	stocksViewService := analytics.NewStocksViewService(postgres.Pool)
-	analyticsDashboardHandler := handlers.NewAnalyticsDashboardHandler(dashboardService, stocksViewService)
+	criticalSKUService := analytics.NewCriticalSKUService(postgres.Pool)
+	replenishmentService := analytics.NewReplenishmentService(postgres.Pool)
+	analyticsDashboardHandler := handlers.NewAnalyticsDashboardHandler(
+		dashboardService,
+		stocksViewService,
+		criticalSKUService,
+		replenishmentService,
+	)
 
 	ozonService, err := ozon.NewService(postgres.Pool, cfg.Auth.EncryptionKey)
 	if err != nil {

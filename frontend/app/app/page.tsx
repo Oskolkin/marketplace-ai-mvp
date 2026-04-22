@@ -41,6 +41,20 @@ export default async function AppPage() {
           >
             Open account
           </Link>
+
+          <Link
+            href="/app/critical-skus"
+            className="rounded border px-4 py-2 hover:bg-gray-50"
+          >
+            Open Critical SKU
+          </Link>
+
+          <Link
+            href="/app/stocks-replenishment"
+            className="rounded border px-4 py-2 hover:bg-gray-50"
+          >
+            Open Stocks &amp; Replenishment
+          </Link>
         </div>
       </section>
     </main>

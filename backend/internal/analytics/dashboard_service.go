@@ -25,9 +25,21 @@ func NewDashboardService(db *pgxpool.Pool) *DashboardService {
 type DashboardMetricsDTO struct {
 	SellerAccountID int64                     `json:"seller_account_id"`
 	AsOfDate        string                    `json:"as_of_date"`
+	AsOfDateSource  string                    `json:"as_of_date_source"`
 	LastUpdatedAt   *string                   `json:"last_updated_at"`
+	Summary         DashboardSummaryMeta      `json:"summary"`
 	Account         DashboardAccountMetrics   `json:"account"`
 	SKUs            []DashboardSKUMetricsItem `json:"skus"`
+}
+
+type DashboardSummaryMeta struct {
+	PeriodUsed              string `json:"period_used"`
+	DataFreshness           string `json:"data_freshness"`
+	KPISemantics            string `json:"kpi_semantics"`
+	SKUOrdersSemantics      string `json:"sku_orders_semantics"`
+	StocksSemantics         string `json:"stocks_semantics"`
+	ContributionSemantics   string `json:"contribution_semantics"`
+	ShareOfRevenueSemantics string `json:"share_of_revenue_semantics"`
 }
 
 type DashboardAccountMetrics struct {
@@ -63,8 +75,11 @@ type DashboardSKUMetricsItem struct {
 	ContributionToRevenueChange float64  `json:"contribution_to_revenue_change"`
 }
 
-func (s *DashboardService) BuildDashboardMetrics(ctx context.Context, sellerAccountID int64, asOfDate time.Time) (DashboardMetricsDTO, error) {
-	asOf := normalizeDate(asOfDate)
+func (s *DashboardService) BuildDashboardMetrics(ctx context.Context, sellerAccountID int64, asOfDate *time.Time) (DashboardMetricsDTO, error) {
+	asOf, asOfSource, err := s.resolveAsOfDate(ctx, sellerAccountID, asOfDate)
+	if err != nil {
+		return DashboardMetricsDTO{}, err
+	}
 	from := asOf.AddDate(0, 0, -13)
 	yesterday := asOf.AddDate(0, 0, -1)
 
@@ -141,6 +156,8 @@ func (s *DashboardService) BuildDashboardMetrics(ctx context.Context, sellerAcco
 		maxUpdatedAt = maxTimestamptz(maxUpdatedAt, todayRow.UpdatedAt)
 	}
 
+	ordersToday, ordersYesterday := sumSKUOrdersForDay(skusToday, skusYesterdayByProduct)
+
 	for _, row := range accountRows {
 		maxUpdatedAt = maxTimestamptz(maxUpdatedAt, row.UpdatedAt)
 	}
@@ -155,21 +172,78 @@ func (s *DashboardService) BuildDashboardMetrics(ctx context.Context, sellerAcco
 	return DashboardMetricsDTO{
 		SellerAccountID: sellerAccountID,
 		AsOfDate:        todayKey,
+		AsOfDateSource:  asOfSource,
 		LastUpdatedAt:   timestamptzToRFC3339(maxUpdatedAt),
+		Summary: DashboardSummaryMeta{
+			PeriodUsed:              buildPeriodUsed(todayKey),
+			DataFreshness:           resolveDataFreshness(todayKey),
+			KPISemantics:            "Revenue and orders are aligned to sales-based metric_date for dashboard consistency; returns/cancels are order-status counts for the same metric_date.",
+			SKUOrdersSemantics:      "SKU orders_count is sales-operation count on SKU/day grain.",
+			StocksSemantics:         "Stocks endpoint and stock fields represent current-state snapshot from latest warehouse rows, not historical stock flow.",
+			ContributionSemantics:   "contribution_to_revenue_change = sku_revenue(day) - sku_revenue(day-1).",
+			ShareOfRevenueSemantics: "share_of_revenue = sku_revenue(day) / account_revenue(day).",
+		},
 		Account: DashboardAccountMetrics{
 			RevenueToday:      revenueToday,
 			RevenueYesterday:  revenueYesterday,
 			RevenueLast7Days:  last7Revenue,
 			RevenueDayDelta:   buildDelta(revenueToday, revenueYesterday),
 			RevenueWeekDelta:  buildDelta(last7Revenue, previous7Revenue),
-			OrdersToday:       todayAccount.OrdersCount,
-			OrdersYesterday:   yesterdayAccount.OrdersCount,
+			OrdersToday:       ordersToday,
+			OrdersYesterday:   ordersYesterday,
 			ReturnsToday:      todayAccount.ReturnsCount,
 			CancelsToday:      todayAccount.CancelCount,
 			PreviousWeekTotal: previous7Revenue,
 		},
 		SKUs: skuItems,
 	}, nil
+}
+
+func (s *DashboardService) resolveAsOfDate(ctx context.Context, sellerAccountID int64, asOfDate *time.Time) (time.Time, string, error) {
+	if asOfDate != nil {
+		return normalizeDate(*asOfDate), "request", nil
+	}
+
+	latestDate, err := s.queries.GetLatestAvailableDashboardMetricDateBySellerAccountID(ctx, sellerAccountID)
+	if err != nil {
+		return time.Time{}, "", fmt.Errorf("get latest available dashboard metric date: %w", err)
+	}
+	if latestDate.Valid && latestDate.Time.Year() > 1970 {
+		return normalizeDate(latestDate.Time), "latest_available", nil
+	}
+
+	return normalizeDate(time.Now().UTC()), "fallback_today", nil
+}
+
+func sumSKUOrdersForDay(todayRows []dbgen.DailySkuMetric, yesterdayByProduct map[int64]dbgen.DailySkuMetric) (int32, int32) {
+	var ordersToday int32
+	var ordersYesterday int32
+	for _, row := range todayRows {
+		ordersToday += row.OrdersCount
+		ordersYesterday += yesterdayByProduct[row.OzonProductID].OrdersCount
+	}
+	return ordersToday, ordersYesterday
+}
+
+func buildPeriodUsed(asOfDate string) string {
+	return asOfDate + " (d) / last 7 days for WoW"
+}
+
+func resolveDataFreshness(asOfDate string) string {
+	asOf, err := time.Parse("2006-01-02", asOfDate)
+	if err != nil {
+		return "unknown"
+	}
+
+	daysLag := int(time.Since(asOf.UTC()).Hours() / 24)
+	switch {
+	case daysLag <= 0:
+		return "fresh"
+	case daysLag <= 1:
+		return "stale_1d"
+	default:
+		return "stale"
+	}
 }
 
 func maxTimestamptz(current pgtype.Timestamptz, next pgtype.Timestamptz) pgtype.Timestamptz {

@@ -61,6 +61,20 @@ func (q *Queries) GetDailyAccountMetricSourceDateBoundsBySellerAccountID(ctx con
 	return i, err
 }
 
+const getLatestAvailableDashboardMetricDateBySellerAccountID = `-- name: GetLatestAvailableDashboardMetricDateBySellerAccountID :one
+SELECT GREATEST(
+    COALESCE((SELECT MAX(dam.metric_date) FROM daily_account_metrics dam WHERE dam.seller_account_id = $1), '1970-01-01'::date),
+    COALESCE((SELECT MAX(dsm.metric_date) FROM daily_sku_metrics dsm WHERE dsm.seller_account_id = $1), '1970-01-01'::date)
+)::date AS latest_date
+`
+
+func (q *Queries) GetLatestAvailableDashboardMetricDateBySellerAccountID(ctx context.Context, sellerAccountID int64) (pgtype.Date, error) {
+	row := q.db.QueryRow(ctx, getLatestAvailableDashboardMetricDateBySellerAccountID, sellerAccountID)
+	var latest_date pgtype.Date
+	err := row.Scan(&latest_date)
+	return latest_date, err
+}
+
 const listDailyAccountMetricSourcesBySellerAndDateRange = `-- name: ListDailyAccountMetricSourcesBySellerAndDateRange :many
 WITH sales_by_day AS (
     SELECT

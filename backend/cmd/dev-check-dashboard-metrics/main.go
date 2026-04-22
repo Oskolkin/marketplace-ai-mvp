@@ -25,14 +25,14 @@ func main() {
 		os.Exit(2)
 	}
 
-	asOf := time.Now().UTC()
+	var asOf *time.Time
 	if asOfDate != "" {
 		parsed, err := time.Parse("2006-01-02", asOfDate)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "invalid --as-of-date: %v\n", err)
 			os.Exit(2)
 		}
-		asOf = parsed
+		asOf = &parsed
 	}
 
 	_ = config.LoadEnvFiles()

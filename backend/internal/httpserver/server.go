@@ -57,6 +57,8 @@ func New(
 		r.Get("/api/v1/analytics/dashboard", analyticsDashboardHandler.GetDashboardSummary)
 		r.Get("/api/v1/analytics/sku-table", analyticsDashboardHandler.GetSKUTable)
 		r.Get("/api/v1/analytics/stocks", analyticsDashboardHandler.GetStocksTable)
+		r.Get("/api/v1/analytics/critical-skus", analyticsDashboardHandler.GetCriticalSKUs)
+		r.Get("/api/v1/analytics/stocks-replenishment", analyticsDashboardHandler.GetStocksReplenishment)
 
 		r.Route("/api/v1/integrations/ozon", func(r chi.Router) {
 			r.Get("/", ozonHandler.GetConnection)

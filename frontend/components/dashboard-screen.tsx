@@ -10,8 +10,6 @@ import {
   type DashboardSummaryResponse,
 } from "@/lib/analytics-api";
 
-const DEFAULT_LOOKBACK_DAYS = 90;
-
 function fmtMoney(value: number): string {
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",
@@ -56,11 +54,10 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
         setLoading(true);
         setError("");
 
-        const resolvedAsOfDate = await resolveLatestDashboardDate(initialAsOfDate);
         const [summary, skuTable, stocks] = await Promise.all([
-          getDashboardSummary(resolvedAsOfDate),
+          getDashboardSummary(initialAsOfDate),
           getDashboardSKUTable({
-            asOfDate: resolvedAsOfDate,
+            asOfDate: initialAsOfDate,
             limit: 20,
             offset: 0,
             sortBy: "revenue",
@@ -133,7 +130,16 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
           <span className="font-medium">Period used:</span> {summary.period_used}
         </p>
         <p>
+          <span className="font-medium">As of date:</span> {summary.as_of_date} ({summary.as_of_date_source})
+        </p>
+        <p>
           <span className="font-medium">Data freshness:</span> {summary.data_freshness}
+        </p>
+        <p>
+          <span className="font-medium">KPI semantics:</span> {summary.kpi_semantics}
+        </p>
+        <p>
+          <span className="font-medium">SKU orders semantics:</span> {summary.sku_orders_semantics}
         </p>
       </section>
 
@@ -145,7 +151,7 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
               <tr className="border-b text-left">
                 <th className="px-2 py-2">Product</th>
                 <th className="px-2 py-2">Revenue</th>
-                <th className="px-2 py-2">Orders</th>
+                <th className="px-2 py-2">Sales ops</th>
                 <th className="px-2 py-2">Share</th>
                 <th className="px-2 py-2">Contribution</th>
                 <th className="px-2 py-2">Stock</th>
@@ -210,43 +216,6 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
       </section>
     </main>
   );
-}
-
-async function resolveLatestDashboardDate(preferredAsOfDate?: string): Promise<string | undefined> {
-  if (preferredAsOfDate) {
-    return preferredAsOfDate;
-  }
-
-  const now = new Date();
-  for (let i = 0; i <= DEFAULT_LOOKBACK_DAYS; i++) {
-    const candidate = new Date(now);
-    candidate.setUTCDate(now.getUTCDate() - i);
-    const asOfDate = toISODate(candidate);
-
-    const summary = await getDashboardSummary(asOfDate);
-    if (hasDashboardData(summary)) {
-      return asOfDate;
-    }
-  }
-
-  return undefined;
-}
-
-function hasDashboardData(summary: DashboardSummaryResponse): boolean {
-  return (
-    summary.kpi.revenue_current !== 0 ||
-    summary.kpi.orders_current !== 0 ||
-    summary.kpi.returns_current !== 0 ||
-    summary.kpi.cancels_current !== 0 ||
-    (summary.top_skus?.length ?? 0) > 0
-  );
-}
-
-function toISODate(date: Date): string {
-  const year = date.getUTCFullYear();
-  const month = `${date.getUTCMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getUTCDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function MetricCard(props: { title: string; value: string; sub: string }) {

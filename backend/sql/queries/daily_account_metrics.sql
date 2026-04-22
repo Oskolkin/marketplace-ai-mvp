@@ -33,6 +33,12 @@ WHERE seller_account_id = $1
   AND metric_date <= $3
 ORDER BY metric_date ASC;
 
+-- name: GetLatestAvailableDashboardMetricDateBySellerAccountID :one
+SELECT GREATEST(
+    COALESCE((SELECT MAX(dam.metric_date) FROM daily_account_metrics dam WHERE dam.seller_account_id = $1), '1970-01-01'::date),
+    COALESCE((SELECT MAX(dsm.metric_date) FROM daily_sku_metrics dsm WHERE dsm.seller_account_id = $1), '1970-01-01'::date)
+)::date AS latest_date;
+
 -- name: GetDailyAccountMetricSourceDateBoundsBySellerAccountID :one
 WITH source_dates AS (
     SELECT sale_date::date AS metric_date
