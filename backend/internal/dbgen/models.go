@@ -130,19 +130,39 @@ type OzonConnection struct {
 	UpdatedAt         pgtype.Timestamptz
 }
 
+type PricingConstraintRule struct {
+	ID                     int64
+	SellerAccountID        int64
+	ScopeType              string
+	ScopeTargetID          pgtype.Int8
+	ScopeTargetCode        pgtype.Text
+	MinPrice               pgtype.Numeric
+	MaxPrice               pgtype.Numeric
+	ReferenceMarginPercent pgtype.Numeric
+	ReferencePrice         pgtype.Numeric
+	ImpliedCost            pgtype.Numeric
+	IsActive               bool
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+}
+
 type Product struct {
-	ID              int64
-	SellerAccountID int64
-	OzonProductID   int64
-	OfferID         pgtype.Text
-	Sku             pgtype.Int8
-	Name            string
-	Status          pgtype.Text
-	IsArchived      bool
-	RawAttributes   []byte
-	SourceUpdatedAt pgtype.Timestamptz
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
+	ID                    int64
+	SellerAccountID       int64
+	OzonProductID         int64
+	OfferID               pgtype.Text
+	Sku                   pgtype.Int8
+	Name                  string
+	Status                pgtype.Text
+	IsArchived            bool
+	RawAttributes         []byte
+	SourceUpdatedAt       pgtype.Timestamptz
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
+	ReferencePrice        pgtype.Numeric
+	OldPrice              pgtype.Numeric
+	OzonMinPrice          pgtype.Numeric
+	DescriptionCategoryID pgtype.Int8
 }
 
 type RawPayload struct {
@@ -189,6 +209,21 @@ type Session struct {
 	ExpiresAt pgtype.Timestamptz
 	CreatedAt pgtype.Timestamptz
 	RevokedAt pgtype.Timestamptz
+}
+
+type SkuEffectiveConstraint struct {
+	SellerAccountID        int64
+	OzonProductID          int64
+	Sku                    pgtype.Int8
+	OfferID                pgtype.Text
+	ResolvedFromScopeType  string
+	RuleID                 int64
+	EffectiveMinPrice      pgtype.Numeric
+	EffectiveMaxPrice      pgtype.Numeric
+	ReferencePrice         pgtype.Numeric
+	ReferenceMarginPercent pgtype.Numeric
+	ImpliedCost            pgtype.Numeric
+	ComputedAt             pgtype.Timestamptz
 }
 
 type Stock struct {

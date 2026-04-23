@@ -41,11 +41,15 @@ type ProductInfoListRequest struct {
 }
 
 type ProductInfoListItem struct {
-	ID      int64  `json:"id"`
-	OfferID string `json:"offer_id"`
-	SKU     int64  `json:"sku"`
-	Name    string `json:"name"`
-	Status  struct {
+	ID                    int64  `json:"id"`
+	OfferID               string `json:"offer_id"`
+	SKU                   int64  `json:"sku"`
+	Name                  string `json:"name"`
+	Price                 string `json:"price"`
+	OldPrice              string `json:"old_price"`
+	MinPrice              string `json:"min_price"`
+	DescriptionCategoryID int64  `json:"description_category_id"`
+	Status                struct {
 		State string `json:"state"`
 	} `json:"statuses"`
 	UpdatedAt  string `json:"updated_at"`

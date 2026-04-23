@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -16,6 +17,7 @@ type AnalyticsDashboardHandler struct {
 	stocksService        *analytics.StocksViewService
 	criticalSKUService   *analytics.CriticalSKUService
 	replenishmentService *analytics.ReplenishmentService
+	advertisingService   *analytics.AdvertisingService
 }
 
 func NewAnalyticsDashboardHandler(
@@ -23,12 +25,14 @@ func NewAnalyticsDashboardHandler(
 	stocksService *analytics.StocksViewService,
 	criticalSKUService *analytics.CriticalSKUService,
 	replenishmentService *analytics.ReplenishmentService,
+	advertisingService *analytics.AdvertisingService,
 ) *AnalyticsDashboardHandler {
 	return &AnalyticsDashboardHandler{
 		dashboardService:     dashboardService,
 		stocksService:        stocksService,
 		criticalSKUService:   criticalSKUService,
 		replenishmentService: replenishmentService,
+		advertisingService:   advertisingService,
 	}
 }
 
@@ -102,6 +106,12 @@ type stocksReplenishmentResponse struct {
 		AsOfDate        string  `json:"as_of_date"`
 		LastStockUpdate *string `json:"last_stock_update"`
 	} `json:"meta"`
+}
+
+type advertisingAnalyticsResponse struct {
+	Summary   analytics.AdvertisingSummaryDTO      `json:"summary"`
+	Campaigns []analytics.AdvertisingCampaignRow   `json:"campaigns"`
+	SKURisks  []analytics.AdvertisingSKURiskRowDTO `json:"sku_risks"`
 }
 
 func (h *AnalyticsDashboardHandler) GetDashboardSummary(w http.ResponseWriter, r *http.Request) {
@@ -277,6 +287,42 @@ func (h *AnalyticsDashboardHandler) GetStocksReplenishment(w http.ResponseWriter
 	writeJSON(w, http.StatusOK, mapStocksReplenishmentResponse(result))
 }
 
+func (h *AnalyticsDashboardHandler) GetAdvertisingAnalytics(w http.ResponseWriter, r *http.Request) {
+	sellerAccount, ok := auth.SellerAccountFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	dateFrom, dateTo, err := parseAdvertisingDateRange(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid date range, expected YYYY-MM-DD")
+		return
+	}
+	limit, offset := parsePaginationParams(r)
+	sortBy := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort_by")))
+	sortOrder := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort_order")))
+
+	result, err := h.advertisingService.BuildAdvertisingAnalytics(r.Context(), sellerAccount.ID, analytics.AdvertisingQuery{
+		DateFrom:  dateFrom,
+		DateTo:    dateTo,
+		Limit:     limit,
+		Offset:    offset,
+		SortBy:    sortBy,
+		SortOrder: sortOrder,
+	})
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to build advertising analytics")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, advertisingAnalyticsResponse{
+		Summary:   result.Summary,
+		Campaigns: result.Campaign,
+		SKURisks:  result.SKURisks,
+	})
+}
+
 func mapDashboardSummaryResponse(dto analytics.DashboardMetricsDTO) dashboardSummaryResponse {
 	response := dashboardSummaryResponse{}
 	response.KPI.RevenueCurrent = dto.Account.RevenueToday
@@ -369,6 +415,34 @@ func parsePaginationParams(r *http.Request) (int, int) {
 		}
 	}
 	return limit, offset
+}
+
+func parseAdvertisingDateRange(r *http.Request) (time.Time, time.Time, error) {
+	dateTo := normalizeDateValue(time.Now().UTC())
+	dateFrom := dateTo.AddDate(0, 0, -29)
+
+	if raw := strings.TrimSpace(r.URL.Query().Get("date_to")); raw != "" {
+		parsed, err := time.Parse("2006-01-02", raw)
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+		dateTo = normalizeDateValue(parsed)
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("date_from")); raw != "" {
+		parsed, err := time.Parse("2006-01-02", raw)
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+		dateFrom = normalizeDateValue(parsed)
+	}
+	if dateFrom.After(dateTo) {
+		return time.Time{}, time.Time{}, fmt.Errorf("date_from is after date_to")
+	}
+	return dateFrom, dateTo, nil
+}
+
+func normalizeDateValue(v time.Time) time.Time {
+	return time.Date(v.Year(), v.Month(), v.Day(), 0, 0, 0, 0, time.UTC)
 }
 
 func sortSKURows(rows []analytics.DashboardSKUMetricsItem, sortBy string, sortOrder string) {

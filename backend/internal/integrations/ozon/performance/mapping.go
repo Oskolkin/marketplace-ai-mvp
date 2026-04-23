@@ -18,12 +18,12 @@ func mapCampaigns(data []map[string]any) []Campaign {
 		items = append(items, Campaign{
 			CampaignExternalID: id,
 			CampaignName:       firstString(row, "title", "name"),
-			CampaignType:       firstString(row, "advObjectType", "adv_object_type"),
+			CampaignType:       normalizeCampaignType(firstString(row, "advObjectType", "adv_object_type")),
 			PlacementType:      firstString(row, "placement"),
 			Status:             firstString(row, "state", "status"),
 			PaymentType:        firstString(row, "paymentType", "payment_type"),
-			BudgetAmount:       firstString(row, "budget"),
-			BudgetDaily:        firstString(row, "dailyBudget", "daily_budget"),
+			BudgetAmount:       normalizeMoneyString(firstString(row, "budget")),
+			BudgetDaily:        normalizeMoneyString(firstString(row, "dailyBudget", "daily_budget")),
 			Raw:                raw,
 		})
 	}
@@ -47,9 +47,9 @@ func mapCampaignStatistics(data []map[string]any) []CampaignDailyMetric {
 			MetricDate:         date,
 			Impressions:        firstInt64(row, "impressions"),
 			Clicks:             firstInt64(row, "clicks"),
-			Spend:              firstString(row, "spend", "spendInRubles"),
+			Spend:              normalizeMoneyString(firstString(row, "spend", "spendInRubles")),
 			OrdersCount:        firstInt64(row, "orders", "ordersCount", "orders_count"),
-			Revenue:            firstString(row, "ordersInRubles", "revenue"),
+			Revenue:            normalizeMoneyString(firstString(row, "ordersInRubles", "revenue")),
 			Raw:                raw,
 		})
 	}
@@ -212,4 +212,28 @@ func toMapSlice(v any) []map[string]any {
 		}
 	}
 	return out
+}
+
+func normalizeCampaignType(v string) string {
+	return strings.ToUpper(strings.TrimSpace(v))
+}
+
+func normalizeMoneyString(v string) string {
+	normalized := strings.TrimSpace(v)
+	if normalized == "" {
+		return ""
+	}
+	normalized = strings.ReplaceAll(normalized, " ", "")
+	normalized = strings.ReplaceAll(normalized, ",", ".")
+	normalized = strings.ReplaceAll(normalized, "₽", "")
+	normalized = strings.ReplaceAll(normalized, "RUB", "")
+	normalized = strings.ReplaceAll(normalized, "rub", "")
+	normalized = strings.TrimSpace(normalized)
+	if normalized == "" {
+		return ""
+	}
+	if parsed, err := strconv.ParseFloat(normalized, 64); err == nil {
+		return strconv.FormatFloat(parsed, 'f', 2, 64)
+	}
+	return normalized
 }

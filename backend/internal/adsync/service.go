@@ -3,6 +3,7 @@ package adsync
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/dbgen"
@@ -33,6 +34,13 @@ type RunResult struct {
 	RecordsFailed   int32
 	NextCursorValue string
 }
+
+const (
+	campaignTypeSKU         = "SKU"
+	campaignTypeSearchPromo = "SEARCH_PROMO"
+	campaignTypeBanner      = "BANNER"
+	campaignTypeVideoBanner = "VIDEO_BANNER"
+)
 
 func NewService(db *pgxpool.Pool, ozonService *ozon.Service, rawPayloads *rawpayloads.Service) *Service {
 	return &Service{
@@ -69,11 +77,12 @@ func (s *Service) Run(ctx context.Context, input RunInput) (RunResult, error) {
 
 	campaignIDs := make([]int64, 0, len(campaigns))
 	for _, campaign := range campaigns {
+		campaignType := normalizeCampaignType(campaign.CampaignType)
 		if _, err := s.queries.UpsertAdCampaign(ctx, dbgen.UpsertAdCampaignParams{
 			SellerAccountID:    input.SellerAccountID,
 			CampaignExternalID: campaign.CampaignExternalID,
 			CampaignName:       fallbackCampaignName(campaign.CampaignName, campaign.CampaignExternalID),
-			CampaignType:       nullableText(campaign.CampaignType),
+			CampaignType:       nullableText(campaignType),
 			PlacementType:      nullableText(campaign.PlacementType),
 			Status:             nullableText(campaign.Status),
 			BudgetAmount:       nullableNumeric(campaign.BudgetAmount),
@@ -220,12 +229,12 @@ func (s *Service) importCampaignProducts(
 		var links []performance.CampaignPromotedProduct
 		var fetchErr error
 
-		switch campaign.CampaignType {
-		case "SKU":
+		switch normalizeCampaignType(campaign.CampaignType) {
+		case campaignTypeSKU:
 			links, fetchErr = s.fetchSKUCampaignProducts(ctx, clientID, bearerToken, input, campaign.CampaignExternalID)
-		case "SEARCH_PROMO":
+		case campaignTypeSearchPromo:
 			continue
-		case "BANNER", "VIDEO_BANNER":
+		case campaignTypeBanner, campaignTypeVideoBanner:
 			// For banner-oriented campaigns objects are not reliably SKU-linked.
 			continue
 		default:
@@ -233,6 +242,9 @@ func (s *Service) importCampaignProducts(
 		}
 		if fetchErr != nil {
 			return 0, 0, fetchErr
+		}
+		if normalizeCampaignType(campaign.CampaignType) == campaignTypeSKU && len(links) == 0 {
+			return 0, 0, fmt.Errorf("sku campaign=%d has no product links", campaign.CampaignExternalID)
 		}
 
 		received += int32(len(links))
@@ -461,6 +473,10 @@ func nullableNumeric(v string) pgtype.Numeric {
 func dateValue(v time.Time) pgtype.Date {
 	normalized := time.Date(v.Year(), v.Month(), v.Day(), 0, 0, 0, 0, time.UTC)
 	return pgtype.Date{Time: normalized, Valid: true}
+}
+
+func normalizeCampaignType(v string) string {
+	return strings.ToUpper(strings.TrimSpace(v))
 }
 
 func resolvePerformanceToken(creds ozon.DecryptedCredentials) string {

@@ -130,15 +130,19 @@ func (s *Service) Run(ctx context.Context, input RunInput) (RunResult, error) {
 		}
 
 		if _, err := s.queries.UpsertProduct(ctx, dbgen.UpsertProductParams{
-			SellerAccountID: input.SellerAccountID,
-			OzonProductID:   item.ID,
-			OfferID:         nullableText(offerID),
-			Sku:             nullableInt64(sku),
-			Name:            fallbackName(name),
-			Status:          nullableText(resolveStatus(item)),
-			IsArchived:      item.IsArchived || item.Archived || detail.IsArchived || detail.Archived,
-			RawAttributes:   rawSubset,
-			SourceUpdatedAt: sourceUpdatedAt,
+			SellerAccountID:       input.SellerAccountID,
+			OzonProductID:         item.ID,
+			OfferID:               nullableText(offerID),
+			Sku:                   nullableInt64(sku),
+			Name:                  fallbackName(name),
+			Status:                nullableText(resolveStatus(item)),
+			ReferencePrice:        nullableNumeric(detail.Price),
+			OldPrice:              nullableNumeric(detail.OldPrice),
+			OzonMinPrice:          nullableNumeric(detail.MinPrice),
+			DescriptionCategoryID: nullableInt64(detail.DescriptionCategoryID),
+			IsArchived:            item.IsArchived || item.Archived || detail.IsArchived || detail.Archived,
+			RawAttributes:         rawSubset,
+			SourceUpdatedAt:       sourceUpdatedAt,
 		}); err != nil {
 			return RunResult{}, fmt.Errorf("upsert product ozon_product_id=%d: %w", item.ID, err)
 		}
@@ -193,6 +197,17 @@ func nullableInt64(v int64) pgtype.Int8 {
 		Int64: v,
 		Valid: true,
 	}
+}
+
+func nullableNumeric(v string) pgtype.Numeric {
+	if v == "" {
+		return pgtype.Numeric{Valid: false}
+	}
+	var parsed pgtype.Numeric
+	if err := parsed.Scan(v); err != nil {
+		return pgtype.Numeric{Valid: false}
+	}
+	return parsed
 }
 
 func parseOptionalRFC3339(v string) (pgtype.Timestamptz, error) {

@@ -194,6 +194,23 @@
 
 8\. экран Advertising.
 
+\### 5.1. Поддерживаемые campaign types в MVP
+
+\- `SKU` — полная поддержка.
+\- `SEARCH_PROMO` — поддержка в ограниченном режиме.
+\- `BANNER` и `VIDEO_BANNER` — campaign-level поддержка без полноценного SKU-risk слоя.
+
+\### 5.2. Completion definition этапа 5
+
+Этап 5 считается завершённым, когда backend:
+
+\- импортирует кампании;
+\- импортирует daily metrics;
+\- строит campaign ↔ SKU links там, где это возможно;
+\- отдаёт advertising summary;
+\- отдаёт campaign rows;
+\- отдаёт SKU risk rows.
+
 
 
 \---
@@ -477,6 +494,13 @@ Advertising screen должен быть operational, а не BI-heavy.
 \- многомерная drill-down BI-отчётность;
 
 \- advanced filters/report builder.
+
+Ключевые вне scope пункты:
+
+\- управление ставками;
+\- сложная attribution;
+\- AI-реклама;
+\- прогнозирование ROMI.
 
 
 

@@ -24,6 +24,7 @@ func New(
 	authHandler *handlers.AuthHandler,
 	accountHandler *handlers.AccountHandler,
 	analyticsDashboardHandler *handlers.AnalyticsDashboardHandler,
+	pricingConstraintsHandler *handlers.PricingConstraintsHandler,
 	ozonHandler *handlers.OzonHandler,
 	ozonIngestionSyncHandler *handlers.OzonIngestionSyncHandler,
 	ozonIngestionStatusHandler *handlers.OzonIngestionStatusHandler,
@@ -59,6 +60,13 @@ func New(
 		r.Get("/api/v1/analytics/stocks", analyticsDashboardHandler.GetStocksTable)
 		r.Get("/api/v1/analytics/critical-skus", analyticsDashboardHandler.GetCriticalSKUs)
 		r.Get("/api/v1/analytics/stocks-replenishment", analyticsDashboardHandler.GetStocksReplenishment)
+		r.Get("/api/v1/analytics/advertising", analyticsDashboardHandler.GetAdvertisingAnalytics)
+		r.Get("/api/v1/pricing-constraints", pricingConstraintsHandler.GetPricingConstraints)
+		r.Put("/api/v1/pricing-constraints/global", pricingConstraintsHandler.PutGlobalDefault)
+		r.Post("/api/v1/pricing-constraints/category-rules", pricingConstraintsHandler.PostCategoryRule)
+		r.Post("/api/v1/pricing-constraints/sku-overrides", pricingConstraintsHandler.PostSKUOverride)
+		r.Get("/api/v1/pricing-constraints/effective", pricingConstraintsHandler.GetEffectiveConstraints)
+		r.Post("/api/v1/pricing-constraints/preview", pricingConstraintsHandler.PostPreview)
 
 		r.Route("/api/v1/integrations/ozon", func(r chi.Router) {
 			r.Get("/", ozonHandler.GetConnection)

@@ -11,6 +11,7 @@ import (
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/auth"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/config"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/db"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/dbgen"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/health"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/httpserver"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/httpserver/handlers"
@@ -19,6 +20,7 @@ import (
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/jobs"
 	appLogger "github.com/Oskolkin/marketplace-ai-mvp/backend/internal/logger"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/metrics"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/pricingconstraints"
 	appRedis "github.com/Oskolkin/marketplace-ai-mvp/backend/internal/redis"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/sentryx"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/storage"
@@ -154,12 +156,16 @@ func main() {
 	stocksViewService := analytics.NewStocksViewService(postgres.Pool)
 	criticalSKUService := analytics.NewCriticalSKUService(postgres.Pool)
 	replenishmentService := analytics.NewReplenishmentService(postgres.Pool)
+	advertisingService := analytics.NewAdvertisingService(postgres.Pool)
+	pricingConstraintsService := pricingconstraints.NewService(dbgen.New(postgres.Pool))
 	analyticsDashboardHandler := handlers.NewAnalyticsDashboardHandler(
 		dashboardService,
 		stocksViewService,
 		criticalSKUService,
 		replenishmentService,
+		advertisingService,
 	)
+	pricingConstraintsHandler := handlers.NewPricingConstraintsHandler(pricingConstraintsService)
 
 	ozonService, err := ozon.NewService(postgres.Pool, cfg.Auth.EncryptionKey)
 	if err != nil {
@@ -186,6 +192,7 @@ func main() {
 		authHandler,
 		accountHandler,
 		analyticsDashboardHandler,
+		pricingConstraintsHandler,
 		ozonHandler,
 		ozonIngestionSyncHandler,
 		ozonIngestionStatusHandler,

@@ -55,6 +55,13 @@ export default async function AppPage() {
           >
             Open Stocks &amp; Replenishment
           </Link>
+
+          <Link
+            href="/app/pricing-constraints"
+            className="rounded border px-4 py-2 hover:bg-gray-50"
+          >
+            Open Pricing Constraints
+          </Link>
         </div>
       </section>
     </main>

@@ -25,7 +25,7 @@ func (q *Queries) CountProductsBySellerAccountID(ctx context.Context, sellerAcco
 }
 
 const listProductsBySellerAccountID = `-- name: ListProductsBySellerAccountID :many
-SELECT id, seller_account_id, ozon_product_id, offer_id, sku, name, status, is_archived, raw_attributes, source_updated_at, created_at, updated_at
+SELECT id, seller_account_id, ozon_product_id, offer_id, sku, name, status, is_archived, raw_attributes, source_updated_at, created_at, updated_at, reference_price, old_price, ozon_min_price, description_category_id
 FROM products
 WHERE seller_account_id = $1
 ORDER BY id ASC
@@ -53,6 +53,10 @@ func (q *Queries) ListProductsBySellerAccountID(ctx context.Context, sellerAccou
 			&i.SourceUpdatedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ReferencePrice,
+			&i.OldPrice,
+			&i.OzonMinPrice,
+			&i.DescriptionCategoryID,
 		); err != nil {
 			return nil, err
 		}
@@ -72,12 +76,16 @@ INSERT INTO products (
     sku,
     name,
     status,
+    reference_price,
+    old_price,
+    ozon_min_price,
+    description_category_id,
     is_archived,
     raw_attributes,
     source_updated_at,
     updated_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW()
 )
 ON CONFLICT (seller_account_id, ozon_product_id)
 DO UPDATE SET
@@ -85,23 +93,31 @@ DO UPDATE SET
     sku = EXCLUDED.sku,
     name = EXCLUDED.name,
     status = EXCLUDED.status,
+    reference_price = EXCLUDED.reference_price,
+    old_price = EXCLUDED.old_price,
+    ozon_min_price = EXCLUDED.ozon_min_price,
+    description_category_id = EXCLUDED.description_category_id,
     is_archived = EXCLUDED.is_archived,
     raw_attributes = EXCLUDED.raw_attributes,
     source_updated_at = EXCLUDED.source_updated_at,
     updated_at = NOW()
-RETURNING id, seller_account_id, ozon_product_id, offer_id, sku, name, status, is_archived, raw_attributes, source_updated_at, created_at, updated_at
+RETURNING id, seller_account_id, ozon_product_id, offer_id, sku, name, status, is_archived, raw_attributes, source_updated_at, created_at, updated_at, reference_price, old_price, ozon_min_price, description_category_id
 `
 
 type UpsertProductParams struct {
-	SellerAccountID int64
-	OzonProductID   int64
-	OfferID         pgtype.Text
-	Sku             pgtype.Int8
-	Name            string
-	Status          pgtype.Text
-	IsArchived      bool
-	RawAttributes   []byte
-	SourceUpdatedAt pgtype.Timestamptz
+	SellerAccountID       int64
+	OzonProductID         int64
+	OfferID               pgtype.Text
+	Sku                   pgtype.Int8
+	Name                  string
+	Status                pgtype.Text
+	ReferencePrice        pgtype.Numeric
+	OldPrice              pgtype.Numeric
+	OzonMinPrice          pgtype.Numeric
+	DescriptionCategoryID pgtype.Int8
+	IsArchived            bool
+	RawAttributes         []byte
+	SourceUpdatedAt       pgtype.Timestamptz
 }
 
 func (q *Queries) UpsertProduct(ctx context.Context, arg UpsertProductParams) (Product, error) {
@@ -112,6 +128,10 @@ func (q *Queries) UpsertProduct(ctx context.Context, arg UpsertProductParams) (P
 		arg.Sku,
 		arg.Name,
 		arg.Status,
+		arg.ReferencePrice,
+		arg.OldPrice,
+		arg.OzonMinPrice,
+		arg.DescriptionCategoryID,
 		arg.IsArchived,
 		arg.RawAttributes,
 		arg.SourceUpdatedAt,
@@ -130,6 +150,10 @@ func (q *Queries) UpsertProduct(ctx context.Context, arg UpsertProductParams) (P
 		&i.SourceUpdatedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ReferencePrice,
+		&i.OldPrice,
+		&i.OzonMinPrice,
+		&i.DescriptionCategoryID,
 	)
 	return i, err
 }

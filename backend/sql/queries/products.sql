@@ -6,12 +6,16 @@ INSERT INTO products (
     sku,
     name,
     status,
+    reference_price,
+    old_price,
+    ozon_min_price,
+    description_category_id,
     is_archived,
     raw_attributes,
     source_updated_at,
     updated_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW()
 )
 ON CONFLICT (seller_account_id, ozon_product_id)
 DO UPDATE SET
@@ -19,6 +23,10 @@ DO UPDATE SET
     sku = EXCLUDED.sku,
     name = EXCLUDED.name,
     status = EXCLUDED.status,
+    reference_price = EXCLUDED.reference_price,
+    old_price = EXCLUDED.old_price,
+    ozon_min_price = EXCLUDED.ozon_min_price,
+    description_category_id = EXCLUDED.description_category_id,
     is_archived = EXCLUDED.is_archived,
     raw_attributes = EXCLUDED.raw_attributes,
     source_updated_at = EXCLUDED.source_updated_at,
