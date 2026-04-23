@@ -8,6 +8,7 @@ import (
 
 type scopeCall struct {
 	scopeType  ScopeType
+	targetKind *ScopeTargetKind
 	targetID   *int64
 	targetCode *string
 }
@@ -17,12 +18,23 @@ type fakeRuleRepository struct {
 	byScope map[string][]Rule
 }
 
-func (f *fakeRuleRepository) ListByScope(ctx context.Context, sellerAccountID int64, scopeType ScopeType, targetID *int64, targetCode *string) ([]Rule, error) {
-	f.calls = append(f.calls, scopeCall{scopeType: scopeType, targetID: targetID, targetCode: targetCode})
-	return f.byScope[key(scopeType, targetID, targetCode)], nil
+func (f *fakeRuleRepository) ListByScope(
+	ctx context.Context,
+	sellerAccountID int64,
+	scopeType ScopeType,
+	targetKind *ScopeTargetKind,
+	targetID *int64,
+	targetCode *string,
+) ([]Rule, error) {
+	f.calls = append(f.calls, scopeCall{scopeType: scopeType, targetKind: targetKind, targetID: targetID, targetCode: targetCode})
+	return f.byScope[key(scopeType, targetKind, targetID, targetCode)], nil
 }
 
-func key(scopeType ScopeType, targetID *int64, targetCode *string) string {
+func key(scopeType ScopeType, targetKind *ScopeTargetKind, targetID *int64, targetCode *string) string {
+	kind := "nil"
+	if targetKind != nil {
+		kind = string(*targetKind)
+	}
 	id := "nil"
 	if targetID != nil {
 		id = intToStr(*targetID)
@@ -31,7 +43,7 @@ func key(scopeType ScopeType, targetID *int64, targetCode *string) string {
 	if targetCode != nil {
 		code = *targetCode
 	}
-	return string(scopeType) + "|" + id + "|" + code
+	return string(scopeType) + "|" + kind + "|" + id + "|" + code
 }
 
 func intToStr(v int64) string {
@@ -43,7 +55,7 @@ func TestResolverPrecedenceSKUOverrideWins(t *testing.T) {
 	categoryID := int64(701)
 	repo := &fakeRuleRepository{
 		byScope: map[string][]Rule{
-			key(ScopeTypeSKUOverride, &skuID, nil): {
+			key(ScopeTypeSKUOverride, scopeTargetKindPtr(ScopeTargetKindSKU), &skuID, nil): {
 				{
 					ID:                     10,
 					ScopeType:              ScopeTypeSKUOverride,
@@ -78,8 +90,8 @@ func TestResolverPrecedenceCategoryThenGlobal(t *testing.T) {
 	productID := int64(999)
 	repo := &fakeRuleRepository{
 		byScope: map[string][]Rule{
-			key(ScopeTypeSKUOverride, &productID, nil): {},
-			key(ScopeTypeCategoryRule, &categoryID, nil): {
+			key(ScopeTypeSKUOverride, scopeTargetKindPtr(ScopeTargetKindProductID), &productID, nil): {},
+			key(ScopeTypeCategoryRule, scopeTargetKindPtr(ScopeTargetKindCategoryID), &categoryID, nil): {
 				{
 					ID:                     11,
 					ScopeType:              ScopeTypeCategoryRule,
@@ -136,5 +148,9 @@ func TestPreviewExpectedMargin(t *testing.T) {
 }
 
 func floatPtr(v float64) *float64 {
+	return &v
+}
+
+func scopeTargetKindPtr(v ScopeTargetKind) *ScopeTargetKind {
 	return &v
 }

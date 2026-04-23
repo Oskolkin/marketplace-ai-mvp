@@ -43,3 +43,9 @@ ORDER BY id ASC;
 SELECT COUNT(*)
 FROM products
 WHERE seller_account_id = $1;
+
+-- name: GetProductBySellerAndOzonProductID :one
+SELECT *
+FROM products
+WHERE seller_account_id = $1
+  AND ozon_product_id = $2;

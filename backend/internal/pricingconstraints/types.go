@@ -10,10 +10,20 @@ const (
 	ScopeTypeSKUOverride   ScopeType = "sku_override"
 )
 
+type ScopeTargetKind string
+
+const (
+	ScopeTargetKindCategoryID ScopeTargetKind = "category_id"
+	ScopeTargetKindSKU        ScopeTargetKind = "sku"
+	ScopeTargetKindProductID  ScopeTargetKind = "product_id"
+	ScopeTargetKindOfferID    ScopeTargetKind = "offer_id"
+)
+
 type Rule struct {
 	ID                     int64
 	SellerAccountID        int64
 	ScopeType              ScopeType
+	ScopeTargetKind        *ScopeTargetKind
 	ScopeTargetID          *int64
 	ScopeTargetCode        *string
 	MinPrice               *float64

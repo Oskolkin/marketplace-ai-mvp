@@ -2,6 +2,7 @@
 INSERT INTO pricing_constraint_rules (
     seller_account_id,
     scope_type,
+    scope_target_kind,
     scope_target_id,
     scope_target_code,
     min_price,
@@ -12,7 +13,7 @@ INSERT INTO pricing_constraint_rules (
     is_active,
     updated_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW()
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW()
 )
 RETURNING *;
 
@@ -20,17 +21,18 @@ RETURNING *;
 UPDATE pricing_constraint_rules
 SET
     scope_type = $2,
-    scope_target_id = $3,
-    scope_target_code = $4,
-    min_price = $5,
-    max_price = $6,
-    reference_margin_percent = $7,
-    reference_price = $8,
-    implied_cost = $9,
-    is_active = $10,
+    scope_target_kind = $3,
+    scope_target_id = $4,
+    scope_target_code = $5,
+    min_price = $6,
+    max_price = $7,
+    reference_margin_percent = $8,
+    reference_price = $9,
+    implied_cost = $10,
+    is_active = $11,
     updated_at = NOW()
 WHERE id = $1
-  AND seller_account_id = $11
+  AND seller_account_id = $12
 RETURNING *;
 
 -- name: ListPricingConstraintRulesBySellerAccountID :many
@@ -44,6 +46,13 @@ SELECT *
 FROM pricing_constraint_rules
 WHERE seller_account_id = $1
   AND scope_type = $2
+  AND (
+    scope_target_kind = sqlc.narg(scope_target_kind)
+    OR (
+      sqlc.narg(scope_target_kind)::text IS NULL
+      AND scope_target_kind IS NULL
+    )
+  )
   AND (
     scope_target_id = sqlc.narg(scope_target_id)
     OR (
@@ -59,6 +68,16 @@ WHERE seller_account_id = $1
     )
   )
 ORDER BY is_active DESC, updated_at DESC, id DESC;
+
+-- name: DeactivatePricingConstraintRuleByIDAndScope :one
+UPDATE pricing_constraint_rules
+SET
+    is_active = FALSE,
+    updated_at = NOW()
+WHERE id = $1
+  AND seller_account_id = $2
+  AND scope_type = $3
+RETURNING *;
 
 -- name: UpsertSKUEffectiveConstraint :one
 INSERT INTO sku_effective_constraints (
@@ -100,6 +119,19 @@ SELECT *
 FROM sku_effective_constraints
 WHERE seller_account_id = $1
 ORDER BY computed_at DESC, ozon_product_id ASC;
+
+-- name: CountSKUEffectiveConstraintsBySellerAccountID :one
+SELECT COUNT(*)
+FROM sku_effective_constraints
+WHERE seller_account_id = $1;
+
+-- name: ListSKUEffectiveConstraintsPageBySellerAccountID :many
+SELECT *
+FROM sku_effective_constraints
+WHERE seller_account_id = $1
+ORDER BY computed_at DESC, ozon_product_id ASC
+LIMIT $2
+OFFSET $3;
 
 -- name: GetSKUEffectiveConstraintBySellerAndProduct :one
 SELECT *

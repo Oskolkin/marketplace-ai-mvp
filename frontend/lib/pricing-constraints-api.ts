@@ -3,6 +3,7 @@ import { apiGet, apiPost, apiPut } from "@/lib/api";
 export type PricingRule = {
   id: number;
   scope_type: "global_default" | "category_rule" | "sku_override";
+  scope_target_kind: "category_id" | "sku" | "product_id" | "offer_id" | null;
   scope_target_id: number | null;
   scope_target_code: string | null;
   min_price: number | null;
@@ -146,6 +147,20 @@ export function postCategoryRule(payload: CategoryRulePayload): Promise<UpsertRu
 
 export function postSKUOverride(payload: SKUOverridePayload): Promise<UpsertRuleResponse> {
   return apiPost<UpsertRuleResponse>("/api/v1/pricing-constraints/sku-overrides", payload);
+}
+
+export function deactivateCategoryRule(ruleID: number): Promise<UpsertRuleResponse> {
+  return apiPost<UpsertRuleResponse>(
+    "/api/v1/pricing-constraints/category-rules/deactivate",
+    { rule_id: ruleID }
+  );
+}
+
+export function deactivateSKUOverride(ruleID: number): Promise<UpsertRuleResponse> {
+  return apiPost<UpsertRuleResponse>(
+    "/api/v1/pricing-constraints/sku-overrides/deactivate",
+    { rule_id: ruleID }
+  );
 }
 
 export async function getEffectiveConstraints(

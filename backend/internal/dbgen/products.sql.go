@@ -24,6 +24,42 @@ func (q *Queries) CountProductsBySellerAccountID(ctx context.Context, sellerAcco
 	return count, err
 }
 
+const getProductBySellerAndOzonProductID = `-- name: GetProductBySellerAndOzonProductID :one
+SELECT id, seller_account_id, ozon_product_id, offer_id, sku, name, status, is_archived, raw_attributes, source_updated_at, created_at, updated_at, reference_price, old_price, ozon_min_price, description_category_id
+FROM products
+WHERE seller_account_id = $1
+  AND ozon_product_id = $2
+`
+
+type GetProductBySellerAndOzonProductIDParams struct {
+	SellerAccountID int64
+	OzonProductID   int64
+}
+
+func (q *Queries) GetProductBySellerAndOzonProductID(ctx context.Context, arg GetProductBySellerAndOzonProductIDParams) (Product, error) {
+	row := q.db.QueryRow(ctx, getProductBySellerAndOzonProductID, arg.SellerAccountID, arg.OzonProductID)
+	var i Product
+	err := row.Scan(
+		&i.ID,
+		&i.SellerAccountID,
+		&i.OzonProductID,
+		&i.OfferID,
+		&i.Sku,
+		&i.Name,
+		&i.Status,
+		&i.IsArchived,
+		&i.RawAttributes,
+		&i.SourceUpdatedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ReferencePrice,
+		&i.OldPrice,
+		&i.OzonMinPrice,
+		&i.DescriptionCategoryID,
+	)
+	return i, err
+}
+
 const listProductsBySellerAccountID = `-- name: ListProductsBySellerAccountID :many
 SELECT id, seller_account_id, ozon_product_id, offer_id, sku, name, status, is_archived, raw_attributes, source_updated_at, created_at, updated_at, reference_price, old_price, ozon_min_price, description_category_id
 FROM products

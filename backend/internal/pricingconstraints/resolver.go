@@ -104,7 +104,8 @@ func (r *Resolver) Resolve(ctx context.Context, input ResolveInput) (ResolvedRes
 
 func (r *Resolver) resolveByPrecedence(ctx context.Context, input ResolveInput) (Rule, bool, error) {
 	if input.SKU != nil {
-		rule, found, err := r.lookupWinning(ctx, input.SellerAccountID, ScopeTypeSKUOverride, input.SKU, nil)
+		kind := ScopeTargetKindSKU
+		rule, found, err := r.lookupWinning(ctx, input.SellerAccountID, ScopeTypeSKUOverride, &kind, input.SKU, nil)
 		if err != nil {
 			return Rule{}, false, err
 		}
@@ -114,7 +115,8 @@ func (r *Resolver) resolveByPrecedence(ctx context.Context, input ResolveInput) 
 	}
 
 	productID := input.OzonProductID
-	rule, found, err := r.lookupWinning(ctx, input.SellerAccountID, ScopeTypeSKUOverride, &productID, nil)
+	productKind := ScopeTargetKindProductID
+	rule, found, err := r.lookupWinning(ctx, input.SellerAccountID, ScopeTypeSKUOverride, &productKind, &productID, nil)
 	if err != nil {
 		return Rule{}, false, err
 	}
@@ -123,7 +125,8 @@ func (r *Resolver) resolveByPrecedence(ctx context.Context, input ResolveInput) 
 	}
 
 	if input.OfferID != nil {
-		rule, found, err := r.lookupWinning(ctx, input.SellerAccountID, ScopeTypeSKUOverride, nil, input.OfferID)
+		offerKind := ScopeTargetKindOfferID
+		rule, found, err := r.lookupWinning(ctx, input.SellerAccountID, ScopeTypeSKUOverride, &offerKind, nil, input.OfferID)
 		if err != nil {
 			return Rule{}, false, err
 		}
@@ -133,7 +136,15 @@ func (r *Resolver) resolveByPrecedence(ctx context.Context, input ResolveInput) 
 	}
 
 	if input.DescriptionCategoryID != nil {
-		rule, found, err := r.lookupWinning(ctx, input.SellerAccountID, ScopeTypeCategoryRule, input.DescriptionCategoryID, nil)
+		categoryKind := ScopeTargetKindCategoryID
+		rule, found, err := r.lookupWinning(
+			ctx,
+			input.SellerAccountID,
+			ScopeTypeCategoryRule,
+			&categoryKind,
+			input.DescriptionCategoryID,
+			nil,
+		)
 		if err != nil {
 			return Rule{}, false, err
 		}
@@ -142,17 +153,37 @@ func (r *Resolver) resolveByPrecedence(ctx context.Context, input ResolveInput) 
 		}
 	}
 
-	return r.lookupWinning(ctx, input.SellerAccountID, ScopeTypeGlobalDefault, nil, nil)
+	return r.lookupWinning(ctx, input.SellerAccountID, ScopeTypeGlobalDefault, nil, nil, nil)
 }
 
-func (r *Resolver) lookupWinning(ctx context.Context, sellerAccountID int64, scopeType ScopeType, targetID *int64, targetCode *string) (Rule, bool, error) {
-	rules, err := r.repo.ListByScope(ctx, sellerAccountID, scopeType, targetID, targetCode)
+func (r *Resolver) lookupWinning(
+	ctx context.Context,
+	sellerAccountID int64,
+	scopeType ScopeType,
+	targetKind *ScopeTargetKind,
+	targetID *int64,
+	targetCode *string,
+) (Rule, bool, error) {
+	rules, err := r.repo.ListByScope(ctx, sellerAccountID, scopeType, targetKind, targetID, targetCode)
 	if err != nil {
 		return Rule{}, false, err
 	}
 	for _, rule := range rules {
 		if rule.IsActive {
 			return rule, true, nil
+		}
+	}
+
+	// Backward compatibility for rows created before target kind became explicit.
+	if targetKind != nil {
+		legacyRules, legacyErr := r.repo.ListByScope(ctx, sellerAccountID, scopeType, nil, targetID, targetCode)
+		if legacyErr != nil {
+			return Rule{}, false, legacyErr
+		}
+		for _, rule := range legacyRules {
+			if rule.IsActive {
+				return rule, true, nil
+			}
 		}
 	}
 	return Rule{}, false, nil
@@ -178,6 +209,7 @@ func (r *Resolver) buildResolved(rule Rule, fallbackReferencePrice float64) (Res
 	// Validate the winning rule in domain terms before returning resolved state.
 	if err := ValidateRuleInput(RuleValidationInput{
 		ScopeType:              rule.ScopeType,
+		ScopeTargetKind:        rule.ScopeTargetKind,
 		MinPrice:               rule.MinPrice,
 		MaxPrice:               rule.MaxPrice,
 		ReferenceMarginPercent: effectiveMargin,

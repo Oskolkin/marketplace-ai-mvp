@@ -64,7 +64,9 @@ func New(
 		r.Get("/api/v1/pricing-constraints", pricingConstraintsHandler.GetPricingConstraints)
 		r.Put("/api/v1/pricing-constraints/global", pricingConstraintsHandler.PutGlobalDefault)
 		r.Post("/api/v1/pricing-constraints/category-rules", pricingConstraintsHandler.PostCategoryRule)
+		r.Post("/api/v1/pricing-constraints/category-rules/deactivate", pricingConstraintsHandler.PostDeactivateCategoryRule)
 		r.Post("/api/v1/pricing-constraints/sku-overrides", pricingConstraintsHandler.PostSKUOverride)
+		r.Post("/api/v1/pricing-constraints/sku-overrides/deactivate", pricingConstraintsHandler.PostDeactivateSKUOverride)
 		r.Get("/api/v1/pricing-constraints/effective", pricingConstraintsHandler.GetEffectiveConstraints)
 		r.Post("/api/v1/pricing-constraints/preview", pricingConstraintsHandler.PostPreview)
 

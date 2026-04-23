@@ -144,6 +144,7 @@ type PricingConstraintRule struct {
 	IsActive               bool
 	CreatedAt              pgtype.Timestamptz
 	UpdatedAt              pgtype.Timestamptz
+	ScopeTargetKind        pgtype.Text
 }
 
 type Product struct {

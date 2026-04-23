@@ -49,9 +49,14 @@ type upsertSKUOverrideRequest struct {
 	pricingRulePayload
 }
 
+type deactivateRuleRequest struct {
+	RuleID int64 `json:"rule_id"`
+}
+
 type pricingRuleResponse struct {
 	ID                     int64    `json:"id"`
 	ScopeType              string   `json:"scope_type"`
+	ScopeTargetKind        *string  `json:"scope_target_kind"`
 	ScopeTargetID          *int64   `json:"scope_target_id"`
 	ScopeTargetCode        *string  `json:"scope_target_code"`
 	MinPrice               *float64 `json:"min_price"`
@@ -278,9 +283,16 @@ func (h *PricingConstraintsHandler) PostSKUOverride(w http.ResponseWriter, r *ht
 	}
 	rule, recompute, err := h.upsertAndRecompute(r.Context(), sellerAccount.ID, req.pricingRulePayload, func(input pricingconstraints.UpsertRuleInput) (pricingconstraints.Rule, error) {
 		if req.SKU != nil {
+			kind := pricingconstraints.ScopeTargetKindSKU
+			input.ScopeTargetKind = &kind
 			input.ScopeTargetID = req.SKU
-		} else {
+		} else if req.ProductID != nil {
+			kind := pricingconstraints.ScopeTargetKindProductID
+			input.ScopeTargetKind = &kind
 			input.ScopeTargetID = req.ProductID
+		} else {
+			kind := pricingconstraints.ScopeTargetKindOfferID
+			input.ScopeTargetKind = &kind
 		}
 		input.ScopeTargetCode = req.OfferID
 		return h.service.UpsertSKUOverride(r.Context(), input)
@@ -290,6 +302,68 @@ func (h *PricingConstraintsHandler) PostSKUOverride(w http.ResponseWriter, r *ht
 		return
 	}
 	writeJSON(w, http.StatusOK, upsertRuleResponse{Rule: mapRuleResponse(rule), Recompute: recompute})
+}
+
+func (h *PricingConstraintsHandler) PostDeactivateCategoryRule(w http.ResponseWriter, r *http.Request) {
+	sellerAccount, ok := auth.SellerAccountFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req deactivateRuleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.RuleID <= 0 {
+		writeJSONError(w, http.StatusBadRequest, "rule_id must be > 0")
+		return
+	}
+	rule, err := h.service.DeactivateCategoryRuleByID(r.Context(), sellerAccount.ID, req.RuleID)
+	if err != nil {
+		writePricingError(w, err)
+		return
+	}
+	recompute, err := h.service.RecomputeEffectiveConstraintsForAccount(r.Context(), sellerAccount.ID)
+	if err != nil {
+		writePricingError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, upsertRuleResponse{
+		Rule:      mapRuleResponse(rule),
+		Recompute: recompute,
+	})
+}
+
+func (h *PricingConstraintsHandler) PostDeactivateSKUOverride(w http.ResponseWriter, r *http.Request) {
+	sellerAccount, ok := auth.SellerAccountFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req deactivateRuleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.RuleID <= 0 {
+		writeJSONError(w, http.StatusBadRequest, "rule_id must be > 0")
+		return
+	}
+	rule, err := h.service.DeactivateSKUOverrideByID(r.Context(), sellerAccount.ID, req.RuleID)
+	if err != nil {
+		writePricingError(w, err)
+		return
+	}
+	recompute, err := h.service.RecomputeEffectiveConstraintsForAccount(r.Context(), sellerAccount.ID)
+	if err != nil {
+		writePricingError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, upsertRuleResponse{
+		Rule:      mapRuleResponse(rule),
+		Recompute: recompute,
+	})
 }
 
 func (h *PricingConstraintsHandler) GetEffectiveConstraints(w http.ResponseWriter, r *http.Request) {
@@ -470,6 +544,7 @@ func mapRuleResponse(rule pricingconstraints.Rule) pricingRuleResponse {
 	return pricingRuleResponse{
 		ID:                     rule.ID,
 		ScopeType:              string(rule.ScopeType),
+		ScopeTargetKind:        scopeTargetKindStringPtr(rule.ScopeTargetKind),
 		ScopeTargetID:          rule.ScopeTargetID,
 		ScopeTargetCode:        rule.ScopeTargetCode,
 		MinPrice:               rule.MinPrice,
@@ -480,6 +555,14 @@ func mapRuleResponse(rule pricingconstraints.Rule) pricingRuleResponse {
 		IsActive:               rule.IsActive,
 		UpdatedAt:              rule.UpdatedAt.UTC().Format(time.RFC3339),
 	}
+}
+
+func scopeTargetKindStringPtr(v *pricingconstraints.ScopeTargetKind) *string {
+	if v == nil {
+		return nil
+	}
+	s := string(*v)
+	return &s
 }
 
 func mapEffective(row dbgen.SkuEffectiveConstraint, product dbgen.Product) effectiveConstraintResponse {

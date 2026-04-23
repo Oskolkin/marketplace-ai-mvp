@@ -11,10 +11,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countSKUEffectiveConstraintsBySellerAccountID = `-- name: CountSKUEffectiveConstraintsBySellerAccountID :one
+SELECT COUNT(*)
+FROM sku_effective_constraints
+WHERE seller_account_id = $1
+`
+
+func (q *Queries) CountSKUEffectiveConstraintsBySellerAccountID(ctx context.Context, sellerAccountID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countSKUEffectiveConstraintsBySellerAccountID, sellerAccountID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createPricingConstraintRule = `-- name: CreatePricingConstraintRule :one
 INSERT INTO pricing_constraint_rules (
     seller_account_id,
     scope_type,
+    scope_target_kind,
     scope_target_id,
     scope_target_code,
     min_price,
@@ -25,14 +39,15 @@ INSERT INTO pricing_constraint_rules (
     is_active,
     updated_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW()
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW()
 )
-RETURNING id, seller_account_id, scope_type, scope_target_id, scope_target_code, min_price, max_price, reference_margin_percent, reference_price, implied_cost, is_active, created_at, updated_at
+RETURNING id, seller_account_id, scope_type, scope_target_id, scope_target_code, min_price, max_price, reference_margin_percent, reference_price, implied_cost, is_active, created_at, updated_at, scope_target_kind
 `
 
 type CreatePricingConstraintRuleParams struct {
 	SellerAccountID        int64
 	ScopeType              string
+	ScopeTargetKind        pgtype.Text
 	ScopeTargetID          pgtype.Int8
 	ScopeTargetCode        pgtype.Text
 	MinPrice               pgtype.Numeric
@@ -47,6 +62,7 @@ func (q *Queries) CreatePricingConstraintRule(ctx context.Context, arg CreatePri
 	row := q.db.QueryRow(ctx, createPricingConstraintRule,
 		arg.SellerAccountID,
 		arg.ScopeType,
+		arg.ScopeTargetKind,
 		arg.ScopeTargetID,
 		arg.ScopeTargetCode,
 		arg.MinPrice,
@@ -71,6 +87,46 @@ func (q *Queries) CreatePricingConstraintRule(ctx context.Context, arg CreatePri
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ScopeTargetKind,
+	)
+	return i, err
+}
+
+const deactivatePricingConstraintRuleByIDAndScope = `-- name: DeactivatePricingConstraintRuleByIDAndScope :one
+UPDATE pricing_constraint_rules
+SET
+    is_active = FALSE,
+    updated_at = NOW()
+WHERE id = $1
+  AND seller_account_id = $2
+  AND scope_type = $3
+RETURNING id, seller_account_id, scope_type, scope_target_id, scope_target_code, min_price, max_price, reference_margin_percent, reference_price, implied_cost, is_active, created_at, updated_at, scope_target_kind
+`
+
+type DeactivatePricingConstraintRuleByIDAndScopeParams struct {
+	ID              int64
+	SellerAccountID int64
+	ScopeType       string
+}
+
+func (q *Queries) DeactivatePricingConstraintRuleByIDAndScope(ctx context.Context, arg DeactivatePricingConstraintRuleByIDAndScopeParams) (PricingConstraintRule, error) {
+	row := q.db.QueryRow(ctx, deactivatePricingConstraintRuleByIDAndScope, arg.ID, arg.SellerAccountID, arg.ScopeType)
+	var i PricingConstraintRule
+	err := row.Scan(
+		&i.ID,
+		&i.SellerAccountID,
+		&i.ScopeType,
+		&i.ScopeTargetID,
+		&i.ScopeTargetCode,
+		&i.MinPrice,
+		&i.MaxPrice,
+		&i.ReferenceMarginPercent,
+		&i.ReferencePrice,
+		&i.ImpliedCost,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ScopeTargetKind,
 	)
 	return i, err
 }
@@ -152,21 +208,28 @@ func (q *Queries) GetSKUEffectiveConstraintBySellerAndSKU(ctx context.Context, a
 }
 
 const listPricingConstraintRulesByScope = `-- name: ListPricingConstraintRulesByScope :many
-SELECT id, seller_account_id, scope_type, scope_target_id, scope_target_code, min_price, max_price, reference_margin_percent, reference_price, implied_cost, is_active, created_at, updated_at
+SELECT id, seller_account_id, scope_type, scope_target_id, scope_target_code, min_price, max_price, reference_margin_percent, reference_price, implied_cost, is_active, created_at, updated_at, scope_target_kind
 FROM pricing_constraint_rules
 WHERE seller_account_id = $1
   AND scope_type = $2
   AND (
-    scope_target_id = $3
+    scope_target_kind = $3
     OR (
-      $3::bigint IS NULL
+      $3::text IS NULL
+      AND scope_target_kind IS NULL
+    )
+  )
+  AND (
+    scope_target_id = $4
+    OR (
+      $4::bigint IS NULL
       AND scope_target_id IS NULL
     )
   )
   AND (
-    scope_target_code = $4
+    scope_target_code = $5
     OR (
-      $4::text IS NULL
+      $5::text IS NULL
       AND scope_target_code IS NULL
     )
   )
@@ -176,6 +239,7 @@ ORDER BY is_active DESC, updated_at DESC, id DESC
 type ListPricingConstraintRulesByScopeParams struct {
 	SellerAccountID int64
 	ScopeType       string
+	ScopeTargetKind pgtype.Text
 	ScopeTargetID   pgtype.Int8
 	ScopeTargetCode pgtype.Text
 }
@@ -184,6 +248,7 @@ func (q *Queries) ListPricingConstraintRulesByScope(ctx context.Context, arg Lis
 	rows, err := q.db.Query(ctx, listPricingConstraintRulesByScope,
 		arg.SellerAccountID,
 		arg.ScopeType,
+		arg.ScopeTargetKind,
 		arg.ScopeTargetID,
 		arg.ScopeTargetCode,
 	)
@@ -208,6 +273,7 @@ func (q *Queries) ListPricingConstraintRulesByScope(ctx context.Context, arg Lis
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ScopeTargetKind,
 		); err != nil {
 			return nil, err
 		}
@@ -220,7 +286,7 @@ func (q *Queries) ListPricingConstraintRulesByScope(ctx context.Context, arg Lis
 }
 
 const listPricingConstraintRulesBySellerAccountID = `-- name: ListPricingConstraintRulesBySellerAccountID :many
-SELECT id, seller_account_id, scope_type, scope_target_id, scope_target_code, min_price, max_price, reference_margin_percent, reference_price, implied_cost, is_active, created_at, updated_at
+SELECT id, seller_account_id, scope_type, scope_target_id, scope_target_code, min_price, max_price, reference_margin_percent, reference_price, implied_cost, is_active, created_at, updated_at, scope_target_kind
 FROM pricing_constraint_rules
 WHERE seller_account_id = $1
 ORDER BY scope_type ASC, id ASC
@@ -249,6 +315,7 @@ func (q *Queries) ListPricingConstraintRulesBySellerAccountID(ctx context.Contex
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ScopeTargetKind,
 		); err != nil {
 			return nil, err
 		}
@@ -300,27 +367,77 @@ func (q *Queries) ListSKUEffectiveConstraintsBySellerAccountID(ctx context.Conte
 	return items, nil
 }
 
+const listSKUEffectiveConstraintsPageBySellerAccountID = `-- name: ListSKUEffectiveConstraintsPageBySellerAccountID :many
+SELECT seller_account_id, ozon_product_id, sku, offer_id, resolved_from_scope_type, rule_id, effective_min_price, effective_max_price, reference_price, reference_margin_percent, implied_cost, computed_at
+FROM sku_effective_constraints
+WHERE seller_account_id = $1
+ORDER BY computed_at DESC, ozon_product_id ASC
+LIMIT $2
+OFFSET $3
+`
+
+type ListSKUEffectiveConstraintsPageBySellerAccountIDParams struct {
+	SellerAccountID int64
+	Limit           int32
+	Offset          int32
+}
+
+func (q *Queries) ListSKUEffectiveConstraintsPageBySellerAccountID(ctx context.Context, arg ListSKUEffectiveConstraintsPageBySellerAccountIDParams) ([]SkuEffectiveConstraint, error) {
+	rows, err := q.db.Query(ctx, listSKUEffectiveConstraintsPageBySellerAccountID, arg.SellerAccountID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SkuEffectiveConstraint
+	for rows.Next() {
+		var i SkuEffectiveConstraint
+		if err := rows.Scan(
+			&i.SellerAccountID,
+			&i.OzonProductID,
+			&i.Sku,
+			&i.OfferID,
+			&i.ResolvedFromScopeType,
+			&i.RuleID,
+			&i.EffectiveMinPrice,
+			&i.EffectiveMaxPrice,
+			&i.ReferencePrice,
+			&i.ReferenceMarginPercent,
+			&i.ImpliedCost,
+			&i.ComputedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updatePricingConstraintRule = `-- name: UpdatePricingConstraintRule :one
 UPDATE pricing_constraint_rules
 SET
     scope_type = $2,
-    scope_target_id = $3,
-    scope_target_code = $4,
-    min_price = $5,
-    max_price = $6,
-    reference_margin_percent = $7,
-    reference_price = $8,
-    implied_cost = $9,
-    is_active = $10,
+    scope_target_kind = $3,
+    scope_target_id = $4,
+    scope_target_code = $5,
+    min_price = $6,
+    max_price = $7,
+    reference_margin_percent = $8,
+    reference_price = $9,
+    implied_cost = $10,
+    is_active = $11,
     updated_at = NOW()
 WHERE id = $1
-  AND seller_account_id = $11
-RETURNING id, seller_account_id, scope_type, scope_target_id, scope_target_code, min_price, max_price, reference_margin_percent, reference_price, implied_cost, is_active, created_at, updated_at
+  AND seller_account_id = $12
+RETURNING id, seller_account_id, scope_type, scope_target_id, scope_target_code, min_price, max_price, reference_margin_percent, reference_price, implied_cost, is_active, created_at, updated_at, scope_target_kind
 `
 
 type UpdatePricingConstraintRuleParams struct {
 	ID                     int64
 	ScopeType              string
+	ScopeTargetKind        pgtype.Text
 	ScopeTargetID          pgtype.Int8
 	ScopeTargetCode        pgtype.Text
 	MinPrice               pgtype.Numeric
@@ -336,6 +453,7 @@ func (q *Queries) UpdatePricingConstraintRule(ctx context.Context, arg UpdatePri
 	row := q.db.QueryRow(ctx, updatePricingConstraintRule,
 		arg.ID,
 		arg.ScopeType,
+		arg.ScopeTargetKind,
 		arg.ScopeTargetID,
 		arg.ScopeTargetCode,
 		arg.MinPrice,
@@ -361,6 +479,7 @@ func (q *Queries) UpdatePricingConstraintRule(ctx context.Context, arg UpdatePri
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ScopeTargetKind,
 	)
 	return i, err
 }

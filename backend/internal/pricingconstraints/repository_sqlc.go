@@ -10,7 +10,14 @@ import (
 )
 
 type RuleRepository interface {
-	ListByScope(ctx context.Context, sellerAccountID int64, scopeType ScopeType, targetID *int64, targetCode *string) ([]Rule, error)
+	ListByScope(
+		ctx context.Context,
+		sellerAccountID int64,
+		scopeType ScopeType,
+		targetKind *ScopeTargetKind,
+		targetID *int64,
+		targetCode *string,
+	) ([]Rule, error)
 }
 
 type SQLCRuleRepository struct {
@@ -21,10 +28,18 @@ func NewSQLCRuleRepository(queries *dbgen.Queries) *SQLCRuleRepository {
 	return &SQLCRuleRepository{queries: queries}
 }
 
-func (r *SQLCRuleRepository) ListByScope(ctx context.Context, sellerAccountID int64, scopeType ScopeType, targetID *int64, targetCode *string) ([]Rule, error) {
+func (r *SQLCRuleRepository) ListByScope(
+	ctx context.Context,
+	sellerAccountID int64,
+	scopeType ScopeType,
+	targetKind *ScopeTargetKind,
+	targetID *int64,
+	targetCode *string,
+) ([]Rule, error) {
 	rows, err := r.queries.ListPricingConstraintRulesByScope(ctx, dbgen.ListPricingConstraintRulesByScopeParams{
 		SellerAccountID: sellerAccountID,
 		ScopeType:       string(scopeType),
+		ScopeTargetKind: nullableTargetKind(targetKind),
 		ScopeTargetID:   nullableInt64(targetID),
 		ScopeTargetCode: nullableText(targetCode),
 	})
@@ -58,6 +73,7 @@ func mapRule(row dbgen.PricingConstraintRule) Rule {
 		ID:                     row.ID,
 		SellerAccountID:        row.SellerAccountID,
 		ScopeType:              ScopeType(row.ScopeType),
+		ScopeTargetKind:        targetKindPtr(row.ScopeTargetKind),
 		ScopeTargetID:          int8Ptr(row.ScopeTargetID),
 		ScopeTargetCode:        textPtr(row.ScopeTargetCode),
 		MinPrice:               numericPtr(row.MinPrice),
@@ -69,6 +85,13 @@ func mapRule(row dbgen.PricingConstraintRule) Rule {
 		CreatedAt:              timestamptz(row.CreatedAt),
 		UpdatedAt:              timestamptz(row.UpdatedAt),
 	}
+}
+
+func nullableTargetKind(v *ScopeTargetKind) pgtype.Text {
+	if v == nil {
+		return pgtype.Text{Valid: false}
+	}
+	return pgtype.Text{String: string(*v), Valid: true}
 }
 
 func nullableInt64(v *int64) pgtype.Int8 {
@@ -99,6 +122,14 @@ func int8Ptr(v pgtype.Int8) *int64 {
 	}
 	i := v.Int64
 	return &i
+}
+
+func targetKindPtr(v pgtype.Text) *ScopeTargetKind {
+	if !v.Valid {
+		return nil
+	}
+	kind := ScopeTargetKind(v.String)
+	return &kind
 }
 
 func numericPtr(v pgtype.Numeric) *float64 {

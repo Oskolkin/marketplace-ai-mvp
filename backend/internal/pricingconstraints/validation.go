@@ -12,6 +12,7 @@ const (
 
 type RuleValidationInput struct {
 	ScopeType              ScopeType
+	ScopeTargetKind        *ScopeTargetKind
 	MinPrice               *float64
 	MaxPrice               *float64
 	ReferenceMarginPercent *float64
@@ -26,6 +27,13 @@ func ValidateRuleInput(input RuleValidationInput) error {
 	case ScopeTypeGlobalDefault, ScopeTypeCategoryRule, ScopeTypeSKUOverride:
 	default:
 		issues.Add("scope_type must be one of: global_default, category_rule, sku_override")
+	}
+	if input.ScopeTargetKind != nil {
+		switch *input.ScopeTargetKind {
+		case ScopeTargetKindCategoryID, ScopeTargetKindSKU, ScopeTargetKindProductID, ScopeTargetKindOfferID:
+		default:
+			issues.Add("scope_target_kind must be one of: category_id, sku, product_id, offer_id")
+		}
 	}
 
 	if input.MinPrice != nil && *input.MinPrice < 0 {

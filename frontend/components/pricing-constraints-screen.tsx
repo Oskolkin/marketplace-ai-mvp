@@ -2,6 +2,8 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
+  deactivateCategoryRule,
+  deactivateSKUOverride,
   getEffectiveConstraints,
   getPricingConstraints,
   postCategoryRule,
@@ -200,6 +202,20 @@ export default function PricingConstraintsScreen() {
     }
   }
 
+  async function onDeactivateCategoryRule(ruleID: number) {
+    try {
+      setWorking(true);
+      setError("");
+      await deactivateCategoryRule(ruleID);
+      setSuccess("Category rule deactivated.");
+      await reloadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to deactivate category rule");
+    } finally {
+      setWorking(false);
+    }
+  }
+
   async function submitSkuOverride(e: FormEvent) {
     e.preventDefault();
     try {
@@ -219,6 +235,20 @@ export default function PricingConstraintsScreen() {
       await reloadAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save SKU override");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function onDeactivateSKUOverride(ruleID: number) {
+    try {
+      setWorking(true);
+      setError("");
+      await deactivateSKUOverride(ruleID);
+      setSuccess("SKU override deactivated.");
+      await reloadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to deactivate SKU override");
     } finally {
       setWorking(false);
     }
@@ -387,6 +417,7 @@ export default function PricingConstraintsScreen() {
                   <th className="px-2 py-2">min</th>
                   <th className="px-2 py-2">max</th>
                   <th className="px-2 py-2">margin</th>
+                  <th className="px-2 py-2">action</th>
                 </tr>
               </thead>
               <tbody>
@@ -401,6 +432,16 @@ export default function PricingConstraintsScreen() {
                       <td className="px-2 py-2">{fmtMoney(row.min_price)}</td>
                       <td className="px-2 py-2">{fmtMoney(row.max_price)}</td>
                       <td className="px-2 py-2">{fmtNum(row.reference_margin_percent)}</td>
+                      <td className="px-2 py-2">
+                        <button
+                          type="button"
+                          className="rounded border px-2 py-1 hover:bg-gray-50"
+                          onClick={() => onDeactivateCategoryRule(row.id)}
+                          disabled={working}
+                        >
+                          Deactivate
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -461,6 +502,7 @@ export default function PricingConstraintsScreen() {
                   <th className="px-2 py-2">current price</th>
                   <th className="px-2 py-2">override min / max / margin</th>
                   <th className="px-2 py-2">resolved source</th>
+                  <th className="px-2 py-2">action</th>
                   <th className="px-2 py-2">preview</th>
                 </tr>
               </thead>
@@ -477,6 +519,16 @@ export default function PricingConstraintsScreen() {
                         {fmtNum(row.reference_margin_percent)}
                       </td>
                       <td className="px-2 py-2">{view.resolvedSource}</td>
+                      <td className="px-2 py-2">
+                        <button
+                          className="rounded border px-2 py-1 hover:bg-gray-50"
+                          onClick={() => onDeactivateSKUOverride(row.id)}
+                          type="button"
+                          disabled={working}
+                        >
+                          Deactivate
+                        </button>
+                      </td>
                       <td className="px-2 py-2">
                         <button
                           className="rounded border px-2 py-1 hover:bg-gray-50"

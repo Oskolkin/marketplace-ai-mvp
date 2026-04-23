@@ -24,6 +24,7 @@ func NewService(queries *dbgen.Queries) *Service {
 
 type UpsertRuleInput struct {
 	SellerAccountID        int64
+	ScopeTargetKind        *ScopeTargetKind
 	ScopeTargetID          *int64
 	ScopeTargetCode        *string
 	MinPrice               *float64
@@ -61,17 +62,53 @@ type EffectiveConstraintsPage struct {
 }
 
 func (s *Service) UpsertGlobalDefault(ctx context.Context, input UpsertRuleInput) (Rule, error) {
+	input.ScopeTargetKind = nil
 	input.ScopeTargetID = nil
 	input.ScopeTargetCode = nil
 	return s.upsertRuleByScope(ctx, ScopeTypeGlobalDefault, input)
 }
 
 func (s *Service) UpsertCategoryRule(ctx context.Context, input UpsertRuleInput) (Rule, error) {
+	kind := ScopeTargetKindCategoryID
+	input.ScopeTargetKind = &kind
 	return s.upsertRuleByScope(ctx, ScopeTypeCategoryRule, input)
 }
 
 func (s *Service) UpsertSKUOverride(ctx context.Context, input UpsertRuleInput) (Rule, error) {
+	if input.ScopeTargetKind == nil {
+		if input.ScopeTargetCode != nil {
+			kind := ScopeTargetKindOfferID
+			input.ScopeTargetKind = &kind
+		} else {
+			kind := ScopeTargetKindProductID
+			input.ScopeTargetKind = &kind
+		}
+	}
 	return s.upsertRuleByScope(ctx, ScopeTypeSKUOverride, input)
+}
+
+func (s *Service) DeactivateCategoryRuleByID(ctx context.Context, sellerAccountID int64, ruleID int64) (Rule, error) {
+	row, err := s.queries.DeactivatePricingConstraintRuleByIDAndScope(ctx, dbgen.DeactivatePricingConstraintRuleByIDAndScopeParams{
+		ID:              ruleID,
+		SellerAccountID: sellerAccountID,
+		ScopeType:       string(ScopeTypeCategoryRule),
+	})
+	if err != nil {
+		return Rule{}, err
+	}
+	return mapRule(row), nil
+}
+
+func (s *Service) DeactivateSKUOverrideByID(ctx context.Context, sellerAccountID int64, ruleID int64) (Rule, error) {
+	row, err := s.queries.DeactivatePricingConstraintRuleByIDAndScope(ctx, dbgen.DeactivatePricingConstraintRuleByIDAndScopeParams{
+		ID:              ruleID,
+		SellerAccountID: sellerAccountID,
+		ScopeType:       string(ScopeTypeSKUOverride),
+	})
+	if err != nil {
+		return Rule{}, err
+	}
+	return mapRule(row), nil
 }
 
 func (s *Service) RecomputeEffectiveConstraintsForAccount(ctx context.Context, sellerAccountID int64) (RecomputeResult, error) {
@@ -193,10 +230,6 @@ func (s *Service) ListRuleSetsBySellerAccountID(ctx context.Context, sellerAccou
 }
 
 func (s *Service) ListEffectiveConstraintsPage(ctx context.Context, sellerAccountID int64, limit int, offset int) (EffectiveConstraintsPage, error) {
-	items, err := s.queries.ListSKUEffectiveConstraintsBySellerAccountID(ctx, sellerAccountID)
-	if err != nil {
-		return EffectiveConstraintsPage{}, err
-	}
 	if limit <= 0 {
 		limit = 20
 	}
@@ -206,24 +239,26 @@ func (s *Service) ListEffectiveConstraintsPage(ctx context.Context, sellerAccoun
 	if offset < 0 {
 		offset = 0
 	}
-	total := len(items)
-	start := offset
-	if start > total {
-		start = total
+	totalCount, err := s.queries.CountSKUEffectiveConstraintsBySellerAccountID(ctx, sellerAccountID)
+	if err != nil {
+		return EffectiveConstraintsPage{}, err
 	}
-	end := start + limit
-	if end > total {
-		end = total
+	items, err := s.queries.ListSKUEffectiveConstraintsPageBySellerAccountID(ctx, dbgen.ListSKUEffectiveConstraintsPageBySellerAccountIDParams{
+		SellerAccountID: sellerAccountID,
+		Limit:           int32(limit),
+		Offset:          int32(offset),
+	})
+	if err != nil {
+		return EffectiveConstraintsPage{}, err
 	}
-	pageItems := items[start:end]
 	var lastComputedAt *time.Time
 	if len(items) > 0 && items[0].ComputedAt.Valid {
 		t := items[0].ComputedAt.Time.UTC()
 		lastComputedAt = &t
 	}
 	return EffectiveConstraintsPage{
-		Items:          pageItems,
-		Total:          total,
+		Items:          items,
+		Total:          int(totalCount),
 		Limit:          limit,
 		Offset:         offset,
 		LastComputedAt: lastComputedAt,
@@ -249,21 +284,16 @@ func (s *Service) ListProductsBySellerAccountID(ctx context.Context, sellerAccou
 }
 
 func (s *Service) GetProductBySellerAndProductID(ctx context.Context, sellerAccountID int64, ozonProductID int64) (dbgen.Product, error) {
-	products, err := s.queries.ListProductsBySellerAccountID(ctx, sellerAccountID)
-	if err != nil {
-		return dbgen.Product{}, err
-	}
-	for _, product := range products {
-		if product.OzonProductID == ozonProductID {
-			return product, nil
-		}
-	}
-	return dbgen.Product{}, fmt.Errorf("product not found")
+	return s.queries.GetProductBySellerAndOzonProductID(ctx, dbgen.GetProductBySellerAndOzonProductIDParams{
+		SellerAccountID: sellerAccountID,
+		OzonProductID:   ozonProductID,
+	})
 }
 
 func (s *Service) upsertRuleByScope(ctx context.Context, scopeType ScopeType, input UpsertRuleInput) (Rule, error) {
 	if err := ValidateRuleInput(RuleValidationInput{
 		ScopeType:              scopeType,
+		ScopeTargetKind:        input.ScopeTargetKind,
 		MinPrice:               input.MinPrice,
 		MaxPrice:               input.MaxPrice,
 		ReferenceMarginPercent: input.ReferenceMarginPercent,
@@ -276,6 +306,7 @@ func (s *Service) upsertRuleByScope(ctx context.Context, scopeType ScopeType, in
 	existing, err := s.queries.ListPricingConstraintRulesByScope(ctx, dbgen.ListPricingConstraintRulesByScopeParams{
 		SellerAccountID: input.SellerAccountID,
 		ScopeType:       string(scopeType),
+		ScopeTargetKind: nullableTargetKind(input.ScopeTargetKind),
 		ScopeTargetID:   nullableInt64(input.ScopeTargetID),
 		ScopeTargetCode: nullableText(input.ScopeTargetCode),
 	})
@@ -294,6 +325,7 @@ func (s *Service) upsertRuleByScope(ctx context.Context, scopeType ScopeType, in
 		updated, err := s.queries.UpdatePricingConstraintRule(ctx, dbgen.UpdatePricingConstraintRuleParams{
 			ID:                     target.ID,
 			ScopeType:              string(scopeType),
+			ScopeTargetKind:        nullableTargetKind(input.ScopeTargetKind),
 			ScopeTargetID:          nullableInt64(input.ScopeTargetID),
 			ScopeTargetCode:        nullableText(input.ScopeTargetCode),
 			MinPrice:               ptrToNumeric(input.MinPrice),
@@ -316,6 +348,7 @@ func (s *Service) upsertRuleByScope(ctx context.Context, scopeType ScopeType, in
 			if _, err := s.queries.UpdatePricingConstraintRule(ctx, dbgen.UpdatePricingConstraintRuleParams{
 				ID:                     row.ID,
 				ScopeType:              row.ScopeType,
+				ScopeTargetKind:        row.ScopeTargetKind,
 				ScopeTargetID:          row.ScopeTargetID,
 				ScopeTargetCode:        row.ScopeTargetCode,
 				MinPrice:               row.MinPrice,
@@ -333,6 +366,7 @@ func (s *Service) upsertRuleByScope(ctx context.Context, scopeType ScopeType, in
 		created, err := s.queries.CreatePricingConstraintRule(ctx, dbgen.CreatePricingConstraintRuleParams{
 			SellerAccountID:        input.SellerAccountID,
 			ScopeType:              string(scopeType),
+			ScopeTargetKind:        nullableTargetKind(input.ScopeTargetKind),
 			ScopeTargetID:          nullableInt64(input.ScopeTargetID),
 			ScopeTargetCode:        nullableText(input.ScopeTargetCode),
 			MinPrice:               ptrToNumeric(input.MinPrice),
