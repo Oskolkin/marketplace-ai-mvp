@@ -8,6 +8,50 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AdCampaign struct {
+	ID                 int64
+	SellerAccountID    int64
+	CampaignExternalID int64
+	CampaignName       string
+	CampaignType       pgtype.Text
+	PlacementType      pgtype.Text
+	Status             pgtype.Text
+	BudgetAmount       pgtype.Numeric
+	BudgetDaily        pgtype.Numeric
+	RawAttributes      []byte
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+}
+
+type AdCampaignSku struct {
+	ID                 int64
+	SellerAccountID    int64
+	CampaignExternalID int64
+	OzonProductID      int64
+	OfferID            pgtype.Text
+	Sku                pgtype.Int8
+	IsActive           bool
+	Status             pgtype.Text
+	RawAttributes      []byte
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+}
+
+type AdMetricsDaily struct {
+	ID                 int64
+	SellerAccountID    int64
+	CampaignExternalID int64
+	MetricDate         pgtype.Date
+	Impressions        int64
+	Clicks             int64
+	Spend              pgtype.Numeric
+	OrdersCount        int32
+	Revenue            pgtype.Numeric
+	RawAttributes      []byte
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+}
+
 type DailyAccountMetric struct {
 	ID              int64
 	SellerAccountID int64

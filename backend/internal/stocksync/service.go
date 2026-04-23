@@ -55,63 +55,85 @@ func (s *Service) Run(ctx context.Context, input RunInput) (RunResult, error) {
 
 	snapshotAt := time.Now().UTC().Truncate(time.Second)
 
-	req := ozon.ListStocksRequest{}
-
-	resp, err := s.ozonClient.ListStocks(ctx, creds.ClientID, creds.APIKey, req)
-	if err != nil {
-		return RunResult{}, fmt.Errorf("fetch stocks from ozon: %w", err)
-	}
-
-	if _, err := s.rawPayloads.Save(ctx, rawpayloads.SaveInput{
-		SellerAccountID: input.SellerAccountID,
-		ImportJobID:     input.ImportJobID,
-		Domain:          "stocks",
-		Source:          "ozon.v2.products.stocks",
-		RequestKey:      buildStocksRequestKey(),
-		Body:            resp.Raw,
-	}); err != nil {
-		return RunResult{}, fmt.Errorf("save raw stocks payload: %w", err)
-	}
-
-	received := int32(len(resp.Data.Result))
+	received := int32(0)
 	imported := int32(0)
+	cursor := ""
+	for {
+		req := ozon.ListStocksRequest{
+			Cursor: cursor,
+			Limit:  1000,
+		}
 
-	for _, item := range resp.Data.Result {
-		rawSubset, err := json.Marshal(item)
+		resp, err := s.ozonClient.ListStocks(ctx, creds.ClientID, creds.APIKey, req)
 		if err != nil {
-			return RunResult{}, fmt.Errorf("marshal stock raw subset: %w", err)
+			return RunResult{}, fmt.Errorf("fetch stocks from ozon: %w", err)
 		}
 
-		productExternalID := strconv.FormatInt(item.ProductID, 10)
-		warehouseExternalID := strconv.FormatInt(item.WarehouseID, 10)
-
-		available := item.Present - item.Reserved
-		if available < 0 {
-			available = 0
-		}
-
-		if _, err := s.queries.UpsertStock(ctx, dbgen.UpsertStockParams{
-			SellerAccountID:     input.SellerAccountID,
-			ProductExternalID:   productExternalID,
-			WarehouseExternalID: warehouseExternalID,
-			QuantityTotal:       nullableInt32(item.Present),
-			QuantityReserved:    nullableInt32(item.Reserved),
-			QuantityAvailable:   nullableInt32(available),
-			SnapshotAt: pgtype.Timestamptz{
-				Time:  snapshotAt,
-				Valid: true,
-			},
-			RawAttributes: rawSubset,
+		if _, err := s.rawPayloads.Save(ctx, rawpayloads.SaveInput{
+			SellerAccountID: input.SellerAccountID,
+			ImportJobID:     input.ImportJobID,
+			Domain:          "stocks",
+			Source:          "ozon.v1.product.info.warehouse.stocks",
+			RequestKey:      buildStocksRequestKey(req.Cursor),
+			Body:            resp.Raw,
 		}); err != nil {
-			return RunResult{}, fmt.Errorf(
-				"upsert stock product_id=%d warehouse_id=%d: %w",
-				item.ProductID,
-				item.WarehouseID,
-				err,
-			)
+			return RunResult{}, fmt.Errorf("save raw stocks payload: %w", err)
 		}
 
-		imported++
+		received += int32(len(resp.Data.Stocks))
+
+		for _, item := range resp.Data.Stocks {
+			rawSubset, err := json.Marshal(item)
+			if err != nil {
+				return RunResult{}, fmt.Errorf("marshal stock raw subset: %w", err)
+			}
+
+			productExternalID := strconv.FormatInt(item.ProductID, 10)
+			warehouseExternalID := strconv.FormatInt(item.WarehouseID, 10)
+
+			available := item.FreeStock
+			if available == 0 {
+				available = item.Present - item.Reserved
+				if available < 0 {
+					available = 0
+				}
+			}
+
+			stockSnapshotAt := snapshotAt
+			if item.UpdatedAt != "" {
+				if parsed, err := time.Parse(time.RFC3339, item.UpdatedAt); err == nil {
+					stockSnapshotAt = parsed.UTC()
+				}
+			}
+
+			if _, err := s.queries.UpsertStock(ctx, dbgen.UpsertStockParams{
+				SellerAccountID:     input.SellerAccountID,
+				ProductExternalID:   productExternalID,
+				WarehouseExternalID: warehouseExternalID,
+				QuantityTotal:       nullableInt32(item.Present),
+				QuantityReserved:    nullableInt32(item.Reserved),
+				QuantityAvailable:   nullableInt32(available),
+				SnapshotAt: pgtype.Timestamptz{
+					Time:  stockSnapshotAt,
+					Valid: true,
+				},
+				RawAttributes: rawSubset,
+			}); err != nil {
+				return RunResult{}, fmt.Errorf(
+					"upsert stock product_id=%d warehouse_id=%d: %w",
+					item.ProductID,
+					item.WarehouseID,
+					err,
+				)
+			}
+
+			imported++
+		}
+
+		if !resp.Data.HasNext || resp.Data.Cursor == "" {
+			break
+		}
+		cursor = resp.Data.Cursor
 	}
 
 	return RunResult{
@@ -122,8 +144,11 @@ func (s *Service) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	}, nil
 }
 
-func buildStocksRequestKey() string {
-	return "stocks:current_snapshot"
+func buildStocksRequestKey(cursor string) string {
+	if cursor == "" {
+		return "stocks:warehouse:initial"
+	}
+	return "stocks:warehouse:cursor:" + cursor
 }
 
 func nullableInt32(v int32) pgtype.Int4 {

@@ -74,3 +74,8 @@ dev-check-replenishment:
 
 dev-check-dashboard-metrics:
 	cd backend && go run ./cmd/dev-check-dashboard-metrics --seller-account-id $(seller_account_id)
+
+.PHONY: dev-ingest-advertising
+
+dev-ingest-advertising:
+	cd backend && go run ./cmd/dev-ingest-advertising --seller-account-id $(seller_account_id)

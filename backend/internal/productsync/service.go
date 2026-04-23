@@ -66,6 +66,25 @@ func (s *Service) Run(ctx context.Context, input RunInput) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("fetch products from ozon: %w", err)
 	}
 
+	productIDs := make([]int64, 0, len(resp.Data.Items))
+	for _, item := range resp.Data.Items {
+		if item.ID > 0 {
+			productIDs = append(productIDs, item.ID)
+		}
+	}
+	detailsByID := make(map[int64]ozon.ProductInfoListItem, len(productIDs))
+	if len(productIDs) > 0 {
+		detailsResp, err := s.ozonClient.ListProductsInfo(ctx, creds.ClientID, creds.APIKey, ozon.ProductInfoListRequest{
+			ProductID: productIDs,
+		})
+		if err != nil {
+			return RunResult{}, fmt.Errorf("fetch products details from ozon: %w", err)
+		}
+		for _, detail := range detailsResp.Data.Items {
+			detailsByID[detail.ID] = detail
+		}
+	}
+
 	requestKey := buildRequestKey(req)
 
 	if _, err := s.rawPayloads.Save(ctx, rawpayloads.SaveInput{
@@ -83,12 +102,29 @@ func (s *Service) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	imported := int32(0)
 
 	for _, item := range resp.Data.Items {
+		detail := detailsByID[item.ID]
+		name := item.Name
+		if detail.Name != "" {
+			name = detail.Name
+		}
+		offerID := item.OfferID
+		if detail.OfferID != "" {
+			offerID = detail.OfferID
+		}
+		sku := item.SKU
+		if detail.SKU != 0 {
+			sku = detail.SKU
+		}
 		rawSubset, err := json.Marshal(item)
 		if err != nil {
 			return RunResult{}, fmt.Errorf("marshal product raw subset: %w", err)
 		}
 
-		sourceUpdatedAt, err := parseOptionalRFC3339(item.UpdatedAt)
+		updatedAtRaw := item.UpdatedAt
+		if detail.UpdatedAt != "" {
+			updatedAtRaw = detail.UpdatedAt
+		}
+		sourceUpdatedAt, err := parseOptionalRFC3339(updatedAtRaw)
 		if err != nil {
 			return RunResult{}, fmt.Errorf("parse product updated_at: %w", err)
 		}
@@ -96,11 +132,11 @@ func (s *Service) Run(ctx context.Context, input RunInput) (RunResult, error) {
 		if _, err := s.queries.UpsertProduct(ctx, dbgen.UpsertProductParams{
 			SellerAccountID: input.SellerAccountID,
 			OzonProductID:   item.ID,
-			OfferID:         nullableText(item.OfferID),
-			Sku:             nullableInt64(item.SKU),
-			Name:            fallbackName(item.Name),
+			OfferID:         nullableText(offerID),
+			Sku:             nullableInt64(sku),
+			Name:            fallbackName(name),
 			Status:          nullableText(resolveStatus(item)),
-			IsArchived:      item.IsArchived || item.Archived,
+			IsArchived:      item.IsArchived || item.Archived || detail.IsArchived || detail.Archived,
 			RawAttributes:   rawSubset,
 			SourceUpdatedAt: sourceUpdatedAt,
 		}); err != nil {

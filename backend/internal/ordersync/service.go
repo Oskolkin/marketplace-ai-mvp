@@ -117,11 +117,13 @@ func (s *Service) importOrders(
 	offset := 0
 	for {
 		req := ozon.ListOrdersRequest{
-			Since:  since.Format(time.RFC3339),
-			To:     upperBound.Format(time.RFC3339),
 			Limit:  s.ordersPageLimit,
 			Offset: offset,
+			Dir:    "ASC",
 		}
+		req.Filter.Since = since.Format(time.RFC3339)
+		req.Filter.To = upperBound.Format(time.RFC3339)
+		req.With.FinancialData = true
 
 		resp, err := s.ozonClient.ListOrders(ctx, creds.ClientID, creds.APIKey, req)
 		if err != nil {
@@ -177,7 +179,7 @@ func (s *Service) importOrders(
 			imported++
 		}
 
-		if len(pageItems) < s.ordersPageLimit {
+		if !resp.Data.HasNext {
 			break
 		}
 
@@ -278,9 +280,10 @@ func (s *Service) importSales(
 
 func buildOrdersRequestKey(req ozon.ListOrdersRequest) string {
 	return fmt.Sprintf(
-		"orders:since:%s:to:%s:offset:%d:limit:%d",
-		req.Since,
-		req.To,
+		"orders:dir:%s:since:%s:to:%s:offset:%d:limit:%d",
+		req.Dir,
+		req.Filter.Since,
+		req.Filter.To,
 		req.Offset,
 		req.Limit,
 	)

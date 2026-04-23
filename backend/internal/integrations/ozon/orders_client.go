@@ -6,10 +6,16 @@ import (
 )
 
 type ListOrdersRequest struct {
-	Since  string `json:"since,omitempty"`
-	To     string `json:"to,omitempty"`
-	Limit  int    `json:"limit,omitempty"`
-	Offset int    `json:"offset,omitempty"`
+	Dir    string `json:"dir,omitempty"`
+	Filter struct {
+		Since string `json:"since,omitempty"`
+		To    string `json:"to,omitempty"`
+	} `json:"filter"`
+	Limit  int `json:"limit,omitempty"`
+	Offset int `json:"offset,omitempty"`
+	With   struct {
+		FinancialData bool `json:"financial_data,omitempty"`
+	} `json:"with"`
 }
 
 type OrderFinancialProduct struct {
@@ -33,6 +39,7 @@ type OrderItem struct {
 
 type ListOrdersResult struct {
 	Postings []OrderItem `json:"postings"`
+	HasNext  bool        `json:"has_next"`
 }
 
 type listOrdersEnvelope struct {

@@ -98,7 +98,7 @@ func main() {
 	productsImporter := productsync.NewService(postgres.Pool, ozonService, rawPayloadService)
 	ordersImporter := ordersync.NewService(postgres.Pool, ozonService, rawPayloadService)
 	stocksImporter := stocksync.NewService(postgres.Pool, ozonService, rawPayloadService)
-	adsImporter := adsync.NewService()
+	adsImporter := adsync.NewService(postgres.Pool, ozonService, rawPayloadService)
 
 	redisCfg := jobs.RedisConfig{
 		Addr:     cfg.Redis.Addr,

@@ -6,20 +6,26 @@ import (
 )
 
 type ListStocksRequest struct {
-	OfferID   []string `json:"offer_id,omitempty"`
-	ProductID []int64  `json:"product_id,omitempty"`
+	Cursor      string `json:"cursor,omitempty"`
+	Limit       int    `json:"limit,omitempty"`
+	WarehouseID int64  `json:"warehouse_id,omitempty"`
 }
 
 type StockItem struct {
 	ProductID   int64  `json:"product_id"`
 	OfferID     string `json:"offer_id"`
+	SKU         int64  `json:"sku"`
 	WarehouseID int64  `json:"warehouse_id"`
 	Present     int32  `json:"present"`
 	Reserved    int32  `json:"reserved"`
+	FreeStock   int32  `json:"free_stock"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 type ListStocksResult struct {
-	Result []StockItem `json:"result"`
+	Stocks  []StockItem `json:"stocks"`
+	HasNext bool        `json:"has_next"`
+	Cursor  string      `json:"cursor"`
 }
 
 func (c *Client) ListStocks(
@@ -35,7 +41,7 @@ func (c *Client) ListStocks(
 		clientID,
 		apiKey,
 		http.MethodPost,
-		"/v2/products/stocks",
+		"/v1/product/info/warehouse/stocks",
 		req,
 		&parsed,
 	)

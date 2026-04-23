@@ -162,24 +162,17 @@ func (c *Client) doJSON(
 }
 
 func (c *Client) CheckConnection(ctx context.Context, clientID, apiKey string) error {
-	type request struct {
-		Language string `json:"language"`
+	// Primary business check.
+	if _, err := c.GetSellerInfo(ctx, clientID, apiKey); err != nil {
+		return err
 	}
-	type response struct{}
 
-	var resp response
-
-	_, err := c.doJSON(
-		ctx,
-		clientID,
-		apiKey,
-		http.MethodPost,
-		"/v1/description-category/tree",
-		request{
-			Language: "DEFAULT",
-		},
-		&resp,
-	)
-
-	return err
+	// Secondary technical validation. Do not override successful primary check
+	// for non-auth transient/provider issues.
+	if _, err := c.GetRoles(ctx, clientID, apiKey); err != nil {
+		if errors.Is(err, ErrInvalidCredentials) {
+			return err
+		}
+	}
+	return nil
 }
