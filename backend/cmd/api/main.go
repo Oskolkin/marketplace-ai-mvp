@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/account"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/alerts"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/analytics"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/auth"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/config"
@@ -21,6 +22,7 @@ import (
 	appLogger "github.com/Oskolkin/marketplace-ai-mvp/backend/internal/logger"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/metrics"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/pricingconstraints"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/recommendations"
 	appRedis "github.com/Oskolkin/marketplace-ai-mvp/backend/internal/redis"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/sentryx"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/storage"
@@ -166,6 +168,27 @@ func main() {
 		advertisingService,
 	)
 	pricingConstraintsHandler := handlers.NewPricingConstraintsHandler(pricingConstraintsService)
+	alertsService := alerts.NewService(alerts.NewSQLCRepository(dbgen.New(postgres.Pool)))
+	alertsHandler := handlers.NewAlertsHandler(alertsService)
+	recommendationsRepo := recommendations.NewSQLCRepository(dbgen.New(postgres.Pool))
+	recommendationsService := recommendations.NewService(
+		recommendationsRepo,
+		recommendations.NewContextBuilder(recommendationsRepo),
+		recommendations.NewOpenAIClient(recommendations.OpenAIClientConfig{
+			APIKey:         cfg.OpenAI.APIKey,
+			Model:          cfg.OpenAI.Model,
+			TimeoutSeconds: cfg.OpenAI.TimeoutSeconds,
+			MaxRetries:     cfg.OpenAI.MaxRetries,
+		}),
+		recommendations.NewOutputValidator(),
+		recommendations.ServiceConfig{
+			RunType:       "manual",
+			Source:        "chatgpt",
+			Model:         cfg.OpenAI.Model,
+			PromptVersion: "stage8.prompt.v1",
+		},
+	)
+	recommendationsHandler := handlers.NewRecommendationsHandler(recommendationsService)
 
 	ozonService, err := ozon.NewService(postgres.Pool, cfg.Auth.EncryptionKey)
 	if err != nil {
@@ -193,6 +216,8 @@ func main() {
 		accountHandler,
 		analyticsDashboardHandler,
 		pricingConstraintsHandler,
+		alertsHandler,
+		recommendationsHandler,
 		ozonHandler,
 		ozonIngestionSyncHandler,
 		ozonIngestionStatusHandler,

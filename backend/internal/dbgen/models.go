@@ -52,6 +52,45 @@ type AdMetricsDaily struct {
 	UpdatedAt          pgtype.Timestamptz
 }
 
+type Alert struct {
+	ID              int64
+	SellerAccountID int64
+	AlertType       string
+	AlertGroup      string
+	EntityType      string
+	EntityID        pgtype.Text
+	EntitySku       pgtype.Int8
+	EntityOfferID   pgtype.Text
+	Title           string
+	Message         string
+	Severity        string
+	Urgency         string
+	Status          string
+	EvidencePayload []byte
+	Fingerprint     string
+	FirstSeenAt     pgtype.Timestamptz
+	LastSeenAt      pgtype.Timestamptz
+	ResolvedAt      pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
+type AlertRun struct {
+	ID               int64
+	SellerAccountID  int64
+	RunType          string
+	Status           string
+	StartedAt        pgtype.Timestamptz
+	FinishedAt       pgtype.Timestamptz
+	SalesAlertsCount int32
+	StockAlertsCount int32
+	AdAlertsCount    int32
+	PriceAlertsCount int32
+	TotalAlertsCount int32
+	ErrorMessage     pgtype.Text
+	CreatedAt        pgtype.Timestamptz
+}
+
 type DailyAccountMetric struct {
 	ID              int64
 	SellerAccountID int64
@@ -177,6 +216,68 @@ type RawPayload struct {
 	StorageObjectKey string
 	PayloadHash      string
 	ReceivedAt       pgtype.Timestamptz
+}
+
+type Recommendation struct {
+	ID                       int64
+	SellerAccountID          int64
+	Source                   string
+	RecommendationType       string
+	Horizon                  string
+	EntityType               string
+	EntityID                 pgtype.Text
+	EntitySku                pgtype.Int8
+	EntityOfferID            pgtype.Text
+	Title                    string
+	WhatHappened             string
+	WhyItMatters             string
+	RecommendedAction        string
+	ExpectedEffect           pgtype.Text
+	PriorityScore            pgtype.Numeric
+	PriorityLevel            string
+	Urgency                  string
+	ConfidenceLevel          string
+	Status                   string
+	SupportingMetricsPayload []byte
+	ConstraintsPayload       []byte
+	AiModel                  pgtype.Text
+	AiPromptVersion          pgtype.Text
+	RawAiResponse            []byte
+	Fingerprint              string
+	FirstSeenAt              pgtype.Timestamptz
+	LastSeenAt               pgtype.Timestamptz
+	AcceptedAt               pgtype.Timestamptz
+	DismissedAt              pgtype.Timestamptz
+	ResolvedAt               pgtype.Timestamptz
+	CreatedAt                pgtype.Timestamptz
+	UpdatedAt                pgtype.Timestamptz
+}
+
+type RecommendationAlertLink struct {
+	RecommendationID int64
+	AlertID          int64
+	SellerAccountID  int64
+	LinkType         string
+	CreatedAt        pgtype.Timestamptz
+}
+
+type RecommendationRun struct {
+	ID                            int64
+	SellerAccountID               int64
+	RunType                       string
+	Status                        string
+	AsOfDate                      pgtype.Date
+	AiModel                       pgtype.Text
+	AiPromptVersion               pgtype.Text
+	InputTokens                   int32
+	OutputTokens                  int32
+	EstimatedCost                 pgtype.Numeric
+	GeneratedRecommendationsCount int32
+	AcceptedRecommendationsCount  int32
+	ErrorMessage                  pgtype.Text
+	StartedAt                     pgtype.Timestamptz
+	FinishedAt                    pgtype.Timestamptz
+	CreatedAt                     pgtype.Timestamptz
 }
 
 type Sale struct {

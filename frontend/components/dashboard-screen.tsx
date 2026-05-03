@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   getDashboardSKUTable,
@@ -9,6 +10,18 @@ import {
   type DashboardStockRow,
   type DashboardSummaryResponse,
 } from "@/lib/analytics-api";
+import {
+  getAlerts,
+  getAlertsSummary,
+  type AlertItem,
+  type AlertsSummaryResponse,
+} from "@/lib/alerts-api";
+import {
+  getRecommendations,
+  getRecommendationsSummary,
+  type RecommendationItem,
+  type RecommendationsSummary,
+} from "@/lib/recommendations-api";
 
 function fmtMoney(value: number): string {
   return new Intl.NumberFormat("ru-RU", {
@@ -29,10 +42,21 @@ function fmtDateTime(value: string | null): string {
   return d.toLocaleString();
 }
 
+function fmtRecEntity(row: Pick<RecommendationItem, "entity_sku" | "entity_offer_id" | "entity_id" | "entity_type">): string {
+  if (row.entity_sku != null) return `SKU: ${row.entity_sku}`;
+  if (row.entity_offer_id) return `Offer: ${row.entity_offer_id}`;
+  if (row.entity_id) return `ID: ${row.entity_id}`;
+  return row.entity_type;
+}
+
 type DashboardState = {
   summary: DashboardSummaryResponse | null;
   skuRows: DashboardSkuRow[];
   stocksRows: DashboardStockRow[];
+  alertsSummary: AlertsSummaryResponse | null;
+  topAlerts: AlertItem[];
+  recSummary: RecommendationsSummary | null;
+  topRecommendations: RecommendationItem[];
 };
 
 type DashboardScreenProps = {
@@ -44,8 +68,16 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
     summary: null,
     skuRows: [],
     stocksRows: [],
+    alertsSummary: null,
+    topAlerts: [],
+    recSummary: null,
+    topRecommendations: [],
   });
   const [loading, setLoading] = useState(true);
+  const [alertsLoading, setAlertsLoading] = useState(true);
+  const [alertsError, setAlertsError] = useState("");
+  const [recLoading, setRecLoading] = useState(true);
+  const [recError, setRecError] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -53,8 +85,12 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
       try {
         setLoading(true);
         setError("");
+        setAlertsLoading(true);
+        setAlertsError("");
+        setRecLoading(true);
+        setRecError("");
 
-        const [summary, skuTable, stocks] = await Promise.all([
+        const [summary, skuTable, stocks, alertsSummary, criticalAlerts] = await Promise.all([
           getDashboardSummary(initialAsOfDate),
           getDashboardSKUTable({
             asOfDate: initialAsOfDate,
@@ -64,7 +100,20 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
             sortOrder: "desc",
           }),
           getDashboardStocks(),
+          getAlertsSummary(),
+          getAlerts({ status: "open", severity: "critical", limit: 3, offset: 0 }),
         ]);
+
+        let topAlerts = criticalAlerts.items ?? [];
+        if (topAlerts.length === 0) {
+          const highAlerts = await getAlerts({
+            status: "open",
+            severity: "high",
+            limit: 3,
+            offset: 0,
+          });
+          topAlerts = highAlerts.items ?? [];
+        }
 
         const safeSkuItems = skuTable?.items ?? [];
         const safeStocksItems = stocks?.items ?? [];
@@ -73,11 +122,58 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
           summary,
           skuRows: safeSkuItems.slice(0, 20),
           stocksRows: safeStocksItems.slice(0, 20),
+          alertsSummary,
+          topAlerts,
+          recSummary: null,
+          topRecommendations: [],
         });
+        setLoading(false);
+        setAlertsLoading(false);
+
+        let recSummary: RecommendationsSummary | null = null;
+        let topRecommendations: RecommendationItem[] = [];
+        try {
+          setRecLoading(true);
+          setRecError("");
+          recSummary = await getRecommendationsSummary();
+          const criticalRecs = await getRecommendations({
+            status: "open",
+            priority_level: "critical",
+            limit: 3,
+            offset: 0,
+          });
+          topRecommendations = criticalRecs.items ?? [];
+          if (topRecommendations.length === 0) {
+            const highRecs = await getRecommendations({
+              status: "open",
+              priority_level: "high",
+              limit: 3,
+              offset: 0,
+            });
+            topRecommendations = highRecs.items ?? [];
+          }
+        } catch (recErr) {
+          setRecError(
+            recErr instanceof Error ? recErr.message : "Failed to load recommendations teaser",
+          );
+        } finally {
+          setRecLoading(false);
+        }
+
+        setState((prev) => ({
+          ...prev,
+          recSummary,
+          topRecommendations,
+        }));
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load dashboard");
+        setAlertsError(
+          err instanceof Error ? err.message : "Failed to load alerts teaser"
+        );
+        setRecLoading(false);
       } finally {
         setLoading(false);
+        setAlertsLoading(false);
       }
     }
 
@@ -141,6 +237,166 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
         <p>
           <span className="font-medium">SKU orders semantics:</span> {summary.sku_orders_semantics}
         </p>
+      </section>
+
+      <section className="rounded border p-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">Alerts teaser</h2>
+          <Link href="/app/alerts" className="rounded border px-3 py-1 text-sm hover:bg-gray-50">
+            View alerts
+          </Link>
+        </div>
+        {alertsLoading ? (
+          <p className="text-sm">Loading alerts teaser...</p>
+        ) : alertsError ? (
+          <p className="text-sm text-red-600">{alertsError}</p>
+        ) : !state.alertsSummary ? (
+          <p className="text-sm text-gray-600">Alerts summary is unavailable.</p>
+        ) : (
+          <div className="space-y-3 text-sm">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <MetricCard
+                title="Open alerts"
+                value={fmtNum(state.alertsSummary.open_total)}
+                sub="Current seller account"
+              />
+              <MetricCard
+                title="Critical"
+                value={fmtNum(state.alertsSummary.critical_count)}
+                sub="Open critical alerts"
+              />
+              <MetricCard
+                title="High"
+                value={fmtNum(state.alertsSummary.high_count)}
+                sub="Open high alerts"
+              />
+            </div>
+
+            {state.alertsSummary.latest_run ? (
+              <p className="text-xs text-gray-600">
+                latest_run: status={state.alertsSummary.latest_run.status}, started=
+                {fmtDateTime(state.alertsSummary.latest_run.started_at)}, finished=
+                {fmtDateTime(state.alertsSummary.latest_run.finished_at)}, total=
+                {state.alertsSummary.latest_run.total_alerts_count}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-600">latest_run: no runs yet</p>
+            )}
+
+            {state.alertsSummary.open_total === 0 ? (
+              <p className="rounded border border-green-300 bg-green-50 p-2 text-green-700">
+                No open alerts.
+              </p>
+            ) : state.topAlerts.length === 0 ? (
+              <p className="text-gray-600">No critical/high alerts to highlight.</p>
+            ) : (
+              <div>
+                <p className="mb-2 font-medium">Top critical/high alerts</p>
+                <div className="space-y-2">
+                  {state.topAlerts.map((a) => (
+                    <Link
+                      href="/app/alerts"
+                      key={a.id}
+                      className="block rounded border p-2 hover:bg-gray-50"
+                    >
+                      <p className="text-xs text-gray-600">
+                        {a.severity} | {a.alert_group}
+                      </p>
+                      <p className="font-medium">{a.title}</p>
+                      <p className="text-xs text-gray-600">
+                        {a.entity_sku != null
+                          ? `SKU ${a.entity_sku}`
+                          : a.entity_offer_id || a.entity_id || a.entity_type}
+                        {" | "}last_seen={fmtDateTime(a.last_seen_at)}
+                      </p>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded border p-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">AI recommendations teaser</h2>
+          <Link href="/app/recommendations" className="rounded border px-3 py-1 text-sm hover:bg-gray-50">
+            View recommendations
+          </Link>
+        </div>
+        {recLoading ? (
+          <p className="text-sm">Loading recommendations teaser...</p>
+        ) : recError ? (
+          <p className="text-sm text-red-600">{recError}</p>
+        ) : !state.recSummary ? (
+          <p className="text-sm text-gray-600">Recommendations summary is unavailable.</p>
+        ) : (
+          <div className="space-y-3 text-sm">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <MetricCard
+                title="Open recommendations"
+                value={fmtNum(state.recSummary.open_total)}
+                sub="Open items for this account"
+              />
+              <MetricCard
+                title="Critical"
+                value={fmtNum(state.recSummary.by_priority.critical)}
+                sub="Open by priority"
+              />
+              <MetricCard
+                title="High"
+                value={fmtNum(state.recSummary.by_priority.high)}
+                sub="Open by priority"
+              />
+            </div>
+
+            {state.recSummary.latest_run ? (
+              <p className="text-xs text-gray-600">
+                latest_run: status={state.recSummary.latest_run.status}, ai_model=
+                {state.recSummary.latest_run.ai_model ?? "—"}, ai_prompt_version=
+                {state.recSummary.latest_run.ai_prompt_version ?? "—"}, generated=
+                {state.recSummary.latest_run.generated_recommendations_count}, started=
+                {fmtDateTime(state.recSummary.latest_run.started_at)}, finished=
+                {fmtDateTime(state.recSummary.latest_run.finished_at)}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-600">latest_run: no runs yet</p>
+            )}
+
+            {state.recSummary.open_total === 0 ? (
+              <p className="rounded border border-green-300 bg-green-50 p-2 text-green-700">
+                No open recommendations.
+              </p>
+            ) : state.topRecommendations.length === 0 ? (
+              <p className="text-gray-600">No critical/high open recommendations to highlight.</p>
+            ) : (
+              <div>
+                <p className="mb-2 font-medium">Top open critical / high</p>
+                <div className="space-y-2">
+                  {state.topRecommendations.map((r) => (
+                    <Link
+                      href="/app/recommendations"
+                      key={r.id}
+                      className="block rounded border p-2 hover:bg-gray-50"
+                    >
+                      <p className="text-xs text-gray-600">
+                        <span className="inline-flex rounded border px-1.5 py-0.5">{r.priority_level}</span>{" "}
+                        <span className="inline-flex rounded border px-1.5 py-0.5">{r.confidence_level}</span>{" "}
+                        <span className="inline-flex rounded border px-1.5 py-0.5">{r.horizon}</span>
+                      </p>
+                      <p className="font-medium">{r.title}</p>
+                      <p className="line-clamp-2 text-xs text-gray-700">{r.recommended_action}</p>
+                      <p className="mt-1 text-xs text-gray-600">
+                        {fmtRecEntity(r)} | last_seen={fmtDateTime(r.last_seen_at)}
+                      </p>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="rounded border p-4">

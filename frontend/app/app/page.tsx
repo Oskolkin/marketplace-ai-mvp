@@ -62,6 +62,20 @@ export default async function AppPage() {
           >
             Open Pricing Constraints
           </Link>
+
+          <Link
+            href="/app/alerts"
+            className="rounded border px-4 py-2 hover:bg-gray-50"
+          >
+            Open Alerts
+          </Link>
+
+          <Link
+            href="/app/recommendations"
+            className="rounded border px-4 py-2 hover:bg-gray-50"
+          >
+            Open Recommendations
+          </Link>
         </div>
       </section>
     </main>

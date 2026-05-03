@@ -15,6 +15,7 @@ type Config struct {
 	Auth      AuthConfig
 	Sentry    SentryConfig
 	Telemetry TelemetryConfig
+	OpenAI    OpenAIConfig
 }
 
 type AppConfig struct {
@@ -65,6 +66,13 @@ type TelemetryConfig struct {
 	ServiceName  string
 }
 
+type OpenAIConfig struct {
+	APIKey         string
+	Model          string
+	TimeoutSeconds int
+	MaxRetries     int
+}
+
 func Load() (*Config, error) {
 	cfg := &Config{
 		App: AppConfig{
@@ -106,6 +114,12 @@ func Load() (*Config, error) {
 			Enabled:      getEnvAsBool("OTEL_ENABLED", false),
 			OTLPEndpoint: getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
 			ServiceName:  getEnv("OTEL_SERVICE_NAME", "marketplace-ai-backend"),
+		},
+		OpenAI: OpenAIConfig{
+			APIKey:         getEnv("OPENAI_API_KEY", ""),
+			Model:          getEnv("OPENAI_MODEL", "gpt-4.1-mini"),
+			TimeoutSeconds: getEnvAsInt("OPENAI_TIMEOUT_SECONDS", 30),
+			MaxRetries:     getEnvAsInt("OPENAI_MAX_RETRIES", 2),
 		},
 	}
 
@@ -159,6 +173,15 @@ func validate(cfg *Config) error {
 	}
 	if cfg.S3.BucketArtifacts == "" {
 		return fmt.Errorf("S3_BUCKET_ARTIFACTS is required")
+	}
+	if cfg.OpenAI.Model == "" {
+		return fmt.Errorf("OPENAI_MODEL is required")
+	}
+	if cfg.OpenAI.TimeoutSeconds <= 0 {
+		return fmt.Errorf("OPENAI_TIMEOUT_SECONDS must be greater than 0")
+	}
+	if cfg.OpenAI.MaxRetries < 0 {
+		return fmt.Errorf("OPENAI_MAX_RETRIES must be greater than or equal to 0")
 	}
 
 	switch cfg.App.Env {

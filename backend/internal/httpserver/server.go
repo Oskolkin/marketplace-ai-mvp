@@ -25,6 +25,8 @@ func New(
 	accountHandler *handlers.AccountHandler,
 	analyticsDashboardHandler *handlers.AnalyticsDashboardHandler,
 	pricingConstraintsHandler *handlers.PricingConstraintsHandler,
+	alertsHandler *handlers.AlertsHandler,
+	recommendationsHandler *handlers.RecommendationsHandler,
 	ozonHandler *handlers.OzonHandler,
 	ozonIngestionSyncHandler *handlers.OzonIngestionSyncHandler,
 	ozonIngestionStatusHandler *handlers.OzonIngestionStatusHandler,
@@ -69,6 +71,18 @@ func New(
 		r.Post("/api/v1/pricing-constraints/sku-overrides/deactivate", pricingConstraintsHandler.PostDeactivateSKUOverride)
 		r.Get("/api/v1/pricing-constraints/effective", pricingConstraintsHandler.GetEffectiveConstraints)
 		r.Post("/api/v1/pricing-constraints/preview", pricingConstraintsHandler.PostPreview)
+		r.Get("/api/v1/alerts", alertsHandler.GetAlerts)
+		r.Get("/api/v1/alerts/summary", alertsHandler.GetSummary)
+		r.Post("/api/v1/alerts/run", alertsHandler.RunAlerts)
+		r.Post("/api/v1/alerts/{id}/dismiss", alertsHandler.DismissAlert)
+		r.Post("/api/v1/alerts/{id}/resolve", alertsHandler.ResolveAlert)
+		r.Get("/api/v1/recommendations", recommendationsHandler.ListRecommendations)
+		r.Get("/api/v1/recommendations/summary", recommendationsHandler.GetSummary)
+		r.Get("/api/v1/recommendations/{id}", recommendationsHandler.GetRecommendationByID)
+		r.Post("/api/v1/recommendations/generate", recommendationsHandler.GenerateRecommendations)
+		r.Post("/api/v1/recommendations/{id}/accept", recommendationsHandler.AcceptRecommendation)
+		r.Post("/api/v1/recommendations/{id}/dismiss", recommendationsHandler.DismissRecommendation)
+		r.Post("/api/v1/recommendations/{id}/resolve", recommendationsHandler.ResolveRecommendation)
 
 		r.Route("/api/v1/integrations/ozon", func(r chi.Router) {
 			r.Get("/", ozonHandler.GetConnection)
