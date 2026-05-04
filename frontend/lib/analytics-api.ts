@@ -138,6 +138,15 @@ export type StocksReplenishmentResponse = {
   };
 };
 
+export type AdvertisingAnalyticsResponse = {
+  summary?: Record<string, unknown> | null;
+  items?: Array<Record<string, unknown>> | null;
+  campaigns?: Array<Record<string, unknown>> | null;
+  risks?: Array<Record<string, unknown>> | null;
+  sku_risks?: Array<Record<string, unknown>> | null;
+  [key: string]: unknown;
+};
+
 function buildQuery(params: Record<string, string | number | undefined>): string {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -194,4 +203,8 @@ export async function getStocksReplenishment(
   return apiGet<StocksReplenishmentResponse>(
     `/api/v1/analytics/stocks-replenishment${query}`
   );
+}
+
+export async function getAdvertisingAnalytics(): Promise<AdvertisingAnalyticsResponse> {
+  return apiGet<AdvertisingAnalyticsResponse>("/api/v1/analytics/advertising");
 }
