@@ -3,6 +3,8 @@ package chat
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -210,9 +212,12 @@ type fakeAIClient struct {
 	answerOut *GenerateAnswerOutput
 	planErr   error
 	answerErr error
+	planCalls int
+	ansCalls  int
 }
 
 func (f *fakeAIClient) PlanTools(ctx context.Context, input PlanToolsInput) (*PlanToolsOutput, error) {
+	f.planCalls++
 	if f.planErr != nil {
 		return nil, f.planErr
 	}
@@ -220,6 +225,7 @@ func (f *fakeAIClient) PlanTools(ctx context.Context, input PlanToolsInput) (*Pl
 }
 
 func (f *fakeAIClient) GenerateAnswer(ctx context.Context, input GenerateAnswerInput) (*GenerateAnswerOutput, error) {
+	f.ansCalls++
 	if f.answerErr != nil {
 		return nil, f.answerErr
 	}
@@ -351,4 +357,151 @@ func (f *fakeRepo) GetFeedbackByMessage(ctx context.Context, sellerAccountID, me
 }
 func (f *fakeRepo) ListFeedback(ctx context.Context, sellerAccountID int64, limit, offset int32) ([]ChatFeedback, error) {
 	return nil, nil
+}
+
+func TestServiceAskUnsupportedQuestionCompletesWithoutTools(t *testing.T) {
+	repo := newFakeRepo()
+	reason := "Запрос требует auto-action."
+	ai := &fakeAIClient{
+		planOut: &PlanToolsOutput{
+			Plan: ToolPlan{
+				Intent:            ChatIntentUnsupported,
+				Confidence:        0.95,
+				Language:          "ru",
+				ToolCalls:         []ToolCall{},
+				Assumptions:       []string{},
+				UnsupportedReason: &reason,
+			},
+		},
+		answerOut: &GenerateAnswerOutput{
+			Answer: ChatAnswer{
+				Answer:          "Я не могу выполнить это действие автоматически.",
+				Summary:         "Запрос требует действия, которое AI-чат не выполняет.",
+				Intent:          ChatIntentUnsupported,
+				ConfidenceLevel: ConfidenceLevelHigh,
+				SupportingFacts: []SupportingFact{{Source: "limitation", Fact: "AI-чат не выполняет auto-actions."}},
+				Limitations:     []string{"Запрос требует auto-action, который запрещен в AI Chat MVP."},
+			},
+		},
+	}
+	toolExec := &fakeToolExecutor{}
+	svc, err := NewServiceWithDeps(ServiceDeps{
+		Repo: repo, AIClient: ai, ToolExecutor: toolExec,
+		ToolRegistry: NewDefaultToolRegistry(), ToolPlanValidator: NewToolPlanValidator(NewDefaultToolRegistry()),
+		ContextAssembler: NewContextAssembler(), AnswerValidator: NewAnswerValidator(),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	out, err := svc.Ask(context.Background(), AskInput{SellerAccountID: 1, Question: "Сделай действие автоматически"})
+	if err != nil {
+		t.Fatalf("ask failed: %v", err)
+	}
+	if out == nil || out.Answer == nil || out.AssistantMessageID == nil {
+		t.Fatal("expected answer and assistant message")
+	}
+	if toolExec.executePlanCalls != 0 {
+		t.Fatal("tools must not be executed for unsupported intent")
+	}
+	if ai.ansCalls != 1 {
+		t.Fatal("answerer must be called for unsupported intent")
+	}
+	if repo.completeTraceCalls != 1 || repo.failTraceCalls != 0 {
+		t.Fatalf("trace should complete successfully")
+	}
+	if repo.createAssistantMessageCount != 1 {
+		t.Fatal("assistant message should be saved")
+	}
+	if len(out.Answer.Limitations) == 0 || len(out.Answer.SupportingFacts) == 0 {
+		t.Fatal("unsupported answer should include limitations and supporting facts")
+	}
+}
+
+func TestSanitizeTracePayloadRedactsSecrets(t *testing.T) {
+	payload := map[string]any{
+		"api_key":       "sk-test-secret",
+		"authorization": "Bearer super-secret-token",
+		"nested": map[string]any{
+			"access_token": "tok123",
+			"note":         "OPENAI_API_KEY=sk-live-abc",
+		},
+		"items": []any{
+			map[string]any{"cookie": "abc"},
+			"authorization: bearer token-123",
+		},
+	}
+	sanitized := sanitizeTracePayload(payload)
+	if sanitized["api_key"] != "[REDACTED]" {
+		t.Fatalf("expected api_key redaction")
+	}
+	if sanitized["authorization"] != "[REDACTED]" {
+		t.Fatalf("expected authorization redaction")
+	}
+	nested := sanitized["nested"].(map[string]any)
+	if nested["access_token"] != "[REDACTED]" {
+		t.Fatalf("expected nested token redaction")
+	}
+	if !strings.Contains(nested["note"].(string), "[REDACTED]") {
+		t.Fatalf("expected OPENAI_API_KEY marker redaction")
+	}
+	items := sanitized["items"].([]any)
+	if items[0].(map[string]any)["cookie"] != "[REDACTED]" {
+		t.Fatalf("expected cookie redaction")
+	}
+	if items[1] != "authorization: Bearer [REDACTED]" {
+		t.Fatalf("expected bearer text redaction")
+	}
+}
+
+func TestServiceAskSanitizesTracePayloads(t *testing.T) {
+	repo := newFakeRepo()
+	ai := &fakeAIClient{
+		planOut: &PlanToolsOutput{
+			Plan: ToolPlan{
+				Intent:     ChatIntentPriorities,
+				Confidence: 0.9,
+				Language:   "ru",
+				ToolCalls:  []ToolCall{{Name: ToolGetDashboardSummary, Args: map[string]any{}}},
+			},
+			RawResponse: []byte(`{"token":"secret","nested":{"authorization":"Bearer abc"},"text":"sk-test-secret"}`),
+		},
+		answerOut: &GenerateAnswerOutput{
+			Answer: ChatAnswer{
+				Answer:          "Ответ",
+				Summary:         "Кратко",
+				Intent:          ChatIntentPriorities,
+				ConfidenceLevel: ConfidenceLevelMedium,
+				SupportingFacts: []SupportingFact{{Source: "dashboard", Fact: "f"}},
+			},
+			RawResponse: []byte(`{"api_key":"sk-live-123","payload":"authorization: bearer ttt"}`),
+		},
+	}
+	toolExec := &fakeToolExecutor{
+		results: []ToolResult{
+			{Name: ToolGetDashboardSummary, Data: map[string]any{"kpi": map[string]any{"revenue": 100}}},
+		},
+	}
+	svc, err := NewServiceWithDeps(ServiceDeps{
+		Repo: repo, AIClient: ai, ToolExecutor: toolExec,
+		ToolRegistry: NewDefaultToolRegistry(), ToolPlanValidator: NewToolPlanValidator(NewDefaultToolRegistry()),
+		ContextAssembler: NewContextAssembler(), AnswerValidator: NewAnswerValidator(),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	if _, err := svc.Ask(context.Background(), AskInput{SellerAccountID: 1, Question: "Что по рискам?"}); err != nil {
+		t.Fatalf("ask failed: %v", err)
+	}
+	if strings.Contains(fmt.Sprint(repo.lastCompleteTrace.RawPlannerResponse), "sk-test-secret") {
+		t.Fatalf("planner raw response contains unredacted secret")
+	}
+	if strings.Contains(fmt.Sprint(repo.lastCompleteTrace.RawAnswerResponse), "sk-live-123") {
+		t.Fatalf("answer raw response contains unredacted secret")
+	}
+	if !strings.Contains(fmt.Sprint(repo.lastCompleteTrace.RawPlannerResponse), "[REDACTED") {
+		t.Fatalf("expected redaction marker in planner trace payload")
+	}
+	if !strings.Contains(fmt.Sprint(repo.lastCompleteTrace.RawAnswerResponse), "[REDACTED") {
+		t.Fatalf("expected redaction marker in answer trace payload")
+	}
 }

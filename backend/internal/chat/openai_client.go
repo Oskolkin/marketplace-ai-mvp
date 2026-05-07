@@ -77,6 +77,7 @@ type openAIResponsesRequest struct {
 	Model       string            `json:"model"`
 	Input       []openAIInputItem `json:"input"`
 	Temperature float64           `json:"temperature"`
+	Text        openAITextConfig  `json:"text"`
 }
 
 type openAIInputItem struct {
@@ -87,6 +88,14 @@ type openAIInputItem struct {
 type openAIContentItem struct {
 	Type string `json:"type"`
 	Text string `json:"text"`
+}
+
+type openAITextConfig struct {
+	Format openAITextFormat `json:"format"`
+}
+
+type openAITextFormat struct {
+	Type string `json:"type"`
 }
 
 type openAIResponsesResponse struct {
@@ -134,6 +143,7 @@ func (c *OpenAIClient) PlanTools(ctx context.Context, input PlanToolsInput) (*Pl
 			{Role: "user", Content: []openAIContentItem{{Type: "input_text", Text: strings.TrimSpace(input.UserPrompt)}}},
 		},
 		Temperature: 0.1,
+		Text:        openAITextConfig{Format: openAITextFormat{Type: "json_object"}},
 	}
 	respBody, requestID, err := c.doWithRetry(ctx, reqBody)
 	if err != nil {
@@ -175,6 +185,7 @@ func (c *OpenAIClient) GenerateAnswer(ctx context.Context, input GenerateAnswerI
 			{Role: "user", Content: []openAIContentItem{{Type: "input_text", Text: strings.TrimSpace(input.UserPrompt)}}},
 		},
 		Temperature: 0.2,
+		Text:        openAITextConfig{Format: openAITextFormat{Type: "json_object"}},
 	}
 	respBody, requestID, err := c.doWithRetry(ctx, reqBody)
 	if err != nil {
@@ -301,6 +312,8 @@ func extractOutputText(resp openAIResponsesResponse) string {
 }
 
 func parseJSONPayload(content string, dst any) error {
+	// Defensive tolerant parsing: prompts and response_format require strict JSON,
+	// but provider output may still include wrappers in edge cases.
 	trimmed := strings.TrimSpace(content)
 	if strings.HasPrefix(trimmed, "```") {
 		trimmed = strings.TrimPrefix(trimmed, "```json")

@@ -295,20 +295,24 @@ func (s *Service) Ask(ctx context.Context, input AskInput) (*AskResult, error) {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidToolPlan, err)
 	}
 
-	toolResults, toolErr := s.toolSet.ExecutePlan(ctx, input.SellerAccountID, *validatedPlan)
-	if toolErr != nil && len(toolResults) == 0 {
-		s.failTraceBestEffort(ctx, FailTraceInput{
-			SellerAccountID:          input.SellerAccountID,
-			TraceID:                  trace.ID,
-			DetectedIntent:           validatedPlan.Intent,
-			ToolPlanPayload:          payloadMap(plannerOutput.Plan),
-			ValidatedToolPlanPayload: payloadMap(validatedPlan),
-			RawPlannerResponse:       payloadJSONMap(plannerOutput.RawResponse),
-			InputTokens:              plannerOutput.InputTokens,
-			OutputTokens:             plannerOutput.OutputTokens,
-			ErrorMessage:             errorString(toolErr),
-		})
-		return nil, toolErr
+	toolResults := make([]ToolResult, 0)
+	if validatedPlan.Intent != ChatIntentUnsupported {
+		var toolErr error
+		toolResults, toolErr = s.toolSet.ExecutePlan(ctx, input.SellerAccountID, *validatedPlan)
+		if toolErr != nil && len(toolResults) == 0 {
+			s.failTraceBestEffort(ctx, FailTraceInput{
+				SellerAccountID:          input.SellerAccountID,
+				TraceID:                  trace.ID,
+				DetectedIntent:           validatedPlan.Intent,
+				ToolPlanPayload:          payloadMap(plannerOutput.Plan),
+				ValidatedToolPlanPayload: payloadMap(validatedPlan),
+				RawPlannerResponse:       payloadJSONMap(plannerOutput.RawResponse),
+				InputTokens:              plannerOutput.InputTokens,
+				OutputTokens:             plannerOutput.OutputTokens,
+				ErrorMessage:             errorString(toolErr),
+			})
+			return nil, toolErr
+		}
 	}
 
 	factContext, err := s.contextAssembler.Assemble(AssembleContextInput{
@@ -333,6 +337,12 @@ func (s *Service) Ask(ctx context.Context, input AskInput) (*AskResult, error) {
 			ErrorMessage:             errorString(err),
 		})
 		return nil, err
+	}
+	if validatedPlan.Intent == ChatIntentUnsupported && validatedPlan.UnsupportedReason != nil {
+		reason := strings.TrimSpace(*validatedPlan.UnsupportedReason)
+		if reason != "" {
+			factContext.Limitations = append(factContext.Limitations, reason)
+		}
 	}
 
 	answerOutput, err := s.aiClient.GenerateAnswer(ctx, GenerateAnswerInput{
@@ -495,13 +505,13 @@ func payloadMap(v any) map[string]any {
 	}
 	out := map[string]any{}
 	if err := json.Unmarshal(raw, &out); err == nil {
-		return out
+		return sanitizeTracePayload(out)
 	}
 	var arr []any
 	if err := json.Unmarshal(raw, &arr); err == nil {
-		return map[string]any{"items": arr}
+		return sanitizeTracePayload(map[string]any{"items": arr})
 	}
-	return map[string]any{"raw": string(raw)}
+	return sanitizeTracePayload(map[string]any{"raw": string(raw)})
 }
 
 func payloadJSONMap(raw json.RawMessage) map[string]any {
@@ -510,13 +520,13 @@ func payloadJSONMap(raw json.RawMessage) map[string]any {
 	}
 	out := map[string]any{}
 	if err := json.Unmarshal(raw, &out); err == nil {
-		return out
+		return sanitizeTracePayload(out)
 	}
 	var arr []any
 	if err := json.Unmarshal(raw, &arr); err == nil {
-		return map[string]any{"items": arr}
+		return sanitizeTracePayload(map[string]any{"items": arr})
 	}
-	return map[string]any{"raw": string(raw)}
+	return sanitizeTracePayload(map[string]any{"raw": string(raw)})
 }
 
 func errorString(err error) string {

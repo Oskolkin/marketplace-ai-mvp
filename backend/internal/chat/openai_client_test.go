@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -9,7 +10,11 @@ import (
 )
 
 func TestOpenAIClientPlanToolsParsesStrictJSON(t *testing.T) {
+	var reqPayload map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&reqPayload); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
 		w.Header().Set("x-request-id", "req_plan_1")
 		_, _ = w.Write([]byte(`{
 			"id":"resp_1","model":"gpt-test","output":[{"type":"message","content":[{"type":"output_text","text":"{\"intent\":\"priorities\",\"confidence\":0.9,\"language\":\"ru\",\"tool_calls\":[{\"name\":\"get_open_recommendations\",\"args\":{\"limit\":5}}],\"assumptions\":[\"a1\"]}"}]}],
@@ -32,6 +37,14 @@ func TestOpenAIClientPlanToolsParsesStrictJSON(t *testing.T) {
 	}
 	if out.RequestID != "req_plan_1" || out.TotalTokens != 30 {
 		t.Fatalf("metadata parse failed")
+	}
+	text, ok := reqPayload["text"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing text config in request")
+	}
+	format, ok := text["format"].(map[string]any)
+	if !ok || format["type"] != "json_object" {
+		t.Fatalf("expected json_object format in request")
 	}
 }
 

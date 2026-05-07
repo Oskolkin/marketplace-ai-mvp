@@ -266,6 +266,28 @@ func TestAnswerValidatorValidDashboardFactWithoutRelatedIDs(t *testing.T) {
 	}
 }
 
+func TestAnswerValidatorAcceptsUnsupportedSafeRefusal(t *testing.T) {
+	v := NewAnswerValidator()
+	ctx := &FactContext{
+		Intent:      ChatIntentUnsupported,
+		Limitations: []string{"Запрос требует auto-action, который запрещен в AI Chat MVP."},
+	}
+	result, err := v.Validate(&ChatAnswer{
+		Answer:          "Я не могу выполнить это действие автоматически. Могу помочь проанализировать данные и подсказать ручной шаг.",
+		Summary:         "Запрос требует действия, которое AI-чат не выполняет.",
+		Intent:          ChatIntentUnsupported,
+		ConfidenceLevel: ConfidenceLevelHigh,
+		SupportingFacts: []SupportingFact{{Source: "limitation", Fact: "AI-чат не выполняет auto-actions."}},
+		Limitations:     []string{"Запрос требует auto-action, который запрещен в AI Chat MVP."},
+	}, ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsValid {
+		t.Fatalf("expected valid unsupported safe refusal, errors=%v", result.Errors)
+	}
+}
+
 func buildFactContext() *FactContext {
 	return &FactContext{
 		Facts: FactContextFacts{

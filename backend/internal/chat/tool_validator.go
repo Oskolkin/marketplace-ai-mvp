@@ -56,10 +56,11 @@ func (v *ToolPlanValidator) Validate(plan *ToolPlan) (*ValidatedToolPlan, error)
 			return nil, errors.New("unsupported intent requires unsupported_reason")
 		}
 		return &ValidatedToolPlan{
-			Intent:      plan.Intent,
-			ToolCalls:   []ToolCall{},
-			Assumptions: append([]string(nil), plan.Assumptions...),
-			Warnings:    []string{},
+			Intent:            plan.Intent,
+			ToolCalls:         []ToolCall{},
+			Assumptions:       append([]string(nil), plan.Assumptions...),
+			Warnings:          []string{},
+			UnsupportedReason: plan.UnsupportedReason,
 		}, nil
 	}
 	if len(plan.ToolCalls) == 0 {
@@ -229,10 +230,11 @@ func (v *ToolPlanValidator) Validate(plan *ToolPlan) (*ValidatedToolPlan, error)
 	}
 
 	return &ValidatedToolPlan{
-		Intent:      plan.Intent,
-		ToolCalls:   outCalls,
-		Assumptions: append([]string(nil), plan.Assumptions...),
-		Warnings:    warnings,
+		Intent:            plan.Intent,
+		ToolCalls:         outCalls,
+		Assumptions:       append([]string(nil), plan.Assumptions...),
+		Warnings:          warnings,
+		UnsupportedReason: plan.UnsupportedReason,
 	}, nil
 }
 

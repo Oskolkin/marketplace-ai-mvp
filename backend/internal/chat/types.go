@@ -186,10 +186,11 @@ type ToolCall struct {
 }
 
 type ValidatedToolPlan struct {
-	Intent      ChatIntent
-	ToolCalls   []ToolCall
-	Assumptions []string
-	Warnings    []string
+	Intent            ChatIntent
+	ToolCalls         []ToolCall
+	Assumptions       []string
+	Warnings          []string
+	UnsupportedReason *string
 }
 
 type ToolResult struct {

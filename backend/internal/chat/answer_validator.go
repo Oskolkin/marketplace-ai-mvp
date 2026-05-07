@@ -150,8 +150,9 @@ func (v *AnswerValidator) Validate(answer *ChatAnswer, ctx *FactContext) (*Answe
 	}
 
 	hasFacts := factContextHasFacts(ctx)
+	isUnsupportedIntent := ctx != nil && ctx.Intent == ChatIntentUnsupported
 	if !hasFacts {
-		if finalConfidence != ConfidenceLevelLow {
+		if !isUnsupportedIntent && finalConfidence != ConfidenceLevelLow {
 			result.Errors = append(result.Errors, "answer confidence must be low when no facts are available")
 		}
 		if len(answer.Limitations) == 0 {
@@ -168,6 +169,21 @@ func (v *AnswerValidator) Validate(answer *ChatAnswer, ctx *FactContext) (*Answe
 			if !hasLimitationSource {
 				result.Errors = append(result.Errors, "supporting facts must include limitation source when no facts are available")
 			}
+		}
+	}
+	if isUnsupportedIntent {
+		if len(answer.Limitations) == 0 {
+			result.Errors = append(result.Errors, "unsupported answer must include limitations")
+		}
+		hasLimitationSource := false
+		for _, sf := range answer.SupportingFacts {
+			if strings.EqualFold(strings.TrimSpace(sf.Source), "limitation") {
+				hasLimitationSource = true
+				break
+			}
+		}
+		if !hasLimitationSource {
+			result.Errors = append(result.Errors, "unsupported answer must include limitation supporting fact")
 		}
 	}
 
