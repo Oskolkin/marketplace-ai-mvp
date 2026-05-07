@@ -10,6 +10,7 @@ import (
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/alerts"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/analytics"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/auth"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/chat"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/config"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/db"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/dbgen"
@@ -190,6 +191,39 @@ func main() {
 	)
 	recommendationsHandler := handlers.NewRecommendationsHandler(recommendationsService)
 
+	chatQueries := dbgen.New(postgres.Pool)
+	chatRepo := chat.NewSQLCRepository(chatQueries)
+	chatToolRegistry := chat.NewDefaultToolRegistry()
+	chatToolValidator := chat.NewToolPlanValidator(chatToolRegistry)
+	chatToolDataRepo := chat.NewSQLCToolDataRepository(chatQueries)
+	chatToolSet := chat.NewToolSet(chatToolRegistry, chatToolDataRepo)
+	chatAIClient := chat.NewOpenAIClient(chat.OpenAIClientConfig{
+		APIKey:         cfg.OpenAI.APIKey,
+		Model:          cfg.OpenAI.Model,
+		TimeoutSeconds: cfg.OpenAI.TimeoutSeconds,
+		MaxRetries:     cfg.OpenAI.MaxRetries,
+	})
+	chatService, err := chat.NewServiceWithDeps(chat.ServiceDeps{
+		Repo:              chatRepo,
+		AIClient:          chatAIClient,
+		ToolRegistry:      chatToolRegistry,
+		ToolPlanValidator: chatToolValidator,
+		ToolExecutor:      chatToolSet,
+		ContextAssembler:  chat.NewContextAssembler(),
+		AnswerValidator:   chat.NewAnswerValidator(),
+		Config: chat.ServiceConfig{
+			PlannerModel:         cfg.OpenAI.Model,
+			AnswerModel:          cfg.OpenAI.Model,
+			PlannerPromptVersion: chat.PlannerPromptVersion,
+			AnswerPromptVersion:  chat.AnswerPromptVersion,
+		},
+	})
+	if err != nil {
+		sentry.CaptureException(err)
+		log.Fatal("failed to initialize chat service", zap.Error(err))
+	}
+	chatHandler := handlers.NewChatHandler(chatService)
+
 	ozonService, err := ozon.NewService(postgres.Pool, cfg.Auth.EncryptionKey)
 	if err != nil {
 		sentry.CaptureException(err)
@@ -214,6 +248,7 @@ func main() {
 		healthHandler,
 		authHandler,
 		accountHandler,
+		chatHandler,
 		analyticsDashboardHandler,
 		pricingConstraintsHandler,
 		alertsHandler,

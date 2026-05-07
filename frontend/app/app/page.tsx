@@ -76,6 +76,13 @@ export default async function AppPage() {
           >
             Open Recommendations
           </Link>
+
+          <Link
+            href="/app/chat"
+            className="rounded border px-4 py-2 hover:bg-gray-50"
+          >
+            Open AI Chat
+          </Link>
         </div>
       </section>
     </main>

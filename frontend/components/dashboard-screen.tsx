@@ -984,6 +984,25 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
       </section>
 
       <section className="rounded border p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Ask AI about your store</h2>
+            <p className="text-sm text-gray-600">
+              Ask questions about sales, stock, ads, alerts, and recommendations.
+            </p>
+          </div>
+          <Link href="/app/chat" className="shrink-0 rounded border px-3 py-1 text-sm hover:bg-gray-50">
+            Open AI Chat
+          </Link>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-700">
+          <span className="rounded border bg-gray-50 px-2 py-0.5">Какие 5 действий мне сделать сегодня?</span>
+          <span className="rounded border bg-gray-50 px-2 py-0.5">Какие товары опасно рекламировать?</span>
+          <span className="rounded border bg-gray-50 px-2 py-0.5">Где я теряю деньги из-за рекламы?</span>
+        </div>
+      </section>
+
+      <section className="rounded border p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold">Critical alerts</h2>

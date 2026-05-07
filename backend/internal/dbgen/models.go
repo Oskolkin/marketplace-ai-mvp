@@ -91,6 +91,65 @@ type AlertRun struct {
 	CreatedAt        pgtype.Timestamptz
 }
 
+type ChatFeedback struct {
+	ID              int64
+	SessionID       int64
+	MessageID       int64
+	SellerAccountID int64
+	Rating          string
+	Comment         pgtype.Text
+	CreatedAt       pgtype.Timestamptz
+}
+
+type ChatMessage struct {
+	ID              int64
+	SessionID       int64
+	SellerAccountID int64
+	Role            string
+	Content         string
+	MessageType     string
+	CreatedAt       pgtype.Timestamptz
+}
+
+type ChatSession struct {
+	ID              int64
+	SellerAccountID int64
+	UserID          pgtype.Int8
+	Title           string
+	Status          string
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	LastMessageAt   pgtype.Timestamptz
+}
+
+type ChatTrace struct {
+	ID                       int64
+	SessionID                int64
+	UserMessageID            pgtype.Int8
+	AssistantMessageID       pgtype.Int8
+	SellerAccountID          int64
+	PlannerPromptVersion     string
+	AnswerPromptVersion      string
+	PlannerModel             string
+	AnswerModel              string
+	DetectedIntent           pgtype.Text
+	ToolPlanPayload          []byte
+	ValidatedToolPlanPayload []byte
+	ToolResultsPayload       []byte
+	FactContextPayload       []byte
+	RawPlannerResponse       []byte
+	RawAnswerResponse        []byte
+	AnswerValidationPayload  []byte
+	InputTokens              int32
+	OutputTokens             int32
+	EstimatedCost            pgtype.Numeric
+	Status                   string
+	ErrorMessage             pgtype.Text
+	StartedAt                pgtype.Timestamptz
+	FinishedAt               pgtype.Timestamptz
+	CreatedAt                pgtype.Timestamptz
+}
+
 type DailyAccountMetric struct {
 	ID              int64
 	SellerAccountID int64

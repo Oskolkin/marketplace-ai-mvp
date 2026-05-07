@@ -23,6 +23,7 @@ func New(
 	healthHandler *health.Handler,
 	authHandler *handlers.AuthHandler,
 	accountHandler *handlers.AccountHandler,
+	chatHandler *handlers.ChatHandler,
 	analyticsDashboardHandler *handlers.AnalyticsDashboardHandler,
 	pricingConstraintsHandler *handlers.PricingConstraintsHandler,
 	alertsHandler *handlers.AlertsHandler,
@@ -57,6 +58,12 @@ func New(
 		r.Post("/api/v1/auth/logout", authHandler.Logout)
 
 		r.Get("/api/v1/account", accountHandler.GetCurrentAccount)
+		r.Post("/api/v1/chat/ask", chatHandler.Ask)
+		r.Get("/api/v1/chat/sessions", chatHandler.ListSessions)
+		r.Get("/api/v1/chat/sessions/{id}", chatHandler.GetSession)
+		r.Get("/api/v1/chat/sessions/{id}/messages", chatHandler.ListSessionMessages)
+		r.Post("/api/v1/chat/sessions/{id}/archive", chatHandler.ArchiveSession)
+		r.Post("/api/v1/chat/messages/{id}/feedback", chatHandler.AddMessageFeedback)
 		r.Get("/api/v1/analytics/dashboard", analyticsDashboardHandler.GetDashboardSummary)
 		r.Get("/api/v1/analytics/sku-table", analyticsDashboardHandler.GetSKUTable)
 		r.Get("/api/v1/analytics/stocks", analyticsDashboardHandler.GetStocksTable)
