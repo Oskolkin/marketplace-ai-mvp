@@ -22,6 +22,7 @@ func New(
 	port string,
 	healthHandler *health.Handler,
 	authHandler *handlers.AuthHandler,
+	adminHandler *handlers.AdminHandler,
 	accountHandler *handlers.AccountHandler,
 	chatHandler *handlers.ChatHandler,
 	analyticsDashboardHandler *handlers.AnalyticsDashboardHandler,
@@ -32,6 +33,7 @@ func New(
 	ozonIngestionSyncHandler *handlers.OzonIngestionSyncHandler,
 	ozonIngestionStatusHandler *handlers.OzonIngestionStatusHandler,
 	authMiddleware func(http.Handler) http.Handler,
+	adminMiddleware func(http.Handler) http.Handler,
 	log *zap.Logger,
 	m *metrics.Metrics,
 	registry *prometheus.Registry,
@@ -56,6 +58,31 @@ func New(
 
 		r.Get("/api/v1/auth/me", authHandler.Me)
 		r.Post("/api/v1/auth/logout", authHandler.Logout)
+		r.With(adminMiddleware).Get("/api/v1/admin/me", adminHandler.Me)
+		r.With(adminMiddleware).Get("/api/v1/admin/clients", adminHandler.ListClients)
+		r.With(adminMiddleware).Get("/api/v1/admin/clients/{seller_account_id}", adminHandler.GetClientDetail)
+		r.With(adminMiddleware).Get("/api/v1/admin/clients/{seller_account_id}/sync-jobs", adminHandler.ListSyncJobs)
+		r.With(adminMiddleware).Get("/api/v1/admin/clients/{seller_account_id}/import-jobs", adminHandler.ListImportJobs)
+		r.With(adminMiddleware).Get("/api/v1/admin/clients/{seller_account_id}/import-errors", adminHandler.ListImportErrors)
+		r.With(adminMiddleware).Get("/api/v1/admin/clients/{seller_account_id}/sync-cursors", adminHandler.ListSyncCursors)
+		r.With(adminMiddleware).Post("/api/v1/admin/clients/{seller_account_id}/actions/rerun-sync", adminHandler.RerunSync)
+		r.With(adminMiddleware).Post("/api/v1/admin/clients/{seller_account_id}/actions/reset-cursor", adminHandler.ResetCursor)
+		r.With(adminMiddleware).Post("/api/v1/admin/clients/{seller_account_id}/actions/rerun-metrics", adminHandler.RerunMetrics)
+		r.With(adminMiddleware).Post("/api/v1/admin/clients/{seller_account_id}/actions/rerun-alerts", adminHandler.RerunAlerts)
+		r.With(adminMiddleware).Post("/api/v1/admin/clients/{seller_account_id}/actions/rerun-recommendations", adminHandler.RerunRecommendations)
+		r.With(adminMiddleware).Get("/api/v1/admin/clients/{seller_account_id}/ai/recommendation-runs", adminHandler.ListRecommendationRuns)
+		r.With(adminMiddleware).Get("/api/v1/admin/clients/{seller_account_id}/ai/recommendation-runs/{run_id}", adminHandler.GetRecommendationRunDetail)
+		r.With(adminMiddleware).Get("/api/v1/admin/clients/{seller_account_id}/ai/recommendations/{id}", adminHandler.GetRecommendationRawAI)
+		r.With(adminMiddleware).Get("/api/v1/admin/clients/{seller_account_id}/ai/chat-traces", adminHandler.ListChatTraces)
+		r.With(adminMiddleware).Get("/api/v1/admin/clients/{seller_account_id}/ai/chat-traces/{trace_id}", adminHandler.GetChatTraceDetail)
+		r.With(adminMiddleware).Get("/api/v1/admin/clients/{seller_account_id}/chat/sessions", adminHandler.ListChatSessions)
+		r.With(adminMiddleware).Get("/api/v1/admin/clients/{seller_account_id}/chat/sessions/{session_id}/messages", adminHandler.ListChatMessages)
+		r.With(adminMiddleware).Get("/api/v1/admin/clients/{seller_account_id}/feedback/chat", adminHandler.ListChatFeedbackByClient)
+		r.With(adminMiddleware).Get("/api/v1/admin/feedback/chat", adminHandler.ListAllChatFeedback)
+		r.With(adminMiddleware).Get("/api/v1/admin/clients/{seller_account_id}/feedback/recommendations", adminHandler.ListRecommendationFeedbackByClient)
+		r.With(adminMiddleware).Get("/api/v1/admin/clients/{seller_account_id}/billing", adminHandler.GetBillingStateByClient)
+		r.With(adminMiddleware).Put("/api/v1/admin/clients/{seller_account_id}/billing", adminHandler.UpdateBillingStateByClient)
+		r.With(adminMiddleware).Get("/api/v1/admin/billing", adminHandler.ListBillingStates)
 
 		r.Get("/api/v1/account", accountHandler.GetCurrentAccount)
 		r.Post("/api/v1/chat/ask", chatHandler.Ask)
@@ -90,6 +117,7 @@ func New(
 		r.Post("/api/v1/recommendations/{id}/accept", recommendationsHandler.AcceptRecommendation)
 		r.Post("/api/v1/recommendations/{id}/dismiss", recommendationsHandler.DismissRecommendation)
 		r.Post("/api/v1/recommendations/{id}/resolve", recommendationsHandler.ResolveRecommendation)
+		r.Post("/api/v1/recommendations/{id}/feedback", recommendationsHandler.AddFeedback)
 
 		r.Route("/api/v1/integrations/ozon", func(r chi.Router) {
 			r.Get("/", ozonHandler.GetConnection)

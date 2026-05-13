@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/account"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/admin"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/alerts"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/analytics"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/auth"
@@ -27,10 +28,70 @@ import (
 	appRedis "github.com/Oskolkin/marketplace-ai-mvp/backend/internal/redis"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/sentryx"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/storage"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/syncstate"
 	"github.com/getsentry/sentry-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
+
+type adminIngestionAdapter struct {
+	svc *ingestion.OrchestrationService
+}
+
+func (a adminIngestionAdapter) StartInitialSync(ctx context.Context, sellerAccountID int64) (int64, string, error) {
+	job, err := a.svc.StartInitialSync(ctx, sellerAccountID)
+	if err != nil {
+		return 0, "", err
+	}
+	return job.ID, job.Status, nil
+}
+
+type adminCursorAdapter struct {
+	svc *syncstate.SyncCursorService
+}
+
+func (a adminCursorAdapter) ResetCursor(ctx context.Context, sellerAccountID int64, domain, cursorType string, cursorValue *string) error {
+	_, err := a.svc.ResetCursor(ctx, sellerAccountID, domain, cursorType, cursorValue)
+	return err
+}
+
+type adminAlertsAdapter struct {
+	svc *alerts.Service
+}
+
+func (a adminAlertsAdapter) Rerun(ctx context.Context, sellerAccountID int64, asOfDate time.Time) (map[string]any, error) {
+	summary, err := a.svc.RunForAccountWithType(ctx, sellerAccountID, asOfDate, alerts.RunTypeManual)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"alert_run_id":           summary.RunID,
+		"status":                 summary.Status,
+		"total_generated_alerts": summary.TotalGeneratedAlerts,
+		"total_upserted_alerts":  summary.TotalUpsertedAlerts,
+		"total_skipped_rules":    summary.TotalSkippedRules,
+	}, nil
+}
+
+type adminRecommendationsAdapter struct {
+	svc *recommendations.Service
+}
+
+func (a adminRecommendationsAdapter) Rerun(ctx context.Context, sellerAccountID int64, asOfDate time.Time) (map[string]any, error) {
+	summary, err := a.svc.GenerateForAccountWithType(ctx, sellerAccountID, asOfDate, "manual")
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"recommendation_run_id": summary.RunID,
+		"generated_total":       summary.GeneratedTotal,
+		"valid_total":           summary.ValidTotal,
+		"rejected_total":        summary.RejectedTotal,
+		"upserted_total":        summary.UpsertedTotal,
+		"input_tokens":          summary.InputTokens,
+		"output_tokens":         summary.OutputTokens,
+	}, nil
+}
 
 func main() {
 	_ = config.LoadEnvFiles()
@@ -152,6 +213,7 @@ func main() {
 	)
 	authHandler := handlers.NewAuthHandler(authService, cfg.Auth.CookieName)
 	authMiddleware := auth.Middleware(authService, cfg.Auth.CookieName)
+	adminMiddleware := auth.AdminMiddleware(cfg.Admin.Emails)
 
 	accountService := account.NewService(postgres.Pool)
 	accountHandler := handlers.NewAccountHandler(accountService)
@@ -233,6 +295,7 @@ func main() {
 
 	orchestrationService := ingestion.NewOrchestrationService(postgres.Pool, asynqClient)
 	ozonIngestionSyncHandler := handlers.NewOzonIngestionSyncHandler(orchestrationService)
+	syncCursorService := syncstate.NewSyncCursorService(postgres.Pool)
 
 	statusService := ingestion.NewStatusService(postgres.Pool)
 	ozonIngestionStatusHandler := handlers.NewOzonIngestionStatusHandler(statusService)
@@ -243,10 +306,25 @@ func main() {
 	)
 	healthHandler := health.NewHandler(readinessChecker)
 
+	adminRepo := admin.NewSQLCRepository(dbgen.New(postgres.Pool))
+	adminService, err := admin.NewService(admin.ServiceDeps{
+		Repo:                   adminRepo,
+		IngestionService:       adminIngestionAdapter{svc: orchestrationService},
+		CursorService:          adminCursorAdapter{svc: syncCursorService},
+		AlertsService:          adminAlertsAdapter{svc: alertsService},
+		RecommendationsService: adminRecommendationsAdapter{svc: recommendationsService},
+	})
+	if err != nil {
+		sentry.CaptureException(err)
+		log.Fatal("failed to initialize admin service", zap.Error(err))
+	}
+	adminHandler := handlers.NewAdminHandler(adminService)
+
 	server := httpserver.New(
 		cfg.Server.Port,
 		healthHandler,
 		authHandler,
+		adminHandler,
 		accountHandler,
 		chatHandler,
 		analyticsDashboardHandler,
@@ -257,6 +335,7 @@ func main() {
 		ozonIngestionSyncHandler,
 		ozonIngestionStatusHandler,
 		authMiddleware,
+		adminMiddleware,
 		log,
 		m,
 		registry,

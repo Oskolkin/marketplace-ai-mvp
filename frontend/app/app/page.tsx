@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import AdminSupportLink from "@/components/admin-support-link";
 import { getCurrentUserServer } from "@/lib/server-auth";
 
 export default async function AppPage() {
@@ -83,6 +84,8 @@ export default async function AppPage() {
           >
             Open AI Chat
           </Link>
+
+          <AdminSupportLink />
         </div>
       </section>
     </main>

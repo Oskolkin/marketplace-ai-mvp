@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -13,6 +14,7 @@ type Config struct {
 	Redis     RedisConfig
 	S3        S3Config
 	Auth      AuthConfig
+	Admin     AdminConfig
 	Sentry    SentryConfig
 	Telemetry TelemetryConfig
 	OpenAI    OpenAIConfig
@@ -53,6 +55,10 @@ type AuthConfig struct {
 	EncryptionKey   string
 	CookieName      string
 	SessionTTLHours int
+}
+
+type AdminConfig struct {
+	Emails []string
 }
 
 type SentryConfig struct {
@@ -105,6 +111,9 @@ func Load() (*Config, error) {
 			EncryptionKey:   getEnv("ENCRYPTION_KEY", ""),
 			CookieName:      getEnv("AUTH_COOKIE_NAME", "session_token"),
 			SessionTTLHours: getEnvAsInt("AUTH_SESSION_TTL_HOURS", 168),
+		},
+		Admin: AdminConfig{
+			Emails: NormalizeAdminEmails(getEnv("ADMIN_EMAILS", "")),
 		},
 		Sentry: SentryConfig{
 			DSN:     getEnv("SENTRY_DSN", ""),
@@ -225,4 +234,28 @@ func getEnvAsBool(key string, fallback bool) bool {
 		return fallback
 	}
 	return parsed
+}
+
+func NormalizeAdminEmails(raw string) []string {
+	if raw == "" {
+		return []string{}
+	}
+
+	parts := strings.Split(raw, ",")
+	emails := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+
+	for _, part := range parts {
+		email := strings.ToLower(strings.TrimSpace(part))
+		if email == "" {
+			continue
+		}
+		if _, ok := seen[email]; ok {
+			continue
+		}
+		seen[email] = struct{}{}
+		emails = append(emails, email)
+	}
+
+	return emails
 }

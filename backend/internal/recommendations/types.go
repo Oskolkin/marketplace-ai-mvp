@@ -30,17 +30,17 @@ func NewContextBuilder(repo Repository) *ContextBuilder {
 }
 
 type AIRecommendationContext struct {
-	ContextVersion string                `json:"context_version"`
-	SellerAccountID int64                `json:"seller_account_id"`
-	AsOfDate       string                `json:"as_of_date"`
-	GeneratedAt    time.Time             `json:"generated_at"`
-	Windows        ContextWindows        `json:"windows"`
-	Account        AccountContext        `json:"account"`
-	Alerts         AlertsContext         `json:"alerts"`
+	ContextVersion  string                 `json:"context_version"`
+	SellerAccountID int64                  `json:"seller_account_id"`
+	AsOfDate        string                 `json:"as_of_date"`
+	GeneratedAt     time.Time              `json:"generated_at"`
+	Windows         ContextWindows         `json:"windows"`
+	Account         AccountContext         `json:"account"`
+	Alerts          AlertsContext          `json:"alerts"`
 	Recommendations RecommendationsContext `json:"recommendations"`
-	Merchandising  MerchandisingContext  `json:"merchandising"`
-	Advertising    AdvertisingContext    `json:"advertising"`
-	Pricing        PricingContext        `json:"pricing"`
+	Merchandising   MerchandisingContext   `json:"merchandising"`
+	Advertising     AdvertisingContext     `json:"advertising"`
+	Pricing         PricingContext         `json:"pricing"`
 }
 
 type ContextWindows struct {
@@ -50,32 +50,32 @@ type ContextWindows struct {
 }
 
 type AccountContext struct {
-	Current          *AccountDailyMetric `json:"current,omitempty"`
-	Previous         *AccountDailyMetric `json:"previous,omitempty"`
-	RevenueDeltaPct  *float64            `json:"revenue_delta_pct,omitempty"`
-	OrdersDeltaPct   *float64            `json:"orders_delta_pct,omitempty"`
+	Current         *AccountDailyMetric `json:"current,omitempty"`
+	Previous        *AccountDailyMetric `json:"previous,omitempty"`
+	RevenueDeltaPct *float64            `json:"revenue_delta_pct,omitempty"`
+	OrdersDeltaPct  *float64            `json:"orders_delta_pct,omitempty"`
 }
 
 type AlertsContext struct {
-	OpenTotal   int64         `json:"open_total"`
-	BySeverity  []NamedCount  `json:"by_severity"`
-	ByGroup     []NamedCount  `json:"by_group"`
-	TopOpen     []AlertSignal `json:"top_open"`
-	LatestRun   *RunInfo      `json:"latest_run,omitempty"`
+	OpenTotal  int64         `json:"open_total"`
+	BySeverity []NamedCount  `json:"by_severity"`
+	ByGroup    []NamedCount  `json:"by_group"`
+	TopOpen    []AlertSignal `json:"top_open"`
+	LatestRun  *RunInfo      `json:"latest_run,omitempty"`
 }
 
 type RecommendationsContext struct {
-	OpenTotal      int64                  `json:"open_total"`
-	ByPriority     []NamedCount           `json:"by_priority"`
-	ByConfidence   []NamedCount           `json:"by_confidence"`
-	TopOpen        []RecommendationDigest `json:"top_open"`
-	LatestRun      *RunInfo               `json:"latest_run,omitempty"`
+	OpenTotal    int64                  `json:"open_total"`
+	ByPriority   []NamedCount           `json:"by_priority"`
+	ByConfidence []NamedCount           `json:"by_confidence"`
+	TopOpen      []RecommendationDigest `json:"top_open"`
+	LatestRun    *RunInfo               `json:"latest_run,omitempty"`
 }
 
 type MerchandisingContext struct {
-	TotalSKUs      int                 `json:"total_skus"`
-	TopRevenueSKUs []SKUDailyMetric    `json:"top_revenue_skus"`
-	LowStockSKUs   []SKUDailyMetric    `json:"low_stock_skus"`
+	TotalSKUs      int              `json:"total_skus"`
+	TopRevenueSKUs []SKUDailyMetric `json:"top_revenue_skus"`
+	LowStockSKUs   []SKUDailyMetric `json:"low_stock_skus"`
 }
 
 type AdvertisingContext struct {
@@ -83,7 +83,7 @@ type AdvertisingContext struct {
 }
 
 type PricingContext struct {
-	EffectiveConstraintsCount int                  `json:"effective_constraints_count"`
+	EffectiveConstraintsCount int                   `json:"effective_constraints_count"`
 	TopConstrainedSKUs        []EffectiveConstraint `json:"top_constrained_skus"`
 }
 
@@ -123,21 +123,21 @@ type AlertSignal struct {
 }
 
 type AdCampaignSummary struct {
-	CampaignExternalID int64    `json:"campaign_external_id"`
-	CampaignName       string   `json:"campaign_name"`
-	CampaignType       *string  `json:"campaign_type,omitempty"`
-	Status             *string  `json:"status,omitempty"`
-	SpendTotal         float64  `json:"spend_total"`
-	OrdersTotal        int64    `json:"orders_total"`
-	RevenueTotal       float64  `json:"revenue_total"`
+	CampaignExternalID int64   `json:"campaign_external_id"`
+	CampaignName       string  `json:"campaign_name"`
+	CampaignType       *string `json:"campaign_type,omitempty"`
+	Status             *string `json:"status,omitempty"`
+	SpendTotal         float64 `json:"spend_total"`
+	OrdersTotal        int64   `json:"orders_total"`
+	RevenueTotal       float64 `json:"revenue_total"`
 }
 
 type EffectiveConstraint struct {
-	OzonProductID   int64    `json:"ozon_product_id"`
-	SKU             *int64   `json:"sku,omitempty"`
-	OfferID         *string  `json:"offer_id,omitempty"`
-	RuleID          int64    `json:"rule_id"`
-	ResolvedFrom    string   `json:"resolved_from"`
+	OzonProductID     int64    `json:"ozon_product_id"`
+	SKU               *int64   `json:"sku,omitempty"`
+	OfferID           *string  `json:"offer_id,omitempty"`
+	RuleID            int64    `json:"rule_id"`
+	ResolvedFrom      string   `json:"resolved_from"`
 	EffectiveMinPrice *float64 `json:"effective_min_price,omitempty"`
 	EffectiveMaxPrice *float64 `json:"effective_max_price,omitempty"`
 	ReferencePrice    *float64 `json:"reference_price,omitempty"`
@@ -174,6 +174,30 @@ type RunInfo struct {
 	EstimatedCost                 float64    `json:"estimated_cost,omitempty"`
 	GeneratedRecommendationsCount int        `json:"generated_recommendations_count,omitempty"`
 	ErrorMessage                  *string    `json:"error_message,omitempty"`
+}
+
+type RecommendationFeedbackRating string
+
+const (
+	RecommendationFeedbackPositive RecommendationFeedbackRating = "positive"
+	RecommendationFeedbackNegative RecommendationFeedbackRating = "negative"
+	RecommendationFeedbackNeutral  RecommendationFeedbackRating = "neutral"
+)
+
+type RecommendationFeedback struct {
+	ID               int64
+	RecommendationID int64
+	SellerAccountID  int64
+	Rating           RecommendationFeedbackRating
+	Comment          *string
+	CreatedAt        time.Time
+}
+
+type AddRecommendationFeedbackInput struct {
+	SellerAccountID  int64
+	RecommendationID int64
+	Rating           RecommendationFeedbackRating
+	Comment          *string
 }
 
 type NamedCount struct {

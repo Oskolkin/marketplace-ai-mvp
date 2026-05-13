@@ -38,6 +38,7 @@ type serviceRepository interface {
 	CountOpenRecommendationsByPriority(ctx context.Context, sellerAccountID int64) ([]NamedCount, error)
 	CountOpenRecommendationsByConfidence(ctx context.Context, sellerAccountID int64) ([]NamedCount, error)
 	GetLatestRecommendationRun(ctx context.Context, sellerAccountID int64) (*RunInfo, error)
+	CreateFeedback(ctx context.Context, input AddRecommendationFeedbackInput) (*RecommendationFeedback, error)
 }
 
 type Service struct {
@@ -58,24 +59,24 @@ type ServiceConfig struct {
 }
 
 var (
-	openAIKeyRegex        = regexp.MustCompile(`sk-[A-Za-z0-9_-]+`)
-	bearerTokenJSONRegex  = regexp.MustCompile(`(?i)"authorization"\s*:\s*"Bearer [^"]+"`)
-	ErrNotFound           = errors.New("recommendation not found")
+	openAIKeyRegex       = regexp.MustCompile(`sk-[A-Za-z0-9_-]+`)
+	bearerTokenJSONRegex = regexp.MustCompile(`(?i)"authorization"\s*:\s*"Bearer [^"]+"`)
+	ErrNotFound          = errors.New("recommendation not found")
 )
 
 type GenerateForAccountSummary struct {
-	SellerAccountID         int64     `json:"seller_account_id"`
-	AsOfDate                time.Time `json:"as_of_date"`
-	RunID                   int64     `json:"run_id"`
-	GeneratedTotal          int       `json:"generated_total"`
-	ValidTotal              int       `json:"valid_total"`
-	RejectedTotal           int       `json:"rejected_total"`
-	UpsertedTotal           int       `json:"upserted_total"`
-	LinkedAlertsTotal       int       `json:"linked_alerts_total"`
-	WarningsTotal           int       `json:"warnings_total"`
-	InputTokens             int       `json:"input_tokens"`
-	OutputTokens            int       `json:"output_tokens"`
-	TotalTokens             int       `json:"total_tokens"`
+	SellerAccountID   int64     `json:"seller_account_id"`
+	AsOfDate          time.Time `json:"as_of_date"`
+	RunID             int64     `json:"run_id"`
+	GeneratedTotal    int       `json:"generated_total"`
+	ValidTotal        int       `json:"valid_total"`
+	RejectedTotal     int       `json:"rejected_total"`
+	UpsertedTotal     int       `json:"upserted_total"`
+	LinkedAlertsTotal int       `json:"linked_alerts_total"`
+	WarningsTotal     int       `json:"warnings_total"`
+	InputTokens       int       `json:"input_tokens"`
+	OutputTokens      int       `json:"output_tokens"`
+	TotalTokens       int       `json:"total_tokens"`
 }
 
 type ListFilter struct {
@@ -130,21 +131,21 @@ type Summary struct {
 }
 
 type RelatedAlert struct {
-	ID            int64
-	AlertType     string
-	AlertGroup    string
-	EntityType    string
-	EntityID      *string
-	EntitySKU     *int64
-	EntityOfferID *string
-	Title         string
-	Message       string
-	Severity      string
-	Urgency       string
-	Status        string
+	ID              int64
+	AlertType       string
+	AlertGroup      string
+	EntityType      string
+	EntityID        *string
+	EntitySKU       *int64
+	EntityOfferID   *string
+	Title           string
+	Message         string
+	Severity        string
+	Urgency         string
+	Status          string
 	EvidencePayload map[string]any
-	FirstSeenAt   time.Time
-	LastSeenAt    time.Time
+	FirstSeenAt     time.Time
+	LastSeenAt      time.Time
 }
 
 type RecommendationDetail struct {
@@ -161,39 +162,39 @@ type CreateRecommendationRunInput struct {
 }
 
 type CompleteRecommendationRunInput struct {
-	RunID                          int64
-	SellerAccountID                int64
-	InputTokens                    int
-	OutputTokens                   int
-	EstimatedCost                  float64
-	GeneratedRecommendationsCount  int
-	AcceptedRecommendationsCount   int
+	RunID                         int64
+	SellerAccountID               int64
+	InputTokens                   int
+	OutputTokens                  int
+	EstimatedCost                 float64
+	GeneratedRecommendationsCount int
+	AcceptedRecommendationsCount  int
 }
 
 type UpsertRecommendationInput struct {
-	SellerAccountID       int64
-	Source                string
-	RecommendationType    string
-	Horizon               string
-	EntityType            string
-	EntityID              *string
-	EntitySKU             *int64
-	EntityOfferID         *string
-	Title                 string
-	WhatHappened          string
-	WhyItMatters          string
-	RecommendedAction     string
-	ExpectedEffect        *string
-	PriorityScore         float64
-	PriorityLevel         string
-	Urgency               string
-	ConfidenceLevel       string
-	SupportingMetrics     map[string]any
-	Constraints           map[string]any
-	AIModel               string
-	AIPromptVersion       string
-	RawAIResponse         json.RawMessage
-	Fingerprint           string
+	SellerAccountID    int64
+	Source             string
+	RecommendationType string
+	Horizon            string
+	EntityType         string
+	EntityID           *string
+	EntitySKU          *int64
+	EntityOfferID      *string
+	Title              string
+	WhatHappened       string
+	WhyItMatters       string
+	RecommendedAction  string
+	ExpectedEffect     *string
+	PriorityScore      float64
+	PriorityLevel      string
+	Urgency            string
+	ConfidenceLevel    string
+	SupportingMetrics  map[string]any
+	Constraints        map[string]any
+	AIModel            string
+	AIPromptVersion    string
+	RawAIResponse      json.RawMessage
+	Fingerprint        string
 }
 
 func NewService(repo serviceRepository, builder serviceContextBuilder, aiClient AIClient, validator serviceValidator, cfg ServiceConfig) *Service {
@@ -404,6 +405,29 @@ func (s *Service) GetSummary(ctx context.Context, sellerAccountID int64) (Summar
 		ByConfidence: byConfidence,
 		LatestRun:    latestRun,
 	}, nil
+}
+
+func (s *Service) AddFeedback(ctx context.Context, input AddRecommendationFeedbackInput) (*RecommendationFeedback, error) {
+	if input.SellerAccountID <= 0 || input.RecommendationID <= 0 {
+		return nil, ErrNotFound
+	}
+	rating := RecommendationFeedbackRating(strings.TrimSpace(string(input.Rating)))
+	if rating != RecommendationFeedbackPositive && rating != RecommendationFeedbackNegative && rating != RecommendationFeedbackNeutral {
+		return nil, errors.New("invalid feedback rating")
+	}
+	if input.Comment != nil {
+		comment := strings.TrimSpace(*input.Comment)
+		if comment == "" {
+			input.Comment = nil
+		} else {
+			input.Comment = &comment
+		}
+	}
+	input.Rating = rating
+	if _, err := s.repo.GetRecommendationByID(ctx, input.SellerAccountID, input.RecommendationID); err != nil {
+		return nil, err
+	}
+	return s.repo.CreateFeedback(ctx, input)
 }
 
 func recFingerprint(sellerAccountID int64, rec AIRecommendationCandidate) string {

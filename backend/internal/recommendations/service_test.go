@@ -10,20 +10,22 @@ import (
 )
 
 type mockServiceRepo struct {
-	runID int64
-	createErr error
+	runID       int64
+	createErr   error
 	completeErr error
-	failErr error
-	upsertErr error
-	linkErr error
-	created bool
-	completed bool
-	failed bool
-	upserts int
-	deletes int
-	links int
+	failErr     error
+	upsertErr   error
+	linkErr     error
+	created     bool
+	completed   bool
+	failed      bool
+	upserts     int
+	deletes     int
+	links       int
 	lastRunType string
-	lastRaw json.RawMessage
+	lastRaw     json.RawMessage
+	feedback    *RecommendationFeedback
+	feedbackErr error
 }
 
 func (m *mockServiceRepo) CreateRun(ctx context.Context, input CreateRecommendationRunInput) (int64, error) {
@@ -77,7 +79,7 @@ func (m *mockServiceRepo) GetRecommendationByID(ctx context.Context, sellerAccou
 	return Recommendation{ID: recommendationID, Title: "rec"}, nil
 }
 func (m *mockServiceRepo) ListAlertsByRecommendationID(ctx context.Context, sellerAccountID int64, recommendationID int64) ([]RelatedAlert, error) {
-	return []RelatedAlert{{ID: 1, AlertType: "stock_oos_risk", EvidencePayload: map[string]any{"k":"v"}}}, nil
+	return []RelatedAlert{{ID: 1, AlertType: "stock_oos_risk", EvidencePayload: map[string]any{"k": "v"}}}, nil
 }
 func (m *mockServiceRepo) AcceptRecommendation(ctx context.Context, sellerAccountID int64, recommendationID int64) (Recommendation, error) {
 	return Recommendation{}, nil
@@ -100,13 +102,32 @@ func (m *mockServiceRepo) CountOpenRecommendationsByConfidence(ctx context.Conte
 func (m *mockServiceRepo) GetLatestRecommendationRun(ctx context.Context, sellerAccountID int64) (*RunInfo, error) {
 	return nil, nil
 }
+func (m *mockServiceRepo) CreateFeedback(ctx context.Context, input AddRecommendationFeedbackInput) (*RecommendationFeedback, error) {
+	if m.feedbackErr != nil {
+		return nil, m.feedbackErr
+	}
+	if m.feedback != nil {
+		return m.feedback, nil
+	}
+	return &RecommendationFeedback{
+		ID:               1,
+		RecommendationID: input.RecommendationID,
+		SellerAccountID:  input.SellerAccountID,
+		Rating:           input.Rating,
+		Comment:          input.Comment,
+		CreatedAt:        time.Now().UTC(),
+	}, nil
+}
 
 type mockBuilder struct {
 	ctx *AIRecommendationContext
 	err error
 }
+
 func (m mockBuilder) BuildForAccount(ctx context.Context, sellerAccountID int64, asOfDate time.Time) (*AIRecommendationContext, error) {
-	if m.err != nil { return nil, m.err }
+	if m.err != nil {
+		return nil, m.err
+	}
 	return m.ctx, nil
 }
 
@@ -114,8 +135,11 @@ type mockAIClient struct {
 	out *GenerateRecommendationsOutput
 	err error
 }
+
 func (m mockAIClient) GenerateRecommendations(ctx context.Context, input GenerateRecommendationsInput) (*GenerateRecommendationsOutput, error) {
-	if m.err != nil { return nil, m.err }
+	if m.err != nil {
+		return nil, m.err
+	}
 	return m.out, nil
 }
 
@@ -123,8 +147,11 @@ type mockValidator struct {
 	res *ValidationResult
 	err error
 }
+
 func (m mockValidator) Validate(output *GenerateRecommendationsOutput, ctx *AIRecommendationContext) (*ValidationResult, error) {
-	if m.err != nil { return nil, m.err }
+	if m.err != nil {
+		return nil, m.err
+	}
 	return m.res, nil
 }
 
@@ -143,30 +170,30 @@ func TestServiceGenerateForAccount_Success(t *testing.T) {
 			{
 				Recommendation: AIRecommendationCandidate{
 					RecommendationType: "replenish_sku",
-					Horizon: "short_term",
-					EntityType: "sku",
-					Title: "restock",
-					WhatHappened: "w",
-					WhyItMatters: "y",
-					RecommendedAction: "a",
-					PriorityScore: 50,
-					PriorityLevel: "high",
-					Urgency: "high",
-					ConfidenceLevel: "high",
-					SupportingMetrics: map[string]any{"x":1},
-					Constraints: map[string]any{"stock_checked":true},
+					Horizon:            "short_term",
+					EntityType:         "sku",
+					Title:              "restock",
+					WhatHappened:       "w",
+					WhyItMatters:       "y",
+					RecommendedAction:  "a",
+					PriorityScore:      50,
+					PriorityLevel:      "high",
+					Urgency:            "high",
+					ConfidenceLevel:    "high",
+					SupportingMetrics:  map[string]any{"x": 1},
+					Constraints:        map[string]any{"stock_checked": true},
 					SupportingAlertIDs: []int64{10},
 				},
-				Warnings: []string{"warn"},
+				Warnings:             []string{"warn"},
 				FinalConfidenceLevel: "medium",
 			},
 		},
-		RejectedRecommendations: []RejectedRecommendation{{Index:1,Reason:"bad"}},
+		RejectedRecommendations: []RejectedRecommendation{{Index: 1, Reason: "bad"}},
 	}}
 	svc := NewService(repo, builder, client, validator, ServiceConfig{
 		Model: "gpt-5.4", PromptVersion: "v1",
 	})
-	sum, err := svc.GenerateForAccount(context.Background(), 77, time.Date(2026,4,30,12,0,0,0,time.UTC))
+	sum, err := svc.GenerateForAccount(context.Background(), 77, time.Date(2026, 4, 30, 12, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatalf("GenerateForAccount returned error: %v", err)
 	}
@@ -232,8 +259,8 @@ func TestServiceGenerateForAccount_FailRunOnValidatorError(t *testing.T) {
 func TestServiceGenerateForAccount_AllRejected(t *testing.T) {
 	repo := &mockServiceRepo{}
 	svc := NewService(repo, mockBuilder{ctx: &AIRecommendationContext{}}, mockAIClient{out: &GenerateRecommendationsOutput{}}, mockValidator{res: &ValidationResult{
-		TotalRecommendations: 2,
-		RejectedRecommendations: []RejectedRecommendation{{Index:0,Reason:"x"},{Index:1,Reason:"y"}},
+		TotalRecommendations:    2,
+		RejectedRecommendations: []RejectedRecommendation{{Index: 0, Reason: "x"}, {Index: 1, Reason: "y"}},
 	}}, ServiceConfig{})
 	sum, err := svc.GenerateForAccount(context.Background(), 1, time.Now().UTC())
 	if err != nil {
@@ -250,18 +277,18 @@ func TestServiceGenerateForAccount_FailRunOnDBSaveError(t *testing.T) {
 		TotalRecommendations: 1,
 		ValidRecommendations: []ValidatedRecommendation{{Recommendation: AIRecommendationCandidate{
 			RecommendationType: "replenish_sku",
-			Horizon: "short_term",
-			EntityType: "sku",
-			Title: "t",
-			WhatHappened: "w",
-			WhyItMatters: "y",
-			RecommendedAction: "a",
-			PriorityScore: 10,
-			PriorityLevel: "low",
-			Urgency: "low",
-			ConfidenceLevel: "low",
-			SupportingMetrics: map[string]any{"x":1},
-			Constraints: map[string]any{"stock_checked":true},
+			Horizon:            "short_term",
+			EntityType:         "sku",
+			Title:              "t",
+			WhatHappened:       "w",
+			WhyItMatters:       "y",
+			RecommendedAction:  "a",
+			PriorityScore:      10,
+			PriorityLevel:      "low",
+			Urgency:            "low",
+			ConfidenceLevel:    "low",
+			SupportingMetrics:  map[string]any{"x": 1},
+			Constraints:        map[string]any{"stock_checked": true},
 		}}},
 	}}, ServiceConfig{})
 	_, err := svc.GenerateForAccount(context.Background(), 1, time.Now().UTC())
@@ -277,18 +304,18 @@ func TestServiceGenerateForAccount_SanitizesRawAIResponse(t *testing.T) {
 	}}, mockValidator{res: &ValidationResult{
 		ValidRecommendations: []ValidatedRecommendation{{Recommendation: AIRecommendationCandidate{
 			RecommendationType: "replenish_sku",
-			Horizon: "short_term",
-			EntityType: "sku",
-			Title: "t",
-			WhatHappened: "w",
-			WhyItMatters: "y",
-			RecommendedAction: "a",
-			PriorityScore: 10,
-			PriorityLevel: "low",
-			Urgency: "low",
-			ConfidenceLevel: "low",
-			SupportingMetrics: map[string]any{"x":1},
-			Constraints: map[string]any{"stock_checked":true},
+			Horizon:            "short_term",
+			EntityType:         "sku",
+			Title:              "t",
+			WhatHappened:       "w",
+			WhyItMatters:       "y",
+			RecommendedAction:  "a",
+			PriorityScore:      10,
+			PriorityLevel:      "low",
+			Urgency:            "low",
+			ConfidenceLevel:    "low",
+			SupportingMetrics:  map[string]any{"x": 1},
+			Constraints:        map[string]any{"stock_checked": true},
 		}}},
 	}}, ServiceConfig{})
 	_, err := svc.GenerateForAccount(context.Background(), 1, time.Now().UTC())
@@ -313,5 +340,46 @@ func TestServiceGetRecommendationDetailByID_IncludesRelatedAlerts(t *testing.T) 
 	}
 	if len(detail.RelatedAlerts) != 1 || detail.RelatedAlerts[0].ID != 1 {
 		t.Fatalf("expected related alerts in detail response")
+	}
+}
+
+func TestServiceAddFeedback(t *testing.T) {
+	repo := &mockServiceRepo{}
+	svc := NewService(repo, mockBuilder{}, mockAIClient{}, mockValidator{}, ServiceConfig{})
+	comment := " useful "
+	item, err := svc.AddFeedback(context.Background(), AddRecommendationFeedbackInput{
+		SellerAccountID:  1,
+		RecommendationID: 2,
+		Rating:           RecommendationFeedbackPositive,
+		Comment:          &comment,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if item.Rating != RecommendationFeedbackPositive {
+		t.Fatalf("unexpected rating: %s", item.Rating)
+	}
+	if item.Comment == nil || *item.Comment != "useful" {
+		t.Fatalf("unexpected comment: %+v", item.Comment)
+	}
+}
+
+func TestServiceAddFeedbackValidation(t *testing.T) {
+	repo := &mockServiceRepo{}
+	svc := NewService(repo, mockBuilder{}, mockAIClient{}, mockValidator{}, ServiceConfig{})
+	if _, err := svc.AddFeedback(context.Background(), AddRecommendationFeedbackInput{
+		SellerAccountID:  1,
+		RecommendationID: 2,
+		Rating:           "bad",
+	}); err == nil {
+		t.Fatalf("expected validation error")
+	}
+	repo.feedbackErr = errors.New("x")
+	if _, err := svc.AddFeedback(context.Background(), AddRecommendationFeedbackInput{
+		SellerAccountID:  1,
+		RecommendationID: 2,
+		Rating:           RecommendationFeedbackPositive,
+	}); err == nil {
+		t.Fatalf("expected repo error")
 	}
 }

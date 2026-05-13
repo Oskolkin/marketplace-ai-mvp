@@ -24,55 +24,55 @@ func NewRecommendationsHandler(service *recommendations.Service) *Recommendation
 }
 
 type recommendationResponse struct {
-	ID                     int64          `json:"id"`
-	Source                 string         `json:"source"`
-	RecommendationType     string         `json:"recommendation_type"`
-	Horizon                string         `json:"horizon"`
-	EntityType             string         `json:"entity_type"`
-	EntityID               *string        `json:"entity_id"`
-	EntitySKU              *int64         `json:"entity_sku"`
-	EntityOfferID          *string        `json:"entity_offer_id"`
-	Title                  string         `json:"title"`
-	WhatHappened           string         `json:"what_happened"`
-	WhyItMatters           string         `json:"why_it_matters"`
-	RecommendedAction      string         `json:"recommended_action"`
-	ExpectedEffect         *string        `json:"expected_effect"`
-	PriorityScore          float64        `json:"priority_score"`
-	PriorityLevel          string         `json:"priority_level"`
-	Urgency                string         `json:"urgency"`
-	ConfidenceLevel        string         `json:"confidence_level"`
-	Status                 string         `json:"status"`
-	SupportingMetricsPayload map[string]any `json:"supporting_metrics_payload"`
-	ConstraintsPayload     map[string]any `json:"constraints_payload"`
-	AIModel                *string        `json:"ai_model"`
-	AIPromptVersion        *string        `json:"ai_prompt_version"`
-	RawAIResponse          map[string]any `json:"raw_ai_response,omitempty"`
-	FirstSeenAt            string         `json:"first_seen_at"`
-	LastSeenAt             string         `json:"last_seen_at"`
-	AcceptedAt             *string        `json:"accepted_at"`
-	DismissedAt            *string        `json:"dismissed_at"`
-	ResolvedAt             *string        `json:"resolved_at"`
-	CreatedAt              string         `json:"created_at"`
-	UpdatedAt              string         `json:"updated_at"`
-	RelatedAlerts          []relatedAlertResponse `json:"related_alerts,omitempty"`
+	ID                       int64                  `json:"id"`
+	Source                   string                 `json:"source"`
+	RecommendationType       string                 `json:"recommendation_type"`
+	Horizon                  string                 `json:"horizon"`
+	EntityType               string                 `json:"entity_type"`
+	EntityID                 *string                `json:"entity_id"`
+	EntitySKU                *int64                 `json:"entity_sku"`
+	EntityOfferID            *string                `json:"entity_offer_id"`
+	Title                    string                 `json:"title"`
+	WhatHappened             string                 `json:"what_happened"`
+	WhyItMatters             string                 `json:"why_it_matters"`
+	RecommendedAction        string                 `json:"recommended_action"`
+	ExpectedEffect           *string                `json:"expected_effect"`
+	PriorityScore            float64                `json:"priority_score"`
+	PriorityLevel            string                 `json:"priority_level"`
+	Urgency                  string                 `json:"urgency"`
+	ConfidenceLevel          string                 `json:"confidence_level"`
+	Status                   string                 `json:"status"`
+	SupportingMetricsPayload map[string]any         `json:"supporting_metrics_payload"`
+	ConstraintsPayload       map[string]any         `json:"constraints_payload"`
+	AIModel                  *string                `json:"ai_model"`
+	AIPromptVersion          *string                `json:"ai_prompt_version"`
+	RawAIResponse            map[string]any         `json:"raw_ai_response,omitempty"`
+	FirstSeenAt              string                 `json:"first_seen_at"`
+	LastSeenAt               string                 `json:"last_seen_at"`
+	AcceptedAt               *string                `json:"accepted_at"`
+	DismissedAt              *string                `json:"dismissed_at"`
+	ResolvedAt               *string                `json:"resolved_at"`
+	CreatedAt                string                 `json:"created_at"`
+	UpdatedAt                string                 `json:"updated_at"`
+	RelatedAlerts            []relatedAlertResponse `json:"related_alerts,omitempty"`
 }
 
 type relatedAlertResponse struct {
-	ID            int64                  `json:"id"`
-	AlertType     string                 `json:"alert_type"`
-	AlertGroup    string                 `json:"alert_group"`
-	EntityType    string                 `json:"entity_type"`
-	EntityID      *string                `json:"entity_id"`
-	EntitySKU     *int64                 `json:"entity_sku"`
-	EntityOfferID *string                `json:"entity_offer_id"`
-	Title         string                 `json:"title"`
-	Message       string                 `json:"message"`
-	Severity      string                 `json:"severity"`
-	Urgency       string                 `json:"urgency"`
-	Status        string                 `json:"status"`
-	EvidencePayload map[string]any       `json:"evidence_payload"`
-	FirstSeenAt   string                 `json:"first_seen_at"`
-	LastSeenAt    string                 `json:"last_seen_at"`
+	ID              int64          `json:"id"`
+	AlertType       string         `json:"alert_type"`
+	AlertGroup      string         `json:"alert_group"`
+	EntityType      string         `json:"entity_type"`
+	EntityID        *string        `json:"entity_id"`
+	EntitySKU       *int64         `json:"entity_sku"`
+	EntityOfferID   *string        `json:"entity_offer_id"`
+	Title           string         `json:"title"`
+	Message         string         `json:"message"`
+	Severity        string         `json:"severity"`
+	Urgency         string         `json:"urgency"`
+	Status          string         `json:"status"`
+	EvidencePayload map[string]any `json:"evidence_payload"`
+	FirstSeenAt     string         `json:"first_seen_at"`
+	LastSeenAt      string         `json:"last_seen_at"`
 }
 
 type generateRecommendationsRequest struct {
@@ -81,7 +81,7 @@ type generateRecommendationsRequest struct {
 }
 
 type recommendationsSummaryResponse struct {
-	OpenTotal   int64 `json:"open_total"`
+	OpenTotal  int64 `json:"open_total"`
 	ByPriority struct {
 		Low      int64 `json:"low"`
 		Medium   int64 `json:"medium"`
@@ -96,21 +96,34 @@ type recommendationsSummaryResponse struct {
 	LatestRun *recommendationLatestRunResponse `json:"latest_run"`
 }
 
+type addRecommendationFeedbackRequest struct {
+	Rating  string  `json:"rating"`
+	Comment *string `json:"comment"`
+}
+
+type recommendationFeedbackResponse struct {
+	ID               int64   `json:"id"`
+	RecommendationID int64   `json:"recommendation_id"`
+	Rating           string  `json:"rating"`
+	Comment          *string `json:"comment"`
+	CreatedAt        string  `json:"created_at"`
+}
+
 type recommendationLatestRunResponse struct {
-	ID                              int64   `json:"id"`
-	RunType                         string  `json:"run_type"`
-	Status                          string  `json:"status"`
-	StartedAt                       string  `json:"started_at"`
-	FinishedAt                      *string `json:"finished_at"`
-	AsOfDate                        *string `json:"as_of_date"`
-	AIModel                         *string `json:"ai_model"`
-	AIPromptVersion                 *string `json:"ai_prompt_version"`
-	InputTokens                     int64   `json:"input_tokens"`
-	OutputTokens                    int64   `json:"output_tokens"`
-	TotalTokens                     int64   `json:"total_tokens"`
-	EstimatedCost                   float64 `json:"estimated_cost"`
-	GeneratedRecommendationsCount   int64   `json:"generated_recommendations_count"`
-	ErrorMessage                    *string `json:"error_message"`
+	ID                            int64   `json:"id"`
+	RunType                       string  `json:"run_type"`
+	Status                        string  `json:"status"`
+	StartedAt                     string  `json:"started_at"`
+	FinishedAt                    *string `json:"finished_at"`
+	AsOfDate                      *string `json:"as_of_date"`
+	AIModel                       *string `json:"ai_model"`
+	AIPromptVersion               *string `json:"ai_prompt_version"`
+	InputTokens                   int64   `json:"input_tokens"`
+	OutputTokens                  int64   `json:"output_tokens"`
+	TotalTokens                   int64   `json:"total_tokens"`
+	EstimatedCost                 float64 `json:"estimated_cost"`
+	GeneratedRecommendationsCount int64   `json:"generated_recommendations_count"`
+	ErrorMessage                  *string `json:"error_message"`
 }
 
 func (h *RecommendationsHandler) ListRecommendations(w http.ResponseWriter, r *http.Request) {
@@ -270,6 +283,48 @@ func (h *RecommendationsHandler) ResolveRecommendation(w http.ResponseWriter, r 
 	h.handleAction(w, r, "resolve")
 }
 
+func (h *RecommendationsHandler) AddFeedback(w http.ResponseWriter, r *http.Request) {
+	sellerAccount, ok := auth.SellerAccountFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id, err := parseRecommendationID(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid recommendation id")
+		return
+	}
+	var req addRecommendationFeedbackRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	item, err := h.service.AddFeedback(r.Context(), recommendations.AddRecommendationFeedbackInput{
+		SellerAccountID:  sellerAccount.ID,
+		RecommendationID: id,
+		Rating:           recommendations.RecommendationFeedbackRating(strings.TrimSpace(req.Rating)),
+		Comment:          req.Comment,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			writeJSONError(w, http.StatusNotFound, "recommendation not found")
+		case strings.Contains(err.Error(), "invalid feedback rating"):
+			writeJSONError(w, http.StatusBadRequest, "invalid rating")
+		default:
+			writeJSONError(w, http.StatusInternalServerError, "failed to add recommendation feedback")
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, recommendationFeedbackResponse{
+		ID:               item.ID,
+		RecommendationID: item.RecommendationID,
+		Rating:           string(item.Rating),
+		Comment:          item.Comment,
+		CreatedAt:        item.CreatedAt.UTC().Format(time.RFC3339),
+	})
+}
+
 func (h *RecommendationsHandler) handleAction(w http.ResponseWriter, r *http.Request, action string) {
 	sellerAccount, ok := auth.SellerAccountFromContext(r.Context())
 	if !ok {
@@ -348,35 +403,35 @@ func parseRecommendationID(r *http.Request) (int64, error) {
 
 func mapRecommendationResponse(item recommendations.Recommendation, includeRaw bool) recommendationResponse {
 	resp := recommendationResponse{
-		ID:                      item.ID,
-		Source:                  item.Source,
-		RecommendationType:      item.RecommendationType,
-		Horizon:                 item.Horizon,
-		EntityType:              item.EntityType,
-		EntityID:                item.EntityID,
-		EntitySKU:               item.EntitySKU,
-		EntityOfferID:           item.EntityOfferID,
-		Title:                   item.Title,
-		WhatHappened:            item.WhatHappened,
-		WhyItMatters:            item.WhyItMatters,
-		RecommendedAction:       item.RecommendedAction,
-		ExpectedEffect:          item.ExpectedEffect,
-		PriorityScore:           item.PriorityScore,
-		PriorityLevel:           item.PriorityLevel,
-		Urgency:                 item.Urgency,
-		ConfidenceLevel:         item.ConfidenceLevel,
-		Status:                  item.Status,
+		ID:                       item.ID,
+		Source:                   item.Source,
+		RecommendationType:       item.RecommendationType,
+		Horizon:                  item.Horizon,
+		EntityType:               item.EntityType,
+		EntityID:                 item.EntityID,
+		EntitySKU:                item.EntitySKU,
+		EntityOfferID:            item.EntityOfferID,
+		Title:                    item.Title,
+		WhatHappened:             item.WhatHappened,
+		WhyItMatters:             item.WhyItMatters,
+		RecommendedAction:        item.RecommendedAction,
+		ExpectedEffect:           item.ExpectedEffect,
+		PriorityScore:            item.PriorityScore,
+		PriorityLevel:            item.PriorityLevel,
+		Urgency:                  item.Urgency,
+		ConfidenceLevel:          item.ConfidenceLevel,
+		Status:                   item.Status,
 		SupportingMetricsPayload: item.SupportingMetrics,
-		ConstraintsPayload:      item.Constraints,
-		AIModel:                 item.AIModel,
-		AIPromptVersion:         item.AIPromptVersion,
-		FirstSeenAt:             item.FirstSeenAt.UTC().Format(time.RFC3339),
-		LastSeenAt:              item.LastSeenAt.UTC().Format(time.RFC3339),
-		AcceptedAt:              timePtrRFC3339(item.AcceptedAt),
-		DismissedAt:             timePtrRFC3339(item.DismissedAt),
-		ResolvedAt:              timePtrRFC3339(item.ResolvedAt),
-		CreatedAt:               item.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:               item.UpdatedAt.UTC().Format(time.RFC3339),
+		ConstraintsPayload:       item.Constraints,
+		AIModel:                  item.AIModel,
+		AIPromptVersion:          item.AIPromptVersion,
+		FirstSeenAt:              item.FirstSeenAt.UTC().Format(time.RFC3339),
+		LastSeenAt:               item.LastSeenAt.UTC().Format(time.RFC3339),
+		AcceptedAt:               timePtrRFC3339(item.AcceptedAt),
+		DismissedAt:              timePtrRFC3339(item.DismissedAt),
+		ResolvedAt:               timePtrRFC3339(item.ResolvedAt),
+		CreatedAt:                item.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:                item.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	if includeRaw {
 		resp.RawAIResponse = item.RawAIResponse

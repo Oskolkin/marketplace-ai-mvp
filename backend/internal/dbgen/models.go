@@ -52,6 +52,22 @@ type AdMetricsDaily struct {
 	UpdatedAt          pgtype.Timestamptz
 }
 
+type AdminActionLog struct {
+	ID              int64
+	AdminUserID     pgtype.Int8
+	AdminEmail      string
+	SellerAccountID int64
+	ActionType      string
+	TargetType      pgtype.Text
+	TargetID        pgtype.Int8
+	RequestPayload  []byte
+	ResultPayload   []byte
+	Status          string
+	ErrorMessage    pgtype.Text
+	CreatedAt       pgtype.Timestamptz
+	FinishedAt      pgtype.Timestamptz
+}
+
 type Alert struct {
 	ID              int64
 	SellerAccountID int64
@@ -320,6 +336,15 @@ type RecommendationAlertLink struct {
 	CreatedAt        pgtype.Timestamptz
 }
 
+type RecommendationFeedback struct {
+	ID               int64
+	RecommendationID int64
+	SellerAccountID  int64
+	Rating           string
+	Comment          pgtype.Text
+	CreatedAt        pgtype.Timestamptz
+}
+
 type RecommendationRun struct {
 	ID                            int64
 	SellerAccountID               int64
@@ -337,6 +362,25 @@ type RecommendationRun struct {
 	StartedAt                     pgtype.Timestamptz
 	FinishedAt                    pgtype.Timestamptz
 	CreatedAt                     pgtype.Timestamptz
+}
+
+type RecommendationRunDiagnostic struct {
+	ID                      int64
+	RecommendationRunID     pgtype.Int8
+	SellerAccountID         int64
+	OpenaiRequestID         pgtype.Text
+	AiModel                 pgtype.Text
+	PromptVersion           pgtype.Text
+	ContextPayloadSummary   []byte
+	RawOpenaiResponse       []byte
+	ValidationResultPayload []byte
+	RejectedItemsPayload    []byte
+	ErrorStage              pgtype.Text
+	ErrorMessage            pgtype.Text
+	InputTokens             int64
+	OutputTokens            int64
+	EstimatedCost           pgtype.Numeric
+	CreatedAt               pgtype.Timestamptz
 }
 
 type Sale struct {
@@ -361,6 +405,22 @@ type SellerAccount struct {
 	Status    string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+}
+
+type SellerBillingState struct {
+	ID                   int64
+	SellerAccountID      int64
+	PlanCode             string
+	Status               string
+	TrialEndsAt          pgtype.Timestamptz
+	CurrentPeriodStart   pgtype.Timestamptz
+	CurrentPeriodEnd     pgtype.Timestamptz
+	AiTokensLimitMonth   pgtype.Int8
+	AiTokensUsedMonth    int64
+	EstimatedAiCostMonth pgtype.Numeric
+	Notes                pgtype.Text
+	CreatedAt            pgtype.Timestamptz
+	UpdatedAt            pgtype.Timestamptz
 }
 
 type Session struct {

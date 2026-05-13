@@ -179,15 +179,15 @@ func (r *SQLCRepository) ListSKUEffectiveConstraintsBySellerAccountID(ctx contex
 	out := make([]EffectiveConstraint, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, EffectiveConstraint{
-			OzonProductID:      row.OzonProductID,
-			SKU:                int8Ptr(row.Sku),
-			OfferID:            textPtr(row.OfferID),
-			RuleID:             row.RuleID,
-			ResolvedFrom:       row.ResolvedFromScopeType,
-			EffectiveMinPrice:  numericFloat64Ptr(row.EffectiveMinPrice),
-			EffectiveMaxPrice:  numericFloat64Ptr(row.EffectiveMaxPrice),
-			ReferencePrice:     numericFloat64Ptr(row.ReferencePrice),
-			ImpliedCost:        numericFloat64Ptr(row.ImpliedCost),
+			OzonProductID:     row.OzonProductID,
+			SKU:               int8Ptr(row.Sku),
+			OfferID:           textPtr(row.OfferID),
+			RuleID:            row.RuleID,
+			ResolvedFrom:      row.ResolvedFromScopeType,
+			EffectiveMinPrice: numericFloat64Ptr(row.EffectiveMinPrice),
+			EffectiveMaxPrice: numericFloat64Ptr(row.EffectiveMaxPrice),
+			ReferencePrice:    numericFloat64Ptr(row.ReferencePrice),
+			ImpliedCost:       numericFloat64Ptr(row.ImpliedCost),
 		})
 	}
 	return out, nil
@@ -586,6 +586,27 @@ func (r *SQLCRepository) ResolveRecommendation(ctx context.Context, sellerAccoun
 		return Recommendation{}, fmt.Errorf("resolve recommendation id=%d: %w", recommendationID, err)
 	}
 	return mapRecommendation(row)
+}
+
+func (r *SQLCRepository) CreateFeedback(ctx context.Context, input AddRecommendationFeedbackInput) (*RecommendationFeedback, error) {
+	row, err := r.queries.CreateRecommendationFeedback(ctx, dbgen.CreateRecommendationFeedbackParams{
+		RecommendationID: input.RecommendationID,
+		SellerAccountID:  input.SellerAccountID,
+		Rating:           string(input.Rating),
+		Comment:          nullableTextPtr(input.Comment),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create recommendation feedback: %w", err)
+	}
+	item := RecommendationFeedback{
+		ID:               row.ID,
+		RecommendationID: row.RecommendationID,
+		SellerAccountID:  row.SellerAccountID,
+		Rating:           RecommendationFeedbackRating(row.Rating),
+		Comment:          textPtr(row.Comment),
+		CreatedAt:        timestamptz(row.CreatedAt),
+	}
+	return &item, nil
 }
 
 func nullableText(v string) pgtype.Text {

@@ -95,6 +95,37 @@ func (s *SyncCursorService) AdvanceCursor(
 	return row, nil
 }
 
+func (s *SyncCursorService) ResetCursor(
+	ctx context.Context,
+	sellerAccountID int64,
+	domain string,
+	cursorType string,
+	cursorValue *string,
+) (dbgen.SyncCursor, error) {
+	if domain == "" {
+		return dbgen.SyncCursor{}, fmt.Errorf("domain is required")
+	}
+	if cursorType == "" {
+		return dbgen.SyncCursor{}, fmt.Errorf("cursor_type is required")
+	}
+
+	value := pgtype.Text{Valid: false}
+	if cursorValue != nil && *cursorValue != "" {
+		value = pgtype.Text{String: *cursorValue, Valid: true}
+	}
+
+	row, err := s.queries.UpsertSyncCursor(ctx, dbgen.UpsertSyncCursorParams{
+		SellerAccountID: sellerAccountID,
+		Domain:          domain,
+		CursorType:      cursorType,
+		CursorValue:     value,
+	})
+	if err != nil {
+		return dbgen.SyncCursor{}, fmt.Errorf("reset sync cursor: %w", err)
+	}
+	return row, nil
+}
+
 func nullableCursorText(v string) pgtype.Text {
 	if v == "" {
 		return pgtype.Text{Valid: false}
