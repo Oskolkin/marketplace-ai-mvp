@@ -19,8 +19,6 @@ export default function AdminScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    setAdminReady("loading");
-    setError(null);
     void getAdminMe()
       .then(() => {
         if (!cancelled) setAdminReady("allowed");
@@ -41,8 +39,12 @@ export default function AdminScreen() {
 
   useEffect(() => {
     if (adminReady !== "allowed") return;
-    setLoading(true);
-    setError(null);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setLoading(true);
+      setError(null);
+    });
     void getAdminClients({
       search: search || undefined,
       status: sellerStatus || undefined,
@@ -53,6 +55,9 @@ export default function AdminScreen() {
       .then((res) => setItems(res.items ?? []))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load clients"))
       .finally(() => setLoading(false));
+    return () => {
+      cancelled = true;
+    };
   }, [adminReady, search, sellerStatus, connectionStatus, offset]);
 
   const visibleItems = useMemo(() => {

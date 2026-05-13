@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/auth"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/chat"
+	"github.com/getsentry/sentry-go"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -130,6 +132,16 @@ func (h *ChatHandler) Ask(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, chat.ErrQuestionRequired) {
 			writeJSONError(w, http.StatusBadRequest, "question is required")
+			return
+		}
+		if errors.Is(err, chat.ErrAITemporarilyUnavailable) {
+			slog.Error("chat ask openai unavailable", "err", err)
+			sentry.CaptureException(err)
+			writeJSONError(w, http.StatusServiceUnavailable, "AI temporarily unavailable, try again later")
+			return
+		}
+		if errors.Is(err, chat.ErrOpenAIRequestTooLarge) {
+			writeJSONError(w, http.StatusBadRequest, "request too large for AI context budget")
 			return
 		}
 		writeJSONError(w, http.StatusInternalServerError, "failed to process chat ask")

@@ -30,10 +30,10 @@ type fakeAdminService struct {
 	rerunAlertsFn                func(ctx context.Context, actor admin.AdminActor, input admin.RerunAlertsInput) (*admin.AdminActionLog, error)
 	rerunRecommendationsFn       func(ctx context.Context, actor admin.AdminActor, input admin.RerunRecommendationsInput) (*admin.AdminActionLog, error)
 	getAIRecommendationLogsFn    func(ctx context.Context, sellerAccountID int64, filter admin.RecommendationRunLogFilter) (*admin.RecommendationRunLogListResult, error)
-	getRecommendationRunDetailFn func(ctx context.Context, sellerAccountID, runID int64) (*admin.RecommendationRunDetail, error)
-	getRecommendationRawAIFn     func(ctx context.Context, sellerAccountID, recommendationID int64) (*admin.RecommendationRawAI, error)
+	getRecommendationRunDetailFn func(ctx context.Context, actor admin.AdminActor, sellerAccountID, runID int64) (*admin.RecommendationRunDetail, error)
+	getRecommendationRawAIFn     func(ctx context.Context, actor admin.AdminActor, sellerAccountID, recommendationID int64) (*admin.RecommendationRawAI, error)
 	getAIChatLogsFn              func(ctx context.Context, sellerAccountID int64, filter admin.ChatTraceFilter) (*admin.ChatTraceListResult, error)
-	getChatTraceDetailFn         func(ctx context.Context, sellerAccountID, traceID int64) (*admin.ChatTraceDetail, error)
+	getChatTraceDetailFn         func(ctx context.Context, actor admin.AdminActor, sellerAccountID, traceID int64) (*admin.ChatTraceDetail, error)
 	listChatSessionsFn           func(ctx context.Context, sellerAccountID int64, filter admin.ChatSessionFilter) (*admin.ChatSessionListResult, error)
 	listChatMessagesFn           func(ctx context.Context, sellerAccountID, sessionID int64, filter admin.ChatMessageFilter) (*admin.ChatMessageListResult, error)
 	listChatFeedbackFn           func(ctx context.Context, filter admin.ChatFeedbackFilter) (*admin.ChatFeedbackListResult, error)
@@ -79,17 +79,17 @@ func (f *fakeAdminService) RerunRecommendations(ctx context.Context, actor admin
 func (f *fakeAdminService) GetAIRecommendationLogs(ctx context.Context, sellerAccountID int64, filter admin.RecommendationRunLogFilter) (*admin.RecommendationRunLogListResult, error) {
 	return f.getAIRecommendationLogsFn(ctx, sellerAccountID, filter)
 }
-func (f *fakeAdminService) GetRecommendationRunDetail(ctx context.Context, sellerAccountID, runID int64) (*admin.RecommendationRunDetail, error) {
-	return f.getRecommendationRunDetailFn(ctx, sellerAccountID, runID)
+func (f *fakeAdminService) GetRecommendationRunDetail(ctx context.Context, actor admin.AdminActor, sellerAccountID, runID int64) (*admin.RecommendationRunDetail, error) {
+	return f.getRecommendationRunDetailFn(ctx, actor, sellerAccountID, runID)
 }
-func (f *fakeAdminService) GetRecommendationRawAI(ctx context.Context, sellerAccountID, recommendationID int64) (*admin.RecommendationRawAI, error) {
-	return f.getRecommendationRawAIFn(ctx, sellerAccountID, recommendationID)
+func (f *fakeAdminService) GetRecommendationRawAI(ctx context.Context, actor admin.AdminActor, sellerAccountID, recommendationID int64) (*admin.RecommendationRawAI, error) {
+	return f.getRecommendationRawAIFn(ctx, actor, sellerAccountID, recommendationID)
 }
 func (f *fakeAdminService) GetAIChatLogs(ctx context.Context, sellerAccountID int64, filter admin.ChatTraceFilter) (*admin.ChatTraceListResult, error) {
 	return f.getAIChatLogsFn(ctx, sellerAccountID, filter)
 }
-func (f *fakeAdminService) GetChatTraceDetail(ctx context.Context, sellerAccountID, traceID int64) (*admin.ChatTraceDetail, error) {
-	return f.getChatTraceDetailFn(ctx, sellerAccountID, traceID)
+func (f *fakeAdminService) GetChatTraceDetail(ctx context.Context, actor admin.AdminActor, sellerAccountID, traceID int64) (*admin.ChatTraceDetail, error) {
+	return f.getChatTraceDetailFn(ctx, actor, sellerAccountID, traceID)
 }
 func (f *fakeAdminService) ListChatSessions(ctx context.Context, sellerAccountID int64, filter admin.ChatSessionFilter) (*admin.ChatSessionListResult, error) {
 	return f.listChatSessionsFn(ctx, sellerAccountID, filter)
@@ -440,6 +440,11 @@ func withChiURLParam(r *http.Request, key, value string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 }
 
+func withAdminUser(req *http.Request) *http.Request {
+	ctx := auth.WithAuthContext(req.Context(), dbgen.User{ID: 99, Email: "admin@example.com"}, dbgen.SellerAccount{})
+	return req.WithContext(ctx)
+}
+
 func TestAdminHandlerActions(t *testing.T) {
 	adminCtx := func(req *http.Request) *http.Request {
 		ctx := auth.WithAuthContext(req.Context(), dbgen.User{ID: 99, Email: "admin@example.com"}, dbgen.SellerAccount{})
@@ -479,6 +484,20 @@ func TestAdminHandlerActions(t *testing.T) {
 			return nil, nil
 		}})
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/clients/1/actions/rerun-metrics", strings.NewReader(`{"date_from":"bad","date_to":"2026-04-30"}`))
+		req = adminCtx(withChiURLParam(req, "seller_account_id", "1"))
+		rr := httptest.NewRecorder()
+		h.RerunMetrics(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+	})
+
+	t.Run("rerun-metrics partial date range rejected", func(t *testing.T) {
+		h := NewAdminHandler(&fakeAdminService{rerunMetricsFn: func(ctx context.Context, actor admin.AdminActor, input admin.RerunMetricsInput) (*admin.AdminActionLog, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
+		}})
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/clients/1/actions/rerun-metrics", strings.NewReader(`{"date_from":"2026-01-01","date_to":""}`))
 		req = adminCtx(withChiURLParam(req, "seller_account_id", "1"))
 		rr := httptest.NewRecorder()
 		h.RerunMetrics(rr, req)
@@ -561,7 +580,7 @@ func TestAdminRecommendationLogsHandlers(t *testing.T) {
 
 	t.Run("run detail success", func(t *testing.T) {
 		h := NewAdminHandler(&fakeAdminService{
-			getRecommendationRunDetailFn: func(ctx context.Context, sellerAccountID, runID int64) (*admin.RecommendationRunDetail, error) {
+			getRecommendationRunDetailFn: func(ctx context.Context, actor admin.AdminActor, sellerAccountID, runID int64) (*admin.RecommendationRunDetail, error) {
 				return &admin.RecommendationRunDetail{
 					Run:             admin.RecommendationRunSummary{ID: runID, RunType: "manual", Status: "completed"},
 					Recommendations: []admin.RecommendationItem{{ID: 500, RecommendationType: "pricing", Title: "t", Status: "open"}},
@@ -571,7 +590,7 @@ func TestAdminRecommendationLogsHandlers(t *testing.T) {
 			},
 		})
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/clients/1/ai/recommendation-runs/10", nil)
-		req = withChiURLParam(req, "seller_account_id", "1")
+		req = withAdminUser(withChiURLParam(req, "seller_account_id", "1"))
 		req = withChiURLParam(req, "run_id", "10")
 		rr := httptest.NewRecorder()
 		h.GetRecommendationRunDetail(rr, req)
@@ -582,12 +601,12 @@ func TestAdminRecommendationLogsHandlers(t *testing.T) {
 
 	t.Run("run detail not found", func(t *testing.T) {
 		h := NewAdminHandler(&fakeAdminService{
-			getRecommendationRunDetailFn: func(ctx context.Context, sellerAccountID, runID int64) (*admin.RecommendationRunDetail, error) {
+			getRecommendationRunDetailFn: func(ctx context.Context, actor admin.AdminActor, sellerAccountID, runID int64) (*admin.RecommendationRunDetail, error) {
 				return nil, pgx.ErrNoRows
 			},
 		})
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/clients/1/ai/recommendation-runs/10", nil)
-		req = withChiURLParam(req, "seller_account_id", "1")
+		req = withAdminUser(withChiURLParam(req, "seller_account_id", "1"))
 		req = withChiURLParam(req, "run_id", "10")
 		rr := httptest.NewRecorder()
 		h.GetRecommendationRunDetail(rr, req)
@@ -596,9 +615,40 @@ func TestAdminRecommendationLogsHandlers(t *testing.T) {
 		}
 	})
 
+	t.Run("run detail requires admin actor", func(t *testing.T) {
+		h := NewAdminHandler(&fakeAdminService{
+			getRecommendationRunDetailFn: func(ctx context.Context, actor admin.AdminActor, sellerAccountID, runID int64) (*admin.RecommendationRunDetail, error) {
+				t.Fatalf("service should not be called")
+				return nil, nil
+			},
+		})
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/clients/1/ai/recommendation-runs/10", nil)
+		req = withChiURLParam(withChiURLParam(req, "seller_account_id", "1"), "run_id", "10")
+		rr := httptest.NewRecorder()
+		h.GetRecommendationRunDetail(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnauthorized)
+		}
+	})
+
+	t.Run("run detail audit log failure returns 503", func(t *testing.T) {
+		h := NewAdminHandler(&fakeAdminService{
+			getRecommendationRunDetailFn: func(ctx context.Context, actor admin.AdminActor, sellerAccountID, runID int64) (*admin.RecommendationRunDetail, error) {
+				return nil, admin.ErrAdminAuditLogWriteFailed
+			},
+		})
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/clients/1/ai/recommendation-runs/10", nil)
+		req = withAdminUser(withChiURLParam(withChiURLParam(req, "seller_account_id", "1"), "run_id", "10"))
+		rr := httptest.NewRecorder()
+		h.GetRecommendationRunDetail(rr, req)
+		if rr.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusServiceUnavailable)
+		}
+	})
+
 	t.Run("recommendation raw ai success", func(t *testing.T) {
 		h := NewAdminHandler(&fakeAdminService{
-			getRecommendationRawAIFn: func(ctx context.Context, sellerAccountID, recommendationID int64) (*admin.RecommendationRawAI, error) {
+			getRecommendationRawAIFn: func(ctx context.Context, actor admin.AdminActor, sellerAccountID, recommendationID int64) (*admin.RecommendationRawAI, error) {
 				return &admin.RecommendationRawAI{
 					Recommendation: admin.RecommendationItem{ID: recommendationID, RecommendationType: "pricing", Title: "x", Status: "open"},
 					RelatedAlerts:  []admin.RecommendationAlertItem{{ID: 10, AlertType: "stockout"}},
@@ -606,8 +656,7 @@ func TestAdminRecommendationLogsHandlers(t *testing.T) {
 			},
 		})
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/clients/1/ai/recommendations/1", nil)
-		req = withChiURLParam(req, "seller_account_id", "1")
-		req = withChiURLParam(req, "id", "1")
+		req = withAdminUser(withChiURLParam(withChiURLParam(req, "seller_account_id", "1"), "id", "1"))
 		rr := httptest.NewRecorder()
 		h.GetRecommendationRawAI(rr, req)
 		if rr.Code != http.StatusOK {
@@ -617,14 +666,13 @@ func TestAdminRecommendationLogsHandlers(t *testing.T) {
 
 	t.Run("recommendation raw ai invalid id", func(t *testing.T) {
 		h := NewAdminHandler(&fakeAdminService{
-			getRecommendationRawAIFn: func(ctx context.Context, sellerAccountID, recommendationID int64) (*admin.RecommendationRawAI, error) {
+			getRecommendationRawAIFn: func(ctx context.Context, actor admin.AdminActor, sellerAccountID, recommendationID int64) (*admin.RecommendationRawAI, error) {
 				t.Fatalf("service should not be called")
 				return nil, nil
 			},
 		})
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/clients/1/ai/recommendations/x", nil)
-		req = withChiURLParam(req, "seller_account_id", "1")
-		req = withChiURLParam(req, "id", "x")
+		req = withAdminUser(withChiURLParam(withChiURLParam(req, "seller_account_id", "1"), "id", "x"))
 		rr := httptest.NewRecorder()
 		h.GetRecommendationRawAI(rr, req)
 		if rr.Code != http.StatusBadRequest {
@@ -672,7 +720,7 @@ func TestAdminChatLogsHandlers(t *testing.T) {
 
 	t.Run("chat trace detail success", func(t *testing.T) {
 		h := NewAdminHandler(&fakeAdminService{
-			getChatTraceDetailFn: func(ctx context.Context, sellerAccountID, traceID int64) (*admin.ChatTraceDetail, error) {
+			getChatTraceDetailFn: func(ctx context.Context, actor admin.AdminActor, sellerAccountID, traceID int64) (*admin.ChatTraceDetail, error) {
 				return &admin.ChatTraceDetail{
 					ID: traceID, SessionID: 10, Status: "completed",
 					Messages: []admin.ChatMessageItem{{ID: 1001, SessionID: 10, Role: "user", MessageType: "question", Content: "q", CreatedAt: time.Now()}},
@@ -680,8 +728,7 @@ func TestAdminChatLogsHandlers(t *testing.T) {
 			},
 		})
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/clients/1/ai/chat-traces/1", nil)
-		req = withChiURLParam(req, "seller_account_id", "1")
-		req = withChiURLParam(req, "trace_id", "1")
+		req = withAdminUser(withChiURLParam(withChiURLParam(req, "seller_account_id", "1"), "trace_id", "1"))
 		rr := httptest.NewRecorder()
 		h.GetChatTraceDetail(rr, req)
 		if rr.Code != http.StatusOK {
@@ -691,17 +738,47 @@ func TestAdminChatLogsHandlers(t *testing.T) {
 
 	t.Run("chat trace detail not found", func(t *testing.T) {
 		h := NewAdminHandler(&fakeAdminService{
-			getChatTraceDetailFn: func(ctx context.Context, sellerAccountID, traceID int64) (*admin.ChatTraceDetail, error) {
+			getChatTraceDetailFn: func(ctx context.Context, actor admin.AdminActor, sellerAccountID, traceID int64) (*admin.ChatTraceDetail, error) {
 				return nil, pgx.ErrNoRows
 			},
 		})
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/clients/1/ai/chat-traces/1", nil)
-		req = withChiURLParam(req, "seller_account_id", "1")
-		req = withChiURLParam(req, "trace_id", "1")
+		req = withAdminUser(withChiURLParam(withChiURLParam(req, "seller_account_id", "1"), "trace_id", "1"))
 		rr := httptest.NewRecorder()
 		h.GetChatTraceDetail(rr, req)
 		if rr.Code != http.StatusNotFound {
 			t.Fatalf("status = %d, want %d", rr.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("chat trace detail requires admin actor", func(t *testing.T) {
+		h := NewAdminHandler(&fakeAdminService{
+			getChatTraceDetailFn: func(ctx context.Context, actor admin.AdminActor, sellerAccountID, traceID int64) (*admin.ChatTraceDetail, error) {
+				t.Fatalf("service should not be called")
+				return nil, nil
+			},
+		})
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/clients/1/ai/chat-traces/1", nil)
+		req = withChiURLParam(withChiURLParam(req, "seller_account_id", "1"), "trace_id", "1")
+		rr := httptest.NewRecorder()
+		h.GetChatTraceDetail(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnauthorized)
+		}
+	})
+
+	t.Run("chat trace detail audit log failure returns 503", func(t *testing.T) {
+		h := NewAdminHandler(&fakeAdminService{
+			getChatTraceDetailFn: func(ctx context.Context, actor admin.AdminActor, sellerAccountID, traceID int64) (*admin.ChatTraceDetail, error) {
+				return nil, admin.ErrAdminAuditLogWriteFailed
+			},
+		})
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/clients/1/ai/chat-traces/1", nil)
+		req = withAdminUser(withChiURLParam(withChiURLParam(req, "seller_account_id", "1"), "trace_id", "1"))
+		rr := httptest.NewRecorder()
+		h.GetChatTraceDetail(rr, req)
+		if rr.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusServiceUnavailable)
 		}
 	})
 

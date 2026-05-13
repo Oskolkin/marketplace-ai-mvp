@@ -19,6 +19,25 @@ export function mapConnectionStatus(status: string | null | undefined): string {
   }
 }
 
+export function mapPerformanceConnectionStatus(
+  status: string | null | undefined
+): string {
+  switch (status) {
+    case "not_configured":
+      return "Performance token not set";
+    case "unknown":
+      return "Performance API not checked yet";
+    case "valid":
+      return "Performance API OK";
+    case "invalid":
+      return "Performance API error";
+    case "not_connected":
+      return "No Ozon connection";
+    default:
+      return "Unknown";
+  }
+}
+
 export function mapSyncStatus(status: string | null | undefined): string {
   switch (status) {
     case "pending":

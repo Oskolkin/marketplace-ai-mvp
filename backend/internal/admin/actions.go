@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 )
 
 func (s *Service) RerunSync(ctx context.Context, actor AdminActor, input RerunSyncInput) (*AdminActionLog, error) {
@@ -67,6 +66,11 @@ func (s *Service) ResetCursor(ctx context.Context, actor AdminActor, input Reset
 }
 
 func (s *Service) RerunMetrics(ctx context.Context, actor AdminActor, input RerunMetricsInput) (*AdminActionLog, error) {
+	dateFrom, dateTo, err := resolveRerunMetricsDateRange(input)
+	if err != nil {
+		return nil, err
+	}
+
 	return s.runAuditedAction(
 		ctx,
 		actor,
@@ -74,28 +78,28 @@ func (s *Service) RerunMetrics(ctx context.Context, actor AdminActor, input Reru
 		AdminActionRerunMetrics,
 		nil,
 		nil,
-		map[string]any{"seller_account_id": input.SellerAccountID},
+		map[string]any{
+			"seller_account_id": input.SellerAccountID,
+			"date_from":         dateFrom.Format("2006-01-02"),
+			"date_to":           dateTo.Format("2006-01-02"),
+		},
 		func(actionCtx context.Context) (map[string]any, error) {
-			if input.DateFrom.IsZero() || input.DateTo.IsZero() {
-				return nil, errors.New("date_from and date_to are required")
-			}
-			if input.DateFrom.After(input.DateTo) {
-				return nil, errors.New("date_from must be before or equal to date_to")
-			}
-			if input.DateTo.Sub(input.DateFrom) > (366 * 24 * time.Hour) {
-				return nil, errors.New("date range is too large")
-			}
 			if s.metricsService == nil {
 				return map[string]any{}, ErrAdminActionNotConfigured
 			}
-			if err := s.metricsService.Rerun(actionCtx, input.SellerAccountID); err != nil {
+			extra, err := s.metricsService.Rerun(actionCtx, input.SellerAccountID, dateFrom, dateTo)
+			if err != nil {
 				return nil, err
 			}
-			return map[string]any{
-				"date_from": input.DateFrom.UTC().Format("2006-01-02"),
-				"date_to":   input.DateTo.UTC().Format("2006-01-02"),
-				"status":    "accepted",
-			}, nil
+			out := map[string]any{
+				"seller_account_id": input.SellerAccountID,
+				"date_from":         dateFrom.Format("2006-01-02"),
+				"date_to":           dateTo.Format("2006-01-02"),
+			}
+			for k, v := range extra {
+				out[k] = v
+			}
+			return out, nil
 		},
 	)
 }

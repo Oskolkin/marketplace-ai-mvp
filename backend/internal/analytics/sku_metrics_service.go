@@ -34,7 +34,8 @@ func (s *SKUMetricsService) RebuildDailySKUMetricsForSellerAccount(ctx context.C
 		return nil
 	}
 
-	return s.RebuildDailySKUMetricsForDateRange(ctx, sellerAccountID, bounds.MinDate.Time, bounds.MaxDate.Time)
+	_, err = s.RebuildDailySKUMetricsForDateRange(ctx, sellerAccountID, bounds.MinDate.Time, bounds.MaxDate.Time)
+	return err
 }
 
 func (s *SKUMetricsService) RebuildDailySKUMetricsForDateRange(
@@ -42,23 +43,23 @@ func (s *SKUMetricsService) RebuildDailySKUMetricsForDateRange(
 	sellerAccountID int64,
 	dateFrom time.Time,
 	dateTo time.Time,
-) error {
+) (rowsUpserted int, err error) {
 	fromDate := normalizeDate(dateFrom)
 	toDate := normalizeDate(dateTo)
 	if toDate.Before(fromDate) {
-		return fmt.Errorf("invalid date range: to (%s) is before from (%s)", toDate.Format("2006-01-02"), fromDate.Format("2006-01-02"))
+		return 0, fmt.Errorf("invalid date range: to (%s) is before from (%s)", toDate.Format("2006-01-02"), fromDate.Format("2006-01-02"))
 	}
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
+		return 0, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
 	qtx := s.queries.WithTx(tx)
 
 	if _, err := qtx.GetSellerAccountByID(ctx, sellerAccountID); err != nil {
-		return fmt.Errorf("get seller account: %w", err)
+		return 0, fmt.Errorf("get seller account: %w", err)
 	}
 
 	sourceRows, err := qtx.ListDailySKUSourcesBySellerAndDateRange(ctx, dbgen.ListDailySKUSourcesBySellerAndDateRangeParams{
@@ -67,12 +68,12 @@ func (s *SKUMetricsService) RebuildDailySKUMetricsForDateRange(
 		Column3:         dateValue(toDate),
 	})
 	if err != nil {
-		return fmt.Errorf("list sku metric sources: %w", err)
+		return 0, fmt.Errorf("list sku metric sources: %w", err)
 	}
 
 	stockRows, err := qtx.ListCurrentStockBySellerAccountAndProduct(ctx, sellerAccountID)
 	if err != nil {
-		return fmt.Errorf("list current stock by product: %w", err)
+		return 0, fmt.Errorf("list current stock by product: %w", err)
 	}
 	stockByProduct := make(map[int64]int32, len(stockRows))
 	for _, row := range stockRows {
@@ -95,7 +96,7 @@ func (s *SKUMetricsService) RebuildDailySKUMetricsForDateRange(
 		MetricDate:      dateValue(fromDate),
 		MetricDate_2:    dateValue(toDate),
 	}); err != nil {
-		return fmt.Errorf("delete sku metrics in range: %w", err)
+		return 0, fmt.Errorf("delete sku metrics in range: %w", err)
 	}
 
 	for _, row := range sourceRows {
@@ -114,14 +115,14 @@ func (s *SKUMetricsService) RebuildDailySKUMetricsForDateRange(
 			StockAvailable:  stockAvailable,
 			DaysOfCover:     daysOfCover,
 		}); err != nil {
-			return fmt.Errorf("upsert daily sku metric for date %s product %d: %w", row.MetricDate.Time.Format("2006-01-02"), row.OzonProductID, err)
+			return 0, fmt.Errorf("upsert daily sku metric for date %s product %d: %w", row.MetricDate.Time.Format("2006-01-02"), row.OzonProductID, err)
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit transaction: %w", err)
+		return 0, fmt.Errorf("commit transaction: %w", err)
 	}
-	return nil
+	return len(sourceRows), nil
 }
 
 func calcDaysOfCover(productID int64, metricDate time.Time, stockAvailable int32, ordersByProductDay map[int64]map[string]int32) pgtype.Numeric {

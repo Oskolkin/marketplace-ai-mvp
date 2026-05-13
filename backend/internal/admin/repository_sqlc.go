@@ -92,12 +92,17 @@ func (r *SQLCRepository) GetClientConnections(ctx context.Context, sellerAccount
 	items := make([]ClientConnection, 0, len(rows))
 	for _, row := range rows {
 		items = append(items, ClientConnection{
-			Provider:          row.Provider,
-			ConnectionStatus:  row.ConnectionStatus,
-			LastCheckAt:       timePtr(row.LastCheckAt),
-			LastCheckResult:   textPtr(row.LastCheckResult),
-			LastConnectionErr: textPtr(row.LastError),
-			UpdatedAt:         timePtr(row.UpdatedAt),
+			Provider:                    row.Provider,
+			ConnectionStatus:            row.ConnectionStatus,
+			LastCheckAt:                 timePtr(row.LastCheckAt),
+			LastCheckResult:             textPtr(row.LastCheckResult),
+			LastConnectionErr:           textPtr(row.LastError),
+			UpdatedAt:                   timePtr(row.UpdatedAt),
+			PerformanceConnectionStatus: row.PerformanceConnectionStatus,
+			PerformanceTokenSet:         row.PerformanceTokenSet,
+			PerformanceLastCheckAt:      timePtr(row.PerformanceLastCheckAt),
+			PerformanceLastCheckResult:  textPtr(row.PerformanceLastCheckResult),
+			PerformanceLastError:        textPtr(row.PerformanceLastError),
 		})
 	}
 	return items, nil
@@ -429,6 +434,59 @@ func (r *SQLCRepository) GetRecommendationProxyFeedbackCounts(ctx context.Contex
 		AcceptedCount:  row.AcceptedCount,
 		DismissedCount: row.DismissedCount,
 		ResolvedCount:  row.ResolvedCount,
+	}, nil
+}
+
+func (r *SQLCRepository) PeekRecommendationForAudit(ctx context.Context, sellerAccountID, recommendationID int64) (RecommendationViewAuditMeta, error) {
+	row, err := r.q.AdminPeekRecommendationForAudit(ctx, dbgen.AdminPeekRecommendationForAuditParams{
+		ID:              recommendationID,
+		SellerAccountID: sellerAccountID,
+	})
+	if err != nil {
+		return RecommendationViewAuditMeta{}, err
+	}
+	return RecommendationViewAuditMeta{
+		ID:              row.ID,
+		AIModel:         row.AiModel,
+		AIPromptVersion: row.AiPromptVersion,
+	}, nil
+}
+
+func (r *SQLCRepository) PeekChatTraceForAudit(ctx context.Context, sellerAccountID, traceID int64) (ChatTraceViewAuditMeta, error) {
+	row, err := r.q.AdminPeekChatTraceForAudit(ctx, dbgen.AdminPeekChatTraceForAuditParams{
+		ID:              traceID,
+		SellerAccountID: sellerAccountID,
+	})
+	if err != nil {
+		return ChatTraceViewAuditMeta{}, err
+	}
+	return ChatTraceViewAuditMeta{
+		ID:                   row.ID,
+		SessionID:            row.SessionID,
+		UserMessageID:        int64Ptr(row.UserMessageID),
+		AssistantMessageID:   int64Ptr(row.AssistantMessageID),
+		PlannerModel:         row.PlannerModel,
+		AnswerModel:          row.AnswerModel,
+		PlannerPromptVersion: row.PlannerPromptVersion,
+		AnswerPromptVersion:  row.AnswerPromptVersion,
+		Status:               row.Status,
+	}, nil
+}
+
+func (r *SQLCRepository) PeekRecommendationRunForAudit(ctx context.Context, sellerAccountID, runID int64) (RecommendationRunViewAuditMeta, error) {
+	row, err := r.q.AdminPeekRecommendationRunForAudit(ctx, dbgen.AdminPeekRecommendationRunForAuditParams{
+		ID:              runID,
+		SellerAccountID: sellerAccountID,
+	})
+	if err != nil {
+		return RecommendationRunViewAuditMeta{}, err
+	}
+	return RecommendationRunViewAuditMeta{
+		ID:              row.ID,
+		RunType:         row.RunType,
+		Status:          row.Status,
+		AIModel:         row.AiModel,
+		AIPromptVersion: row.AiPromptVersion,
 	}, nil
 }
 

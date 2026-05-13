@@ -9,6 +9,11 @@ export type OzonConnectionDto = {
   last_error: string | null;
   has_credentials: boolean;
   client_id_masked: string;
+  performance_token_set: boolean;
+  performance_status: string;
+  performance_last_check_at: string | null;
+  performance_last_check_result: string | null;
+  performance_last_error: string | null;
 };
 
 export type GetOzonConnectionResponse = {
@@ -18,6 +23,12 @@ export type GetOzonConnectionResponse = {
 export type UpsertOzonConnectionRequest = {
   client_id: string;
   api_key: string;
+  performance_bearer_token?: string;
+};
+
+export type PutOzonPerformanceTokenRequest = {
+  performance_bearer_token?: string;
+  clear_performance_token?: boolean;
 };
 
 export type OzonCheckResponse = {
@@ -62,6 +73,11 @@ export type OzonIngestionStatusResponse = {
   last_check_at: string | null;
   last_check_result: string | null;
   last_error: string | null;
+  performance_connection_status: string;
+  performance_token_set: boolean;
+  performance_last_check_at: string | null;
+  performance_last_check_result: string | null;
+  performance_last_error: string | null;
   current_sync: IngestionSyncJobDto | null;
   last_successful_sync_at: string | null;
   latest_import_jobs: IngestionImportJobDto[];
@@ -83,8 +99,21 @@ export async function updateOzonConnection(
   return apiPut<GetOzonConnectionResponse>("/api/v1/integrations/ozon/", payload);
 }
 
+export async function putOzonPerformanceToken(
+  payload: PutOzonPerformanceTokenRequest
+): Promise<GetOzonConnectionResponse> {
+  return apiPut<GetOzonConnectionResponse>(
+    "/api/v1/integrations/ozon/performance-token",
+    payload
+  );
+}
+
 export async function checkOzonConnection(): Promise<OzonCheckResponse> {
   return apiPost<OzonCheckResponse>("/api/v1/integrations/ozon/check");
+}
+
+export async function checkOzonPerformanceConnection(): Promise<OzonCheckResponse> {
+  return apiPost<OzonCheckResponse>("/api/v1/integrations/ozon/check-performance");
 }
 
 export async function startInitialSync(): Promise<OzonSyncStartResponse> {

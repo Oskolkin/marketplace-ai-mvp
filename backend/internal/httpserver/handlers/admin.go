@@ -28,10 +28,10 @@ type adminService interface {
 	RerunAlerts(ctx context.Context, actor admin.AdminActor, input admin.RerunAlertsInput) (*admin.AdminActionLog, error)
 	RerunRecommendations(ctx context.Context, actor admin.AdminActor, input admin.RerunRecommendationsInput) (*admin.AdminActionLog, error)
 	GetAIRecommendationLogs(ctx context.Context, sellerAccountID int64, filter admin.RecommendationRunLogFilter) (*admin.RecommendationRunLogListResult, error)
-	GetRecommendationRunDetail(ctx context.Context, sellerAccountID, runID int64) (*admin.RecommendationRunDetail, error)
-	GetRecommendationRawAI(ctx context.Context, sellerAccountID, recommendationID int64) (*admin.RecommendationRawAI, error)
+	GetRecommendationRunDetail(ctx context.Context, actor admin.AdminActor, sellerAccountID, runID int64) (*admin.RecommendationRunDetail, error)
+	GetRecommendationRawAI(ctx context.Context, actor admin.AdminActor, sellerAccountID, recommendationID int64) (*admin.RecommendationRawAI, error)
 	GetAIChatLogs(ctx context.Context, sellerAccountID int64, filter admin.ChatTraceFilter) (*admin.ChatTraceListResult, error)
-	GetChatTraceDetail(ctx context.Context, sellerAccountID, traceID int64) (*admin.ChatTraceDetail, error)
+	GetChatTraceDetail(ctx context.Context, actor admin.AdminActor, sellerAccountID, traceID int64) (*admin.ChatTraceDetail, error)
 	ListChatSessions(ctx context.Context, sellerAccountID int64, filter admin.ChatSessionFilter) (*admin.ChatSessionListResult, error)
 	ListChatMessages(ctx context.Context, sellerAccountID, sessionID int64, filter admin.ChatMessageFilter) (*admin.ChatMessageListResult, error)
 	ListChatFeedback(ctx context.Context, filter admin.ChatFeedbackFilter) (*admin.ChatFeedbackListResult, error)
@@ -323,15 +323,26 @@ func (h *AdminHandler) RerunMetrics(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	dateFrom, err := parseISODate(req.DateFrom)
-	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid date_from, expected YYYY-MM-DD")
+	dfTrim := strings.TrimSpace(req.DateFrom)
+	dtTrim := strings.TrimSpace(req.DateTo)
+	var dateFrom, dateTo time.Time
+	if dfTrim == "" && dtTrim == "" {
+		// Service applies default window (last 30 calendar days, UTC).
+	} else if dfTrim == "" || dtTrim == "" {
+		writeJSONError(w, http.StatusBadRequest, "date_from and date_to must both be set or both omitted")
 		return
-	}
-	dateTo, err := parseISODate(req.DateTo)
-	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid date_to, expected YYYY-MM-DD")
-		return
+	} else {
+		var err error
+		dateFrom, err = parseISODate(dfTrim)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid date_from, expected YYYY-MM-DD")
+			return
+		}
+		dateTo, err = parseISODate(dtTrim)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid date_to, expected YYYY-MM-DD")
+			return
+		}
 	}
 	log, actionErr := h.service.RerunMetrics(r.Context(), actor, admin.RerunMetricsInput{
 		SellerAccountID: sellerAccountID,
@@ -443,16 +454,25 @@ func (h *AdminHandler) GetRecommendationRunDetail(w http.ResponseWriter, r *http
 		writeJSONError(w, http.StatusBadRequest, "invalid seller_account_id")
 		return
 	}
+	actor, ok := adminActorFromRequest(r)
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "admin actor required")
+		return
+	}
 	runID, err := parseSellerAccountIDParam(r, "run_id")
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid run_id")
 		return
 	}
-	detail, err := h.service.GetRecommendationRunDetail(r.Context(), sellerAccountID, runID)
+	detail, err := h.service.GetRecommendationRunDetail(r.Context(), actor, sellerAccountID, runID)
 	if err != nil {
 		switch {
 		case errors.Is(err, admin.ErrSellerAccountIDRequired) || errors.Is(err, admin.ErrAdminDataUnavailable):
 			writeJSONError(w, http.StatusBadRequest, "invalid run_id")
+		case errors.Is(err, admin.ErrAdminActorRequired):
+			writeJSONError(w, http.StatusUnauthorized, "admin actor required")
+		case errors.Is(err, admin.ErrAdminAuditLogWriteFailed):
+			writeJSONError(w, http.StatusServiceUnavailable, "audit log failed; raw AI payload withheld")
 		case errors.Is(err, pgx.ErrNoRows):
 			writeJSONError(w, http.StatusNotFound, "recommendation run not found")
 		default:
@@ -473,16 +493,25 @@ func (h *AdminHandler) GetRecommendationRawAI(w http.ResponseWriter, r *http.Req
 		writeJSONError(w, http.StatusBadRequest, "invalid seller_account_id")
 		return
 	}
+	actor, ok := adminActorFromRequest(r)
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "admin actor required")
+		return
+	}
 	recommendationID, err := parseSellerAccountIDParam(r, "id")
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid recommendation id")
 		return
 	}
-	detail, err := h.service.GetRecommendationRawAI(r.Context(), sellerAccountID, recommendationID)
+	detail, err := h.service.GetRecommendationRawAI(r.Context(), actor, sellerAccountID, recommendationID)
 	if err != nil {
 		switch {
 		case errors.Is(err, admin.ErrSellerAccountIDRequired) || errors.Is(err, admin.ErrAdminDataUnavailable):
 			writeJSONError(w, http.StatusBadRequest, "invalid recommendation id")
+		case errors.Is(err, admin.ErrAdminActorRequired):
+			writeJSONError(w, http.StatusUnauthorized, "admin actor required")
+		case errors.Is(err, admin.ErrAdminAuditLogWriteFailed):
+			writeJSONError(w, http.StatusServiceUnavailable, "audit log failed; raw AI payload withheld")
 		case errors.Is(err, pgx.ErrNoRows):
 			writeJSONError(w, http.StatusNotFound, "recommendation not found")
 		default:
@@ -544,16 +573,25 @@ func (h *AdminHandler) GetChatTraceDetail(w http.ResponseWriter, r *http.Request
 		writeJSONError(w, http.StatusBadRequest, "invalid seller_account_id")
 		return
 	}
+	actor, ok := adminActorFromRequest(r)
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "admin actor required")
+		return
+	}
 	traceID, err := parseSellerAccountIDParam(r, "trace_id")
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid trace_id")
 		return
 	}
-	detail, err := h.service.GetChatTraceDetail(r.Context(), sellerAccountID, traceID)
+	detail, err := h.service.GetChatTraceDetail(r.Context(), actor, sellerAccountID, traceID)
 	if err != nil {
 		switch {
 		case errors.Is(err, admin.ErrSellerAccountIDRequired) || errors.Is(err, admin.ErrAdminDataUnavailable):
 			writeJSONError(w, http.StatusBadRequest, "invalid trace_id")
+		case errors.Is(err, admin.ErrAdminActorRequired):
+			writeJSONError(w, http.StatusUnauthorized, "admin actor required")
+		case errors.Is(err, admin.ErrAdminAuditLogWriteFailed):
+			writeJSONError(w, http.StatusServiceUnavailable, "audit log failed; raw AI payload withheld")
 		case errors.Is(err, pgx.ErrNoRows):
 			writeJSONError(w, http.StatusNotFound, "chat trace not found")
 		default:
@@ -864,12 +902,17 @@ type adminClientOverviewResponse struct {
 }
 
 type adminConnectionResponse struct {
-	Provider        string  `json:"provider"`
-	Status          string  `json:"status"`
-	LastCheckAt     *string `json:"last_check_at"`
-	LastCheckResult *string `json:"last_check_result"`
-	LastError       *string `json:"last_error"`
-	UpdatedAt       *string `json:"updated_at"`
+	Provider                    string  `json:"provider"`
+	Status                      string  `json:"status"`
+	LastCheckAt                 *string `json:"last_check_at"`
+	LastCheckResult             *string `json:"last_check_result"`
+	LastError                   *string `json:"last_error"`
+	UpdatedAt                   *string `json:"updated_at"`
+	PerformanceConnectionStatus string  `json:"performance_connection_status"`
+	PerformanceTokenSet         bool    `json:"performance_token_set"`
+	PerformanceLastCheckAt      *string `json:"performance_last_check_at"`
+	PerformanceLastCheckResult  *string `json:"performance_last_check_result"`
+	PerformanceLastError        *string `json:"performance_last_error"`
 }
 
 type adminOperationalStatusResponse struct {
@@ -1353,12 +1396,17 @@ func toAdminClientDetailResponse(detail admin.ClientDetail) adminClientDetailRes
 	}
 	for _, conn := range detail.Connections {
 		resp.Connections = append(resp.Connections, adminConnectionResponse{
-			Provider:        conn.Provider,
-			Status:          conn.ConnectionStatus,
-			LastCheckAt:     timePtrRFC3339(conn.LastCheckAt),
-			LastCheckResult: conn.LastCheckResult,
-			LastError:       conn.LastConnectionErr,
-			UpdatedAt:       timePtrRFC3339(conn.UpdatedAt),
+			Provider:                    conn.Provider,
+			Status:                      conn.ConnectionStatus,
+			LastCheckAt:                 timePtrRFC3339(conn.LastCheckAt),
+			LastCheckResult:             conn.LastCheckResult,
+			LastError:                   conn.LastConnectionErr,
+			UpdatedAt:                   timePtrRFC3339(conn.UpdatedAt),
+			PerformanceConnectionStatus: conn.PerformanceConnectionStatus,
+			PerformanceTokenSet:         conn.PerformanceTokenSet,
+			PerformanceLastCheckAt:      timePtrRFC3339(conn.PerformanceLastCheckAt),
+			PerformanceLastCheckResult:  conn.PerformanceLastCheckResult,
+			PerformanceLastError:        conn.PerformanceLastError,
 		})
 	}
 	if v := detail.OperationalStatus.LatestSyncJob; v != nil {

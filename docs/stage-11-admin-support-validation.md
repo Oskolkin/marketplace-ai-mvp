@@ -1126,6 +1126,8 @@ raw blocks read-only;
 
 есть warning label.
 
+Каждый успешный просмотр recommendation run detail, raw recommendation AI или chat trace detail создаёт запись в admin_action_logs (action_type = view_raw_ai_payload, target_type/target_id, seller_account_id, admin identity); тело raw response и полные prompts/context в audit не пишутся. Если запись audit не удалась, API не возвращает raw payload (ожидаемый ответ 503 для admin handler).
+
 Проверяемые endpoints
 
 GET /api/v1/admin/clients/{seller\_account\_id}/ai/recommendation-runs/{run\_id}

@@ -125,6 +125,8 @@ func (b *ContextBuilder) BuildForAccount(ctx context.Context, sellerAccountID in
 		},
 	}
 
+	ApplyRecommendationContextBudget(context, b.limits)
+
 	return context, nil
 }
 

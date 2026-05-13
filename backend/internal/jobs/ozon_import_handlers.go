@@ -25,6 +25,19 @@ type OzonImportHandler struct {
 	adsImporter      *adsync.Service
 	log              *zap.Logger
 	domain           string
+	// onSyncJobCompleted is optional; invoked once when a parent sync_job transitions to completed.
+	onSyncJobCompleted func(ctx context.Context, sellerAccountID, syncJobID int64) error
+}
+
+// OzonImportHandlerOption configures OzonImportHandler.
+type OzonImportHandlerOption func(*OzonImportHandler)
+
+// WithSyncJobCompletedHook registers a callback after the parent sync_job reaches status completed
+// (e.g. enqueue post-sync recalculation). If the hook returns an error, the import task fails and can retry.
+func WithSyncJobCompletedHook(fn func(ctx context.Context, sellerAccountID, syncJobID int64) error) OzonImportHandlerOption {
+	return func(h *OzonImportHandler) {
+		h.onSyncJobCompleted = fn
+	}
 }
 
 func NewOzonImportHandler(
@@ -35,8 +48,9 @@ func NewOzonImportHandler(
 	ordersImporter *ordersync.Service,
 	stocksImporter *stocksync.Service,
 	adsImporter *adsync.Service,
+	opts ...OzonImportHandlerOption,
 ) *OzonImportHandler {
-	return &OzonImportHandler{
+	h := &OzonImportHandler{
 		queries:          dbgen.New(db),
 		cursorService:    syncstate.NewSyncCursorService(db),
 		productsImporter: productsImporter,
@@ -46,6 +60,10 @@ func NewOzonImportHandler(
 		log:              log,
 		domain:           domain,
 	}
+	for _, o := range opts {
+		o(h)
+	}
+	return h
 }
 
 func (h *OzonImportHandler) Handle(ctx context.Context, taskPayload []byte) error {
@@ -69,7 +87,9 @@ func (h *OzonImportHandler) Handle(ctx context.Context, taskPayload []byte) erro
 	)
 
 	if _, err := h.queries.UpdateImportJobToImporting(ctx, payload.ImportJobID); err != nil {
-		_ = h.failImport(ctx, payload.ImportJobID, err)
+		if ferr := h.failImport(ctx, payload, err); ferr != nil {
+			return ferr
+		}
 		return fmt.Errorf("update import job to importing: %w", err)
 	}
 
@@ -88,7 +108,9 @@ func (h *OzonImportHandler) Handle(ctx context.Context, taskPayload []byte) erro
 
 	default:
 		err := fmt.Errorf("unsupported domain: %s", h.domain)
-		_ = h.failImport(ctx, payload.ImportJobID, err)
+		if ferr := h.failImport(ctx, payload, err); ferr != nil {
+			return ferr
+		}
 		return err
 	}
 }
@@ -98,19 +120,36 @@ func (h *OzonImportHandler) handleProducts(
 	payload OzonImportJobPayload,
 	importJob dbgen.ImportJob,
 ) error {
+	_ = importJob // pagination cursor is read from sync_cursors (see ResolveSourceCursor) so retries resume correctly
 	if h.productsImporter == nil {
 		err := fmt.Errorf("products importer is nil")
-		_ = h.failImport(ctx, payload.ImportJobID, err)
+		if ferr := h.failImport(ctx, payload, err); ferr != nil {
+			return ferr
+		}
 		return err
+	}
+
+	sc, err := h.cursorService.ResolveSourceCursor(ctx, payload.SellerAccountID, "products")
+	if err != nil {
+		if ferr := h.failImport(ctx, payload, err); ferr != nil {
+			return ferr
+		}
+		return fmt.Errorf("resolve products source cursor: %w", err)
+	}
+	sourceCursor := ""
+	if sc.Valid {
+		sourceCursor = sc.String
 	}
 
 	result, err := h.productsImporter.Run(ctx, productsync.RunInput{
 		SellerAccountID: payload.SellerAccountID,
 		ImportJobID:     payload.ImportJobID,
-		SourceCursor:    importJob.SourceCursor.String,
+		SourceCursor:    sourceCursor,
 	})
 	if err != nil {
-		_ = h.failImport(ctx, payload.ImportJobID, err)
+		if ferr := h.failImport(ctx, payload, err); ferr != nil {
+			return ferr
+		}
 		return fmt.Errorf("run products import: %w", err)
 	}
 
@@ -122,7 +161,9 @@ func (h *OzonImportHandler) handleProducts(
 		result.RecordsImported,
 		result.RecordsFailed,
 	); err != nil {
-		_ = h.failImport(ctx, payload.ImportJobID, err)
+		if ferr := h.failImport(ctx, payload, err); ferr != nil {
+			return ferr
+		}
 		return fmt.Errorf("complete products import: %w", err)
 	}
 
@@ -130,8 +171,10 @@ func (h *OzonImportHandler) handleProducts(
 		zap.Int64("seller_account_id", payload.SellerAccountID),
 		zap.Int64("sync_job_id", payload.SyncJobID),
 		zap.Int64("import_job_id", payload.ImportJobID),
+		zap.Int32("pages_fetched", result.PagesFetched),
 		zap.Int32("records_received", result.RecordsReceived),
 		zap.Int32("records_imported", result.RecordsImported),
+		zap.String("final_page_last_id", result.FinalPageLastID),
 		zap.String("next_cursor_value", result.NextCursorValue),
 	)
 
@@ -145,7 +188,9 @@ func (h *OzonImportHandler) handleOrders(
 ) error {
 	if h.ordersImporter == nil {
 		err := fmt.Errorf("orders importer is nil")
-		_ = h.failImport(ctx, payload.ImportJobID, err)
+		if ferr := h.failImport(ctx, payload, err); ferr != nil {
+			return ferr
+		}
 		return err
 	}
 
@@ -155,7 +200,9 @@ func (h *OzonImportHandler) handleOrders(
 		SourceCursor:    importJob.SourceCursor.String,
 	})
 	if err != nil {
-		_ = h.failImport(ctx, payload.ImportJobID, err)
+		if ferr := h.failImport(ctx, payload, err); ferr != nil {
+			return ferr
+		}
 		return fmt.Errorf("run orders import: %w", err)
 	}
 
@@ -167,7 +214,9 @@ func (h *OzonImportHandler) handleOrders(
 		result.RecordsImported,
 		result.RecordsFailed,
 	); err != nil {
-		_ = h.failImport(ctx, payload.ImportJobID, err)
+		if ferr := h.failImport(ctx, payload, err); ferr != nil {
+			return ferr
+		}
 		return fmt.Errorf("complete orders import: %w", err)
 	}
 
@@ -190,7 +239,9 @@ func (h *OzonImportHandler) handleStocks(
 ) error {
 	if h.stocksImporter == nil {
 		err := fmt.Errorf("stocks importer is nil")
-		_ = h.failImport(ctx, payload.ImportJobID, err)
+		if ferr := h.failImport(ctx, payload, err); ferr != nil {
+			return ferr
+		}
 		return err
 	}
 
@@ -200,7 +251,9 @@ func (h *OzonImportHandler) handleStocks(
 		SourceCursor:    importJob.SourceCursor.String,
 	})
 	if err != nil {
-		_ = h.failImport(ctx, payload.ImportJobID, err)
+		if ferr := h.failImport(ctx, payload, err); ferr != nil {
+			return ferr
+		}
 		return fmt.Errorf("run stocks import: %w", err)
 	}
 
@@ -212,7 +265,9 @@ func (h *OzonImportHandler) handleStocks(
 		result.RecordsImported,
 		result.RecordsFailed,
 	); err != nil {
-		_ = h.failImport(ctx, payload.ImportJobID, err)
+		if ferr := h.failImport(ctx, payload, err); ferr != nil {
+			return ferr
+		}
 		return fmt.Errorf("complete stocks import: %w", err)
 	}
 
@@ -235,7 +290,9 @@ func (h *OzonImportHandler) handleAds(
 ) error {
 	if h.adsImporter == nil {
 		err := fmt.Errorf("ads importer is nil")
-		_ = h.failImport(ctx, payload.ImportJobID, err)
+		if ferr := h.failImport(ctx, payload, err); ferr != nil {
+			return ferr
+		}
 		return err
 	}
 
@@ -245,7 +302,9 @@ func (h *OzonImportHandler) handleAds(
 		SourceCursor:    importJob.SourceCursor.String,
 	})
 	if err != nil {
-		_ = h.failImport(ctx, payload.ImportJobID, err)
+		if ferr := h.failImport(ctx, payload, err); ferr != nil {
+			return ferr
+		}
 		return fmt.Errorf("run ads import: %w", err)
 	}
 
@@ -257,7 +316,9 @@ func (h *OzonImportHandler) handleAds(
 		result.RecordsImported,
 		result.RecordsFailed,
 	); err != nil {
-		_ = h.failImport(ctx, payload.ImportJobID, err)
+		if ferr := h.failImport(ctx, payload, err); ferr != nil {
+			return ferr
+		}
 		return fmt.Errorf("complete ads import: %w", err)
 	}
 
@@ -301,16 +362,44 @@ func (h *OzonImportHandler) completeImport(
 		return fmt.Errorf("update import job to completed: %w", err)
 	}
 
+	if err := runParentSyncJobFinalizationAndHook(ctx, h, payload); err != nil {
+		return fmt.Errorf("finalize parent sync job: %w", err)
+	}
+
 	return nil
 }
 
-func (h *OzonImportHandler) failImport(ctx context.Context, importJobID int64, cause error) error {
+func (h *OzonImportHandler) failImport(ctx context.Context, payload OzonImportJobPayload, cause error) error {
 	_, err := h.queries.UpdateImportJobToFailed(ctx, dbgen.UpdateImportJobToFailedParams{
-		ID: importJobID,
+		ID: payload.ImportJobID,
 		ErrorMessage: pgtype.Text{
 			String: cause.Error(),
 			Valid:  true,
 		},
 	})
-	return err
+	if err != nil {
+		return fmt.Errorf("update import job to failed: %w", err)
+	}
+	if err := runParentSyncJobFinalizationAndHook(ctx, h, payload); err != nil {
+		return fmt.Errorf("finalize parent sync job: %w", err)
+	}
+	return nil
+}
+
+func runParentSyncJobFinalizationAndHook(ctx context.Context, h *OzonImportHandler, payload OzonImportJobPayload) error {
+	res, err := runParentSyncJobFinalization(ctx, h.queries, payload.SyncJobID)
+	if err != nil {
+		return err
+	}
+	if res.SyncJobJustCompleted && h.onSyncJobCompleted != nil {
+		if hookErr := h.onSyncJobCompleted(ctx, payload.SellerAccountID, payload.SyncJobID); hookErr != nil {
+			h.log.Error("sync_job completed hook failed",
+				zap.Int64("seller_account_id", payload.SellerAccountID),
+				zap.Int64("sync_job_id", payload.SyncJobID),
+				zap.Error(hookErr),
+			)
+			return hookErr
+		}
+	}
+	return nil
 }

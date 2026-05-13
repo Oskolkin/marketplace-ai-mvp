@@ -11,6 +11,42 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearOzonPerformanceBearerToken = `-- name: ClearOzonPerformanceBearerToken :one
+UPDATE ozon_connections
+SET
+    performance_token_encrypted = NULL,
+    performance_status = 'not_configured',
+    performance_last_check_at = NULL,
+    performance_last_check_result = NULL,
+    performance_last_error = NULL,
+    updated_at = NOW()
+WHERE seller_account_id = $1
+RETURNING id, seller_account_id, client_id_encrypted, api_key_encrypted, status, last_check_at, last_check_result, last_error, created_at, updated_at, performance_token_encrypted, performance_status, performance_last_check_at, performance_last_check_result, performance_last_error
+`
+
+func (q *Queries) ClearOzonPerformanceBearerToken(ctx context.Context, sellerAccountID int64) (OzonConnection, error) {
+	row := q.db.QueryRow(ctx, clearOzonPerformanceBearerToken, sellerAccountID)
+	var i OzonConnection
+	err := row.Scan(
+		&i.ID,
+		&i.SellerAccountID,
+		&i.ClientIDEncrypted,
+		&i.ApiKeyEncrypted,
+		&i.Status,
+		&i.LastCheckAt,
+		&i.LastCheckResult,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PerformanceTokenEncrypted,
+		&i.PerformanceStatus,
+		&i.PerformanceLastCheckAt,
+		&i.PerformanceLastCheckResult,
+		&i.PerformanceLastError,
+	)
+	return i, err
+}
+
 const createOzonConnection = `-- name: CreateOzonConnection :one
 INSERT INTO ozon_connections (
     seller_account_id,
@@ -23,7 +59,7 @@ INSERT INTO ozon_connections (
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7
 )
-RETURNING id, seller_account_id, client_id_encrypted, api_key_encrypted, status, last_check_at, last_check_result, last_error, created_at, updated_at
+RETURNING id, seller_account_id, client_id_encrypted, api_key_encrypted, status, last_check_at, last_check_result, last_error, created_at, updated_at, performance_token_encrypted, performance_status, performance_last_check_at, performance_last_check_result, performance_last_error
 `
 
 type CreateOzonConnectionParams struct {
@@ -58,12 +94,17 @@ func (q *Queries) CreateOzonConnection(ctx context.Context, arg CreateOzonConnec
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PerformanceTokenEncrypted,
+		&i.PerformanceStatus,
+		&i.PerformanceLastCheckAt,
+		&i.PerformanceLastCheckResult,
+		&i.PerformanceLastError,
 	)
 	return i, err
 }
 
 const getOzonConnectionBySellerAccountID = `-- name: GetOzonConnectionBySellerAccountID :one
-SELECT id, seller_account_id, client_id_encrypted, api_key_encrypted, status, last_check_at, last_check_result, last_error, created_at, updated_at FROM ozon_connections
+SELECT id, seller_account_id, client_id_encrypted, api_key_encrypted, status, last_check_at, last_check_result, last_error, created_at, updated_at, performance_token_encrypted, performance_status, performance_last_check_at, performance_last_check_result, performance_last_error FROM ozon_connections
 WHERE seller_account_id = $1
 LIMIT 1
 `
@@ -82,6 +123,11 @@ func (q *Queries) GetOzonConnectionBySellerAccountID(ctx context.Context, seller
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PerformanceTokenEncrypted,
+		&i.PerformanceStatus,
+		&i.PerformanceLastCheckAt,
+		&i.PerformanceLastCheckResult,
+		&i.PerformanceLastError,
 	)
 	return i, err
 }
@@ -95,7 +141,7 @@ SET
     last_error = $5,
     updated_at = NOW()
 WHERE seller_account_id = $1
-RETURNING id, seller_account_id, client_id_encrypted, api_key_encrypted, status, last_check_at, last_check_result, last_error, created_at, updated_at
+RETURNING id, seller_account_id, client_id_encrypted, api_key_encrypted, status, last_check_at, last_check_result, last_error, created_at, updated_at, performance_token_encrypted, performance_status, performance_last_check_at, performance_last_check_result, performance_last_error
 `
 
 type UpdateOzonConnectionCheckResultParams struct {
@@ -126,6 +172,11 @@ func (q *Queries) UpdateOzonConnectionCheckResult(ctx context.Context, arg Updat
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PerformanceTokenEncrypted,
+		&i.PerformanceStatus,
+		&i.PerformanceLastCheckAt,
+		&i.PerformanceLastCheckResult,
+		&i.PerformanceLastError,
 	)
 	return i, err
 }
@@ -141,7 +192,7 @@ SET
     last_error = $7,
     updated_at = NOW()
 WHERE seller_account_id = $1
-RETURNING id, seller_account_id, client_id_encrypted, api_key_encrypted, status, last_check_at, last_check_result, last_error, created_at, updated_at
+RETURNING id, seller_account_id, client_id_encrypted, api_key_encrypted, status, last_check_at, last_check_result, last_error, created_at, updated_at, performance_token_encrypted, performance_status, performance_last_check_at, performance_last_check_result, performance_last_error
 `
 
 type UpdateOzonConnectionCredentialsParams struct {
@@ -176,6 +227,11 @@ func (q *Queries) UpdateOzonConnectionCredentials(ctx context.Context, arg Updat
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PerformanceTokenEncrypted,
+		&i.PerformanceStatus,
+		&i.PerformanceLastCheckAt,
+		&i.PerformanceLastCheckResult,
+		&i.PerformanceLastError,
 	)
 	return i, err
 }
@@ -186,7 +242,7 @@ SET
     status = $2,
     updated_at = NOW()
 WHERE seller_account_id = $1
-RETURNING id, seller_account_id, client_id_encrypted, api_key_encrypted, status, last_check_at, last_check_result, last_error, created_at, updated_at
+RETURNING id, seller_account_id, client_id_encrypted, api_key_encrypted, status, last_check_at, last_check_result, last_error, created_at, updated_at, performance_token_encrypted, performance_status, performance_last_check_at, performance_last_check_result, performance_last_error
 `
 
 type UpdateOzonConnectionStatusParams struct {
@@ -208,6 +264,101 @@ func (q *Queries) UpdateOzonConnectionStatus(ctx context.Context, arg UpdateOzon
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PerformanceTokenEncrypted,
+		&i.PerformanceStatus,
+		&i.PerformanceLastCheckAt,
+		&i.PerformanceLastCheckResult,
+		&i.PerformanceLastError,
+	)
+	return i, err
+}
+
+const updateOzonPerformanceBearerToken = `-- name: UpdateOzonPerformanceBearerToken :one
+UPDATE ozon_connections
+SET
+    performance_token_encrypted = $2,
+    performance_status = 'unknown',
+    performance_last_check_at = NULL,
+    performance_last_check_result = NULL,
+    performance_last_error = NULL,
+    updated_at = NOW()
+WHERE seller_account_id = $1
+RETURNING id, seller_account_id, client_id_encrypted, api_key_encrypted, status, last_check_at, last_check_result, last_error, created_at, updated_at, performance_token_encrypted, performance_status, performance_last_check_at, performance_last_check_result, performance_last_error
+`
+
+type UpdateOzonPerformanceBearerTokenParams struct {
+	SellerAccountID           int64
+	PerformanceTokenEncrypted pgtype.Text
+}
+
+func (q *Queries) UpdateOzonPerformanceBearerToken(ctx context.Context, arg UpdateOzonPerformanceBearerTokenParams) (OzonConnection, error) {
+	row := q.db.QueryRow(ctx, updateOzonPerformanceBearerToken, arg.SellerAccountID, arg.PerformanceTokenEncrypted)
+	var i OzonConnection
+	err := row.Scan(
+		&i.ID,
+		&i.SellerAccountID,
+		&i.ClientIDEncrypted,
+		&i.ApiKeyEncrypted,
+		&i.Status,
+		&i.LastCheckAt,
+		&i.LastCheckResult,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PerformanceTokenEncrypted,
+		&i.PerformanceStatus,
+		&i.PerformanceLastCheckAt,
+		&i.PerformanceLastCheckResult,
+		&i.PerformanceLastError,
+	)
+	return i, err
+}
+
+const updateOzonPerformanceCheckResult = `-- name: UpdateOzonPerformanceCheckResult :one
+UPDATE ozon_connections
+SET
+    performance_status = $2,
+    performance_last_check_at = $3,
+    performance_last_check_result = $4,
+    performance_last_error = $5,
+    updated_at = NOW()
+WHERE seller_account_id = $1
+RETURNING id, seller_account_id, client_id_encrypted, api_key_encrypted, status, last_check_at, last_check_result, last_error, created_at, updated_at, performance_token_encrypted, performance_status, performance_last_check_at, performance_last_check_result, performance_last_error
+`
+
+type UpdateOzonPerformanceCheckResultParams struct {
+	SellerAccountID            int64
+	PerformanceStatus          string
+	PerformanceLastCheckAt     pgtype.Timestamptz
+	PerformanceLastCheckResult pgtype.Text
+	PerformanceLastError       pgtype.Text
+}
+
+func (q *Queries) UpdateOzonPerformanceCheckResult(ctx context.Context, arg UpdateOzonPerformanceCheckResultParams) (OzonConnection, error) {
+	row := q.db.QueryRow(ctx, updateOzonPerformanceCheckResult,
+		arg.SellerAccountID,
+		arg.PerformanceStatus,
+		arg.PerformanceLastCheckAt,
+		arg.PerformanceLastCheckResult,
+		arg.PerformanceLastError,
+	)
+	var i OzonConnection
+	err := row.Scan(
+		&i.ID,
+		&i.SellerAccountID,
+		&i.ClientIDEncrypted,
+		&i.ApiKeyEncrypted,
+		&i.Status,
+		&i.LastCheckAt,
+		&i.LastCheckResult,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PerformanceTokenEncrypted,
+		&i.PerformanceStatus,
+		&i.PerformanceLastCheckAt,
+		&i.PerformanceLastCheckResult,
+		&i.PerformanceLastError,
 	)
 	return i, err
 }

@@ -236,12 +236,17 @@ func main() {
 	recommendationsRepo := recommendations.NewSQLCRepository(dbgen.New(postgres.Pool))
 	recommendationsService := recommendations.NewService(
 		recommendationsRepo,
-		recommendations.NewContextBuilder(recommendationsRepo),
+		recommendations.NewContextBuilderWithLimits(recommendationsRepo, recommendations.ContextBuildLimits{
+			MaxItemsPerList: cfg.AI.RecommendationMaxContextItems,
+			MaxContextBytes: cfg.AI.RecommendationMaxContextBytes,
+		}),
 		recommendations.NewOpenAIClient(recommendations.OpenAIClientConfig{
-			APIKey:         cfg.OpenAI.APIKey,
-			Model:          cfg.OpenAI.Model,
-			TimeoutSeconds: cfg.OpenAI.TimeoutSeconds,
-			MaxRetries:     cfg.OpenAI.MaxRetries,
+			APIKey:               cfg.OpenAI.APIKey,
+			Model:                cfg.OpenAI.Model,
+			TimeoutSeconds:       cfg.OpenAI.TimeoutSeconds,
+			MaxRetries:           cfg.OpenAI.MaxRetries,
+			MaxInputTokensApprox: cfg.AI.MaxInputTokensApprox,
+			MaxOutputTokens:      cfg.AI.MaxOutputTokens,
 		}),
 		recommendations.NewOutputValidator(),
 		recommendations.ServiceConfig{
@@ -260,10 +265,12 @@ func main() {
 	chatToolDataRepo := chat.NewSQLCToolDataRepository(chatQueries)
 	chatToolSet := chat.NewToolSet(chatToolRegistry, chatToolDataRepo)
 	chatAIClient := chat.NewOpenAIClient(chat.OpenAIClientConfig{
-		APIKey:         cfg.OpenAI.APIKey,
-		Model:          cfg.OpenAI.Model,
-		TimeoutSeconds: cfg.OpenAI.TimeoutSeconds,
-		MaxRetries:     cfg.OpenAI.MaxRetries,
+		APIKey:               cfg.OpenAI.APIKey,
+		Model:                cfg.OpenAI.Model,
+		TimeoutSeconds:       cfg.OpenAI.TimeoutSeconds,
+		MaxRetries:           cfg.OpenAI.MaxRetries,
+		MaxInputTokensApprox: cfg.AI.MaxInputTokensApprox,
+		MaxOutputTokens:      cfg.AI.MaxOutputTokens,
 	})
 	chatService, err := chat.NewServiceWithDeps(chat.ServiceDeps{
 		Repo:              chatRepo,
@@ -271,7 +278,7 @@ func main() {
 		ToolRegistry:      chatToolRegistry,
 		ToolPlanValidator: chatToolValidator,
 		ToolExecutor:      chatToolSet,
-		ContextAssembler:  chat.NewContextAssembler(),
+		ContextAssembler:  chat.NewContextAssemblerWithLimits(cfg.AI.ChatMaxContextBytes, cfg.AI.ChatMaxContextItems),
 		AnswerValidator:   chat.NewAnswerValidator(),
 		Config: chat.ServiceConfig{
 			PlannerModel:         cfg.OpenAI.Model,
@@ -307,12 +314,15 @@ func main() {
 	healthHandler := health.NewHandler(readinessChecker)
 
 	adminRepo := admin.NewSQLCRepository(dbgen.New(postgres.Pool))
+	accountMetricsRebuild := analytics.NewAccountMetricsService(postgres.Pool)
+	skuMetricsRebuild := analytics.NewSKUMetricsService(postgres.Pool)
 	adminService, err := admin.NewService(admin.ServiceDeps{
 		Repo:                   adminRepo,
 		IngestionService:       adminIngestionAdapter{svc: orchestrationService},
 		CursorService:          adminCursorAdapter{svc: syncCursorService},
 		AlertsService:          adminAlertsAdapter{svc: alertsService},
 		RecommendationsService: adminRecommendationsAdapter{svc: recommendationsService},
+		MetricsService:         admin.NewAnalyticsMetricsRerunner(accountMetricsRebuild, skuMetricsRebuild),
 	})
 	if err != nil {
 		sentry.CaptureException(err)

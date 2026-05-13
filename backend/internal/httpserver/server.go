@@ -123,7 +123,9 @@ func New(
 			r.Get("/", ozonHandler.GetConnection)
 			r.Post("/", ozonHandler.CreateConnection)
 			r.Put("/", ozonHandler.UpdateConnection)
+			r.Put("/performance-token", ozonHandler.PutPerformanceToken)
 			r.Post("/check", ozonHandler.CheckConnection)
+			r.Post("/check-performance", ozonHandler.CheckPerformanceConnection)
 
 			r.Post("/initial-sync", ozonIngestionSyncHandler.StartInitialSync)
 			r.Get("/status", ozonIngestionStatusHandler.GetStatus)

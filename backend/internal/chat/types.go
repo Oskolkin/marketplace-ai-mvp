@@ -223,6 +223,10 @@ type FactContext struct {
 	Limitations []string       `json:"limitations"`
 	Freshness   map[string]any `json:"freshness"`
 
+	// ContextTruncated mirrors context_stats.truncated for trace consumers (no extra payload).
+	ContextTruncated        bool   `json:"context_truncated,omitempty"`
+	ContextTruncationReason string `json:"context_truncation_reason,omitempty"`
+
 	ContextStats FactContextStats `json:"context_stats"`
 }
 
@@ -274,11 +278,12 @@ type FactRecommendationReference struct {
 }
 
 type FactContextStats struct {
-	ToolResultsCount      int  `json:"tool_results_count"`
-	FailedToolsCount      int  `json:"failed_tools_count"`
-	TotalItemsIncluded    int  `json:"total_items_included"`
-	EstimatedContextBytes int  `json:"estimated_context_bytes"`
-	Truncated             bool `json:"truncated"`
+	ToolResultsCount      int    `json:"tool_results_count"`
+	FailedToolsCount      int    `json:"failed_tools_count"`
+	TotalItemsIncluded    int    `json:"total_items_included"`
+	EstimatedContextBytes int    `json:"estimated_context_bytes"`
+	Truncated             bool   `json:"truncated"`
+	TruncationReason      string `json:"truncation_reason,omitempty"`
 }
 
 type AssembleContextInput struct {

@@ -71,3 +71,12 @@ SET
     error_message = $2
 WHERE id = $1
 RETURNING *;
+
+-- name: CountImportJobsSummaryBySyncJobID :one
+SELECT
+    COUNT(*)::bigint AS total_count,
+    COUNT(*) FILTER (WHERE status IN ('pending', 'fetching', 'importing'))::bigint AS active_count,
+    COUNT(*) FILTER (WHERE status = 'failed')::bigint AS failed_count,
+    COUNT(*) FILTER (WHERE status = 'completed')::bigint AS completed_count
+FROM import_jobs
+WHERE sync_job_id = $1;

@@ -70,3 +70,46 @@ SET
     error_message = $2
 WHERE id = $1
 RETURNING *;
+
+-- name: TryFinalizeSyncJobFailedIfNonTerminal :one
+UPDATE sync_jobs
+SET
+    status = 'failed',
+    finished_at = NOW(),
+    error_message = $2
+WHERE sync_jobs.id = $1
+  AND sync_jobs.status NOT IN ('completed', 'failed')
+  AND EXISTS (
+      SELECT 1
+      FROM import_jobs ij
+      WHERE ij.sync_job_id = $1
+        AND ij.status = 'failed'
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM import_jobs ij
+      WHERE ij.sync_job_id = $1
+        AND ij.status IN ('pending', 'fetching', 'importing')
+  )
+RETURNING *;
+
+-- name: TryFinalizeSyncJobCompletedIfNonTerminal :one
+UPDATE sync_jobs
+SET
+    status = 'completed',
+    finished_at = NOW(),
+    error_message = NULL
+WHERE sync_jobs.id = $1
+  AND sync_jobs.status NOT IN ('completed', 'failed')
+  AND EXISTS (
+      SELECT 1
+      FROM import_jobs ij
+      WHERE ij.sync_job_id = $1
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM import_jobs ij
+      WHERE ij.sync_job_id = $1
+        AND ij.status <> 'completed'
+  )
+RETURNING *;

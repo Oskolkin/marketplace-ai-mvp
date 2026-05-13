@@ -7,17 +7,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/openaix"
 )
 
 const defaultOpenAIBaseURL = "https://api.openai.com/v1"
 
 var (
-	ErrOpenAIAPIKeyMissing = errors.New("openai api key is missing")
-	ErrOpenAIProvider      = errors.New("openai provider error")
+	ErrOpenAIAPIKeyMissing   = errors.New("openai api key is missing")
+	ErrOpenAIProvider        = errors.New("openai provider error")
+	ErrOpenAIRequestTooLarge = errors.New("openai request exceeds approx input token budget")
 )
 
 type AIClient interface {
@@ -26,11 +28,13 @@ type AIClient interface {
 }
 
 type OpenAIClientConfig struct {
-	APIKey         string
-	Model          string
-	TimeoutSeconds int
-	MaxRetries     int
-	BaseURL        string
+	APIKey               string
+	Model                string
+	TimeoutSeconds       int
+	MaxRetries           int
+	BaseURL              string
+	MaxInputTokensApprox int
+	MaxOutputTokens      int
 }
 
 type OpenAIClient struct {
@@ -74,10 +78,11 @@ type GenerateAnswerOutput struct {
 }
 
 type openAIResponsesRequest struct {
-	Model       string            `json:"model"`
-	Input       []openAIInputItem `json:"input"`
-	Temperature float64           `json:"temperature"`
-	Text        openAITextConfig  `json:"text"`
+	Model             string            `json:"model"`
+	Input             []openAIInputItem `json:"input"`
+	Temperature       float64           `json:"temperature"`
+	Text              openAITextConfig  `json:"text"`
+	MaxOutputTokens   int               `json:"max_output_tokens,omitempty"`
 }
 
 type openAIInputItem struct {
@@ -132,6 +137,14 @@ func NewOpenAIClient(cfg OpenAIClientConfig) *OpenAIClient {
 	}
 }
 
+func approxInputTokensFromRequest(req openAIResponsesRequest) int {
+	raw, err := json.Marshal(req)
+	if err != nil {
+		return 0
+	}
+	return (len(raw) + 3) / 4
+}
+
 func (c *OpenAIClient) PlanTools(ctx context.Context, input PlanToolsInput) (*PlanToolsOutput, error) {
 	if strings.TrimSpace(c.cfg.APIKey) == "" {
 		return nil, ErrOpenAIAPIKeyMissing
@@ -144,6 +157,14 @@ func (c *OpenAIClient) PlanTools(ctx context.Context, input PlanToolsInput) (*Pl
 		},
 		Temperature: 0.1,
 		Text:        openAITextConfig{Format: openAITextFormat{Type: "json_object"}},
+	}
+	if c.cfg.MaxOutputTokens > 0 {
+		reqBody.MaxOutputTokens = c.cfg.MaxOutputTokens
+	}
+	if c.cfg.MaxInputTokensApprox > 0 {
+		if approx := approxInputTokensFromRequest(reqBody); approx > c.cfg.MaxInputTokensApprox {
+			return nil, fmt.Errorf("%w (approx_input_tokens=%d limit=%d)", ErrOpenAIRequestTooLarge, approx, c.cfg.MaxInputTokensApprox)
+		}
 	}
 	respBody, requestID, err := c.doWithRetry(ctx, reqBody)
 	if err != nil {
@@ -186,6 +207,14 @@ func (c *OpenAIClient) GenerateAnswer(ctx context.Context, input GenerateAnswerI
 		},
 		Temperature: 0.2,
 		Text:        openAITextConfig{Format: openAITextFormat{Type: "json_object"}},
+	}
+	if c.cfg.MaxOutputTokens > 0 {
+		reqBody.MaxOutputTokens = c.cfg.MaxOutputTokens
+	}
+	if c.cfg.MaxInputTokensApprox > 0 {
+		if approx := approxInputTokensFromRequest(reqBody); approx > c.cfg.MaxInputTokensApprox {
+			return nil, fmt.Errorf("%w (approx_input_tokens=%d limit=%d)", ErrOpenAIRequestTooLarge, approx, c.cfg.MaxInputTokensApprox)
+		}
 	}
 	respBody, requestID, err := c.doWithRetry(ctx, reqBody)
 	if err != nil {
@@ -257,11 +286,7 @@ func (c *OpenAIClient) doOnce(ctx context.Context, reqBody openAIResponsesReques
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		var netErr net.Error
-		if errors.As(err, &netErr) {
-			return nil, "", fmt.Errorf("%w: %v", ErrOpenAIProvider, err)
-		}
-		return nil, "", fmt.Errorf("%w: %v", ErrOpenAIProvider, err)
+		return nil, "", openaix.WrapIfUnavailable(err)
 	}
 	defer resp.Body.Close()
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 16*1024*1024))
@@ -276,24 +301,18 @@ func (c *OpenAIClient) doOnce(ctx context.Context, reqBody openAIResponsesReques
 	if errBody == "" {
 		errBody = "<empty>"
 	}
-	return nil, requestID, &openAIHTTPError{StatusCode: resp.StatusCode, Body: errBody}
-}
-
-type openAIHTTPError struct {
-	StatusCode int
-	Body       string
-}
-
-func (e *openAIHTTPError) Error() string {
-	return fmt.Sprintf("%v: status=%d body=%s", ErrOpenAIProvider, e.StatusCode, e.Body)
+	if err := openaix.WrapHTTPOutage(resp.StatusCode, errBody); err != nil {
+		return nil, requestID, err
+	}
+	return nil, requestID, fmt.Errorf("%w: status=%d body=%s", ErrOpenAIProvider, resp.StatusCode, errBody)
 }
 
 func isRetryableOpenAIError(err error) bool {
-	var httpErr *openAIHTTPError
+	var httpErr *openaix.HTTPOutageError
 	if errors.As(err, &httpErr) {
-		return httpErr.StatusCode == http.StatusTooManyRequests || httpErr.StatusCode >= 500
+		return openaix.IsOutageStatus(httpErr.StatusCode)
 	}
-	return errors.Is(err, ErrOpenAIProvider)
+	return openaix.IsTemporarilyUnavailable(err)
 }
 
 func extractOutputText(resp openAIResponsesResponse) string {

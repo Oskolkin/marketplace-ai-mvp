@@ -109,6 +109,38 @@ ORDER BY updated_at DESC, id DESC
 LIMIT sqlc.arg(page_limit)
 OFFSET sqlc.arg(page_offset);
 
+-- name: AdminPeekRecommendationForAudit :one
+SELECT
+    id,
+    COALESCE(ai_model, '') AS ai_model,
+    COALESCE(ai_prompt_version, '') AS ai_prompt_version
+FROM recommendations
+WHERE id = $1 AND seller_account_id = $2;
+
+-- name: AdminPeekChatTraceForAudit :one
+SELECT
+    id,
+    session_id,
+    user_message_id,
+    assistant_message_id,
+    planner_model,
+    answer_model,
+    planner_prompt_version,
+    answer_prompt_version,
+    status
+FROM chat_traces
+WHERE id = $1 AND seller_account_id = $2;
+
+-- name: AdminPeekRecommendationRunForAudit :one
+SELECT
+    id,
+    run_type,
+    status,
+    COALESCE(ai_model, '') AS ai_model,
+    COALESCE(ai_prompt_version, '') AS ai_prompt_version
+FROM recommendation_runs
+WHERE id = $1 AND seller_account_id = $2;
+
 -- name: CreateRecommendationRunDiagnostic :one
 INSERT INTO recommendation_run_diagnostics (
     recommendation_run_id,

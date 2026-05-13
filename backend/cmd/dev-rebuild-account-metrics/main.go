@@ -60,7 +60,7 @@ func main() {
 			os.Exit(2)
 		}
 
-		if err := service.RebuildDailyAccountMetricsForDateRange(ctx, sellerAccountID, from, to); err != nil {
+		if _, err := service.RebuildDailyAccountMetricsForDateRange(ctx, sellerAccountID, from, to); err != nil {
 			fmt.Fprintf(os.Stderr, "rebuild account metrics by range failed: %v\n", err)
 			os.Exit(1)
 		}

@@ -25,34 +25,84 @@ func (s *Service) GetAIRecommendationLogs(ctx context.Context, sellerAccountID i
 	}, nil
 }
 
-func (s *Service) GetRecommendationRunDetail(ctx context.Context, sellerAccountID, runID int64) (*RecommendationRunDetail, error) {
+func (s *Service) GetRecommendationRunDetail(ctx context.Context, actor AdminActor, sellerAccountID, runID int64) (*RecommendationRunDetail, error) {
 	if err := validateSellerAccountID(sellerAccountID); err != nil {
 		return nil, err
 	}
 	if runID <= 0 {
 		return nil, ErrAdminDataUnavailable
 	}
-	detail, err := s.repo.GetRecommendationRunDetail(ctx, sellerAccountID, runID)
+	meta, err := s.repo.PeekRecommendationRunForAudit(ctx, sellerAccountID, runID)
 	if err != nil {
 		return nil, err
 	}
-	if len(detail.Diagnostics) == 0 {
-		detail.Limitations = append(detail.Limitations, "Rejected item payloads are unavailable for historical runs.")
+	req := map[string]any{
+		"target_type":       AdminRawViewTargetRecommendationRun,
+		"target_id":         runID,
+		"seller_account_id": sellerAccountID,
+		"run_type":          meta.RunType,
+		"run_status":        meta.Status,
+		"ai_model":          meta.AIModel,
+		"ai_prompt_version": meta.AIPromptVersion,
 	}
-	if len(detail.Recommendations) == 0 {
-		detail.Limitations = append(detail.Limitations, "Recommendations cannot be reliably linked to a specific run with current schema.")
-	}
-	return detail, nil
+	return runViewRawAIAuditAndFetch(s, ctx, actor, sellerAccountID, AdminRawViewTargetRecommendationRun, runID, req,
+		func() (*RecommendationRunDetail, error) {
+			detail, derr := s.repo.GetRecommendationRunDetail(ctx, sellerAccountID, runID)
+			if derr != nil {
+				return nil, derr
+			}
+			if len(detail.Diagnostics) == 0 {
+				detail.Limitations = append(detail.Limitations, "Rejected item payloads are unavailable for historical runs.")
+			}
+			if len(detail.Recommendations) == 0 {
+				detail.Limitations = append(detail.Limitations, "Recommendations cannot be reliably linked to a specific run with current schema.")
+			}
+			return detail, nil
+		},
+		func(d *RecommendationRunDetail) map[string]any {
+			return map[string]any{
+				"ok":                    true,
+				"target_type":           AdminRawViewTargetRecommendationRun,
+				"target_id":             runID,
+				"diagnostics_count":     len(d.Diagnostics),
+				"recommendations_count": len(d.Recommendations),
+			}
+		},
+	)
 }
 
-func (s *Service) GetRecommendationRawAI(ctx context.Context, sellerAccountID, recommendationID int64) (*RecommendationRawAI, error) {
+func (s *Service) GetRecommendationRawAI(ctx context.Context, actor AdminActor, sellerAccountID, recommendationID int64) (*RecommendationRawAI, error) {
 	if err := validateSellerAccountID(sellerAccountID); err != nil {
 		return nil, err
 	}
 	if recommendationID <= 0 {
 		return nil, ErrAdminDataUnavailable
 	}
-	return s.repo.GetRecommendationRawAI(ctx, sellerAccountID, recommendationID)
+	meta, err := s.repo.PeekRecommendationForAudit(ctx, sellerAccountID, recommendationID)
+	if err != nil {
+		return nil, err
+	}
+	req := map[string]any{
+		"target_type":       AdminRawViewTargetRecommendation,
+		"target_id":         recommendationID,
+		"seller_account_id": sellerAccountID,
+		"ai_model":          meta.AIModel,
+		"ai_prompt_version": meta.AIPromptVersion,
+	}
+	return runViewRawAIAuditAndFetch(s, ctx, actor, sellerAccountID, AdminRawViewTargetRecommendation, recommendationID, req,
+		func() (*RecommendationRawAI, error) {
+			return s.repo.GetRecommendationRawAI(ctx, sellerAccountID, recommendationID)
+		},
+		func(r *RecommendationRawAI) map[string]any {
+			return map[string]any{
+				"ok":                   true,
+				"target_type":          AdminRawViewTargetRecommendation,
+				"target_id":            recommendationID,
+				"related_alerts_count": len(r.RelatedAlerts),
+				"diagnostics_count":    len(r.Diagnostics),
+			}
+		},
+	)
 }
 
 func (s *Service) GetAIChatLogs(ctx context.Context, sellerAccountID int64, filter ChatTraceFilter) (*ChatTraceListResult, error) {
@@ -73,14 +123,51 @@ func (s *Service) GetAIChatLogs(ctx context.Context, sellerAccountID int64, filt
 	}, nil
 }
 
-func (s *Service) GetChatTraceDetail(ctx context.Context, sellerAccountID, traceID int64) (*ChatTraceDetail, error) {
+func (s *Service) GetChatTraceDetail(ctx context.Context, actor AdminActor, sellerAccountID, traceID int64) (*ChatTraceDetail, error) {
 	if err := validateSellerAccountID(sellerAccountID); err != nil {
 		return nil, err
 	}
 	if traceID <= 0 {
 		return nil, ErrAdminDataUnavailable
 	}
-	return s.repo.GetChatTraceDetail(ctx, sellerAccountID, traceID)
+	meta, err := s.repo.PeekChatTraceForAudit(ctx, sellerAccountID, traceID)
+	if err != nil {
+		return nil, err
+	}
+	req := map[string]any{
+		"target_type":             AdminRawViewTargetChatTrace,
+		"target_id":               traceID,
+		"seller_account_id":       sellerAccountID,
+		"session_id":              meta.SessionID,
+		"user_message_id":         meta.UserMessageID,
+		"assistant_message_id":    meta.AssistantMessageID,
+		"planner_model":           meta.PlannerModel,
+		"answer_model":            meta.AnswerModel,
+		"planner_prompt_version":  meta.PlannerPromptVersion,
+		"answer_prompt_version":   meta.AnswerPromptVersion,
+		"trace_status":            meta.Status,
+	}
+	return runViewRawAIAuditAndFetch(s, ctx, actor, sellerAccountID, AdminRawViewTargetChatTrace, traceID, req,
+		func() (*ChatTraceDetail, error) {
+			return s.repo.GetChatTraceDetail(ctx, sellerAccountID, traceID)
+		},
+		func(d *ChatTraceDetail) map[string]any {
+			out := map[string]any{
+				"ok":             true,
+				"target_type":    AdminRawViewTargetChatTrace,
+				"target_id":      traceID,
+				"session_id":     d.SessionID,
+				"messages_count": len(d.Messages),
+			}
+			if d.UserMessageID != nil {
+				out["user_message_id"] = *d.UserMessageID
+			}
+			if d.AssistantMessageID != nil {
+				out["assistant_message_id"] = *d.AssistantMessageID
+			}
+			return out
+		},
+	)
 }
 
 func (s *Service) ListChatSessions(ctx context.Context, sellerAccountID int64, filter ChatSessionFilter) (*ChatSessionListResult, error) {

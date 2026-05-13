@@ -430,7 +430,12 @@ export default function AdminClientDetailScreen({ sellerAccountId }: Props) {
             <p>Created: {fmtDate(detail.overview.created_at)}</p>
           </Card>
           <Card title="Connections">
-            {detail.connections.length === 0 ? <p className="text-gray-600">No connections.</p> : detail.connections.map((c) => <p key={c.provider}>{c.provider}: {c.status}</p>)}
+            {detail.connections.length === 0 ? <p className="text-gray-600">No connections.</p> : detail.connections.map((c) => (
+              <div key={c.provider} className="text-sm space-y-1 border-b border-gray-100 pb-2 mb-2 last:border-0 last:pb-0 last:mb-0">
+                <p><span className="font-medium">{c.provider}</span> — Seller API: {c.status}</p>
+                <p className="text-gray-700">Performance API: {c.performance_connection_status}{c.performance_token_set ? " (token set)" : " (token not set)"}</p>
+              </div>
+            ))}
           </Card>
           <Card title="Latest sync">
             {detail.operational_status.latest_sync_job ? <p>#{detail.operational_status.latest_sync_job.id} {detail.operational_status.latest_sync_job.status}</p> : <p className="text-gray-600">No sync jobs.</p>}

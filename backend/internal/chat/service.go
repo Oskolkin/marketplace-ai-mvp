@@ -5,7 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
+
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/aicost"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/openaix"
 )
 
 var (
@@ -19,6 +23,7 @@ var (
 	ErrAnswerValidatorRequired   = errors.New("chat answer validator is required")
 	ErrInvalidToolPlan           = errors.New("chat tool plan validation failed")
 	ErrInvalidAIAnswer           = errors.New("chat answer validation failed")
+	ErrAITemporarilyUnavailable  = errors.New("AI temporarily unavailable, try again later")
 )
 
 type Service struct {
@@ -272,6 +277,10 @@ func (s *Service) Ask(ctx context.Context, input AskInput) (*AskResult, error) {
 		UserPrompt:   plannerUserPrompt,
 	})
 	if err != nil {
+		err = wrapChatOpenAIUnavailable(err)
+		if errors.Is(err, ErrAITemporarilyUnavailable) {
+			slog.Error("chat planner unavailable", "trace_id", trace.ID, "seller_account_id", input.SellerAccountID, "err", err)
+		}
 		s.failTraceBestEffort(ctx, FailTraceInput{
 			SellerAccountID: input.SellerAccountID,
 			TraceID:         trace.ID,
@@ -351,6 +360,10 @@ func (s *Service) Ask(ctx context.Context, input AskInput) (*AskResult, error) {
 		FactContext:  factContext,
 	})
 	if err != nil {
+		err = wrapChatOpenAIUnavailable(err)
+		if errors.Is(err, ErrAITemporarilyUnavailable) {
+			slog.Error("chat answerer unavailable", "trace_id", trace.ID, "seller_account_id", input.SellerAccountID, "err", err)
+		}
 		s.failTraceBestEffort(ctx, FailTraceInput{
 			SellerAccountID:          input.SellerAccountID,
 			TraceID:                  trace.ID,
@@ -419,6 +432,18 @@ func (s *Service) Ask(ctx context.Context, input AskInput) (*AskResult, error) {
 	}
 	_, _ = s.repo.TouchSession(ctx, input.SellerAccountID, session.ID)
 
+	totalIn := int(plannerOutput.InputTokens + answerOutput.InputTokens)
+	totalOut := int(plannerOutput.OutputTokens + answerOutput.OutputTokens)
+	priceModel := strings.TrimSpace(s.answerModel)
+	if priceModel == "" {
+		priceModel = "unknown"
+	}
+	est := aicost.EstimateUSD(priceModel, totalIn, totalOut)
+	estCost := est.CostUSD
+	if !est.Known {
+		estCost = 0
+	}
+
 	_, err = s.repo.CompleteTrace(ctx, CompleteTraceInput{
 		SellerAccountID:          input.SellerAccountID,
 		TraceID:                  trace.ID,
@@ -433,7 +458,7 @@ func (s *Service) Ask(ctx context.Context, input AskInput) (*AskResult, error) {
 		AnswerValidationPayload:  payloadMap(validation),
 		InputTokens:              plannerOutput.InputTokens + answerOutput.InputTokens,
 		OutputTokens:             plannerOutput.OutputTokens + answerOutput.OutputTokens,
-		EstimatedCost:            0,
+		EstimatedCost:            estCost,
 	})
 	if err != nil {
 		return nil, err
@@ -486,6 +511,19 @@ func deriveSessionTitle(question string) string {
 		return strings.TrimSpace(string(r[:80]))
 	}
 	return q
+}
+
+func wrapChatOpenAIUnavailable(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, ErrOpenAIRequestTooLarge) {
+		return err
+	}
+	if openaix.IsTemporarilyUnavailable(err) {
+		return fmt.Errorf("%w: %w", ErrAITemporarilyUnavailable, err)
+	}
+	return err
 }
 
 func (s *Service) failTraceBestEffort(ctx context.Context, input FailTraceInput) {

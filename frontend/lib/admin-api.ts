@@ -83,6 +83,11 @@ export type AdminClientDetail = {
     last_check_result?: string | null;
     last_error?: string | null;
     updated_at?: string | null;
+    performance_connection_status: string;
+    performance_token_set: boolean;
+    performance_last_check_at?: string | null;
+    performance_last_check_result?: string | null;
+    performance_last_error?: string | null;
   }>;
   operational_status: {
     latest_sync_job?: AdminSyncJobItem | null;

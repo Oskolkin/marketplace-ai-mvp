@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/dbgen"
@@ -47,13 +48,18 @@ type ImportJobStatusDTO struct {
 }
 
 type StatusResult struct {
-	ConnectionStatus     string               `json:"connection_status"`
-	LastCheckAt          *string              `json:"last_check_at"`
-	LastCheckResult      *string              `json:"last_check_result"`
-	LastError            *string              `json:"last_error"`
-	CurrentSync          *SyncJobStatusDTO    `json:"current_sync"`
-	LastSuccessfulSyncAt *string              `json:"last_successful_sync_at"`
-	LatestImportJobs     []ImportJobStatusDTO `json:"latest_import_jobs"`
+	ConnectionStatus            string               `json:"connection_status"`
+	LastCheckAt                 *string              `json:"last_check_at"`
+	LastCheckResult             *string              `json:"last_check_result"`
+	LastError                   *string              `json:"last_error"`
+	PerformanceConnectionStatus string               `json:"performance_connection_status"`
+	PerformanceTokenSet         bool                 `json:"performance_token_set"`
+	PerformanceLastCheckAt      *string              `json:"performance_last_check_at"`
+	PerformanceLastCheckResult  *string              `json:"performance_last_check_result"`
+	PerformanceLastError        *string              `json:"performance_last_error"`
+	CurrentSync                 *SyncJobStatusDTO    `json:"current_sync"`
+	LastSuccessfulSyncAt        *string              `json:"last_successful_sync_at"`
+	LatestImportJobs            []ImportJobStatusDTO `json:"latest_import_jobs"`
 }
 
 func (s *StatusService) GetStatus(ctx context.Context, sellerAccountID int64) (StatusResult, error) {
@@ -66,11 +72,17 @@ func (s *StatusService) GetStatus(ctx context.Context, sellerAccountID int64) (S
 	}
 
 	result := StatusResult{
-		ConnectionStatus: connection.Status,
-		LastCheckAt:      pgTimePtr(connection.LastCheckAt),
-		LastCheckResult:  pgTextPtr(connection.LastCheckResult),
-		LastError:        pgTextPtr(connection.LastError),
-		LatestImportJobs: []ImportJobStatusDTO{},
+		ConnectionStatus:            connection.Status,
+		LastCheckAt:                 pgTimePtr(connection.LastCheckAt),
+		LastCheckResult:             pgTextPtr(connection.LastCheckResult),
+		LastError:                   pgTextPtr(connection.LastError),
+		PerformanceConnectionStatus: connection.PerformanceStatus,
+		PerformanceTokenSet: connection.PerformanceTokenEncrypted.Valid &&
+			strings.TrimSpace(connection.PerformanceTokenEncrypted.String) != "",
+		PerformanceLastCheckAt:     pgTimePtr(connection.PerformanceLastCheckAt),
+		PerformanceLastCheckResult: pgTextPtr(connection.PerformanceLastCheckResult),
+		PerformanceLastError:       pgTextPtr(connection.PerformanceLastError),
+		LatestImportJobs:           []ImportJobStatusDTO{},
 	}
 
 	latestSyncJob, err := s.queries.GetLatestSyncJobBySellerAccountID(ctx, sellerAccountID)

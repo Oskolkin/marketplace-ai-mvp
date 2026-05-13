@@ -242,6 +242,12 @@ type OzonConnection struct {
 	LastError         pgtype.Text
 	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
+	// Encrypted Ozon Performance API bearer token (separate from Seller API key).
+	PerformanceTokenEncrypted  pgtype.Text
+	PerformanceStatus          string
+	PerformanceLastCheckAt     pgtype.Timestamptz
+	PerformanceLastCheckResult pgtype.Text
+	PerformanceLastError       pgtype.Text
 }
 
 type PricingConstraintRule struct {

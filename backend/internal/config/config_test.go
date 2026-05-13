@@ -79,3 +79,17 @@ func setRequiredEnvForLoad(t *testing.T) {
 	t.Setenv("OPENAI_TIMEOUT_SECONDS", "30")
 	t.Setenv("OPENAI_MAX_RETRIES", "2")
 }
+
+func TestLoadAIAndCleanupDefaults(t *testing.T) {
+	setRequiredEnvForLoad(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AI.RecommendationMaxContextItems <= 0 || cfg.AI.ChatMaxContextBytes <= 0 {
+		t.Fatalf("unexpected AI defaults: %+v", cfg.AI)
+	}
+	if cfg.Cleanup.RetentionDays <= 0 {
+		t.Fatalf("cleanup retention: %d", cfg.Cleanup.RetentionDays)
+	}
+}

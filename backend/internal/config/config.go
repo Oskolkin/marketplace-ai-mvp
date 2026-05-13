@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -18,6 +19,8 @@ type Config struct {
 	Sentry    SentryConfig
 	Telemetry TelemetryConfig
 	OpenAI    OpenAIConfig
+	AI        AIContextLimitsConfig
+	Cleanup   CleanupConfig
 }
 
 type AppConfig struct {
@@ -79,6 +82,23 @@ type OpenAIConfig struct {
 	MaxRetries     int
 }
 
+// AIContextLimitsConfig caps AI payloads before OpenAI (MVP byte/token heuristics).
+type AIContextLimitsConfig struct {
+	RecommendationMaxContextItems int
+	RecommendationMaxContextBytes int
+	ChatMaxContextItems           int
+	ChatMaxContextBytes           int
+	MaxInputTokensApprox          int
+	MaxOutputTokens               int
+}
+
+// CleanupConfig controls optional background maintenance (MVP: archive stale chat sessions only).
+type CleanupConfig struct {
+	Enabled         bool
+	RetentionDays   int
+	Schedule        time.Duration
+}
+
 func Load() (*Config, error) {
 	cfg := &Config{
 		App: AppConfig{
@@ -129,6 +149,19 @@ func Load() (*Config, error) {
 			Model:          getEnv("OPENAI_MODEL", "gpt-4.1-mini"),
 			TimeoutSeconds: getEnvAsInt("OPENAI_TIMEOUT_SECONDS", 30),
 			MaxRetries:     getEnvAsInt("OPENAI_MAX_RETRIES", 2),
+		},
+		AI: AIContextLimitsConfig{
+			RecommendationMaxContextItems: getEnvAsInt("AI_RECOMMENDATION_MAX_CONTEXT_ITEMS", 50),
+			RecommendationMaxContextBytes: getEnvAsInt("AI_RECOMMENDATION_MAX_CONTEXT_BYTES", 480*1024),
+			ChatMaxContextItems:             getEnvAsInt("AI_CHAT_MAX_CONTEXT_ITEMS", 20),
+			ChatMaxContextBytes:             getEnvAsInt("AI_CHAT_MAX_CONTEXT_BYTES", 50*1024),
+			MaxInputTokensApprox:            getEnvAsInt("AI_MAX_INPUT_TOKENS_APPROX", 120000),
+			MaxOutputTokens:                 getEnvAsInt("AI_MAX_OUTPUT_TOKENS", 4096),
+		},
+		Cleanup: CleanupConfig{
+			Enabled:       getEnvAsBool("CLEANUP_ENABLED", false),
+			RetentionDays: getEnvAsInt("CLEANUP_RETENTION_DAYS", 90),
+			Schedule:      getEnvAsDuration("CLEANUP_SCHEDULE", 168*time.Hour),
 		},
 	}
 
@@ -192,6 +225,12 @@ func validate(cfg *Config) error {
 	if cfg.OpenAI.MaxRetries < 0 {
 		return fmt.Errorf("OPENAI_MAX_RETRIES must be greater than or equal to 0")
 	}
+	if cfg.Cleanup.Enabled && cfg.Cleanup.RetentionDays <= 0 {
+		return fmt.Errorf("CLEANUP_RETENTION_DAYS must be greater than 0 when CLEANUP_ENABLED is true")
+	}
+	if cfg.Cleanup.Enabled && cfg.Cleanup.Schedule <= 0 {
+		return fmt.Errorf("CLEANUP_SCHEDULE must be a positive duration when CLEANUP_ENABLED is true")
+	}
 
 	switch cfg.App.Env {
 	case "local", "test", "staging", "production":
@@ -234,6 +273,18 @@ func getEnvAsBool(key string, fallback bool) bool {
 		return fallback
 	}
 	return parsed
+}
+
+func getEnvAsDuration(key string, fallback time.Duration) time.Duration {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return fallback
+	}
+	return d
 }
 
 func NormalizeAdminEmails(raw string) []string {

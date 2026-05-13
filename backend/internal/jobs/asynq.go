@@ -16,6 +16,8 @@ const (
 	TaskTypeOzonImportOrders    = "ozon.import.orders"
 	TaskTypeOzonImportStocks    = "ozon.import.stocks"
 	TaskTypeOzonImportAds       = "ozon.import.ads"
+	// TaskTypePostSyncRecalculation runs metrics rebuild + alerts after a sync_job reaches completed.
+	TaskTypePostSyncRecalculation = "ozon.post_sync_recalculation"
 )
 
 type RedisConfig struct {
@@ -44,6 +46,12 @@ type OzonImportJobPayload struct {
 	SyncJobID       int64  `json:"sync_job_id"`
 	ImportJobID     int64  `json:"import_job_id"`
 	Domain          string `json:"domain"`
+}
+
+// RecalculateAfterSyncPayload is processed after ingestion completes a sync_job (status completed).
+type RecalculateAfterSyncPayload struct {
+	SellerAccountID int64 `json:"seller_account_id"`
+	SyncJobID       int64 `json:"sync_job_id"`
 }
 
 func NewAsynqClient(cfg RedisConfig) *asynq.Client {
@@ -134,4 +142,16 @@ func newOzonImportTask(taskType string, sellerAccountID, syncJobID, importJobID 
 	}
 
 	return asynq.NewTask(taskType, payload), nil
+}
+
+// NewRecalculateAfterSyncTask enqueues downstream metrics + alerts for a completed sync_job.
+func NewRecalculateAfterSyncTask(sellerAccountID, syncJobID int64) (*asynq.Task, error) {
+	payload, err := json.Marshal(RecalculateAfterSyncPayload{
+		SellerAccountID: sellerAccountID,
+		SyncJobID:       syncJobID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal post-sync recalculation payload: %w", err)
+	}
+	return asynq.NewTask(TaskTypePostSyncRecalculation, payload), nil
 }

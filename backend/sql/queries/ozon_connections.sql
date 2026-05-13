@@ -48,3 +48,38 @@ SET
     updated_at = NOW()
 WHERE seller_account_id = $1
 RETURNING *;
+
+-- name: UpdateOzonPerformanceBearerToken :one
+UPDATE ozon_connections
+SET
+    performance_token_encrypted = $2,
+    performance_status = 'unknown',
+    performance_last_check_at = NULL,
+    performance_last_check_result = NULL,
+    performance_last_error = NULL,
+    updated_at = NOW()
+WHERE seller_account_id = $1
+RETURNING *;
+
+-- name: ClearOzonPerformanceBearerToken :one
+UPDATE ozon_connections
+SET
+    performance_token_encrypted = NULL,
+    performance_status = 'not_configured',
+    performance_last_check_at = NULL,
+    performance_last_check_result = NULL,
+    performance_last_error = NULL,
+    updated_at = NOW()
+WHERE seller_account_id = $1
+RETURNING *;
+
+-- name: UpdateOzonPerformanceCheckResult :one
+UPDATE ozon_connections
+SET
+    performance_status = $2,
+    performance_last_check_at = $3,
+    performance_last_check_result = $4,
+    performance_last_error = $5,
+    updated_at = NOW()
+WHERE seller_account_id = $1
+RETURNING *;

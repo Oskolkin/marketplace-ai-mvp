@@ -13,6 +13,7 @@ var (
 	ErrSellerAccountIDRequired  = errors.New("seller account id is required")
 	ErrAdminActionNotConfigured = errors.New("admin action dependency is not configured")
 	ErrAdminDataUnavailable     = errors.New("admin data is unavailable")
+	ErrAdminAuditLogWriteFailed = errors.New("admin audit log write failed; raw AI payload withheld")
 )
 
 type AdminActionType string
@@ -25,6 +26,13 @@ const (
 	AdminActionRerunRecommendations AdminActionType = "rerun_recommendations"
 	AdminActionUpdateBillingState   AdminActionType = "update_billing_state"
 	AdminActionViewRawAIPayload     AdminActionType = "view_raw_ai_payload"
+)
+
+// Target types for AdminActionViewRawAIPayload (admin_action_logs.target_type).
+const (
+	AdminRawViewTargetRecommendation    = "recommendation"
+	AdminRawViewTargetChatTrace         = "chat_trace"
+	AdminRawViewTargetRecommendationRun = "recommendation_run"
 )
 
 type AdminActionStatus string
@@ -111,12 +119,17 @@ type ClientListResult struct {
 }
 
 type ClientConnection struct {
-	Provider          string
-	ConnectionStatus  string
-	LastCheckAt       *time.Time
-	LastCheckResult   *string
-	LastConnectionErr *string
-	UpdatedAt         *time.Time
+	Provider                    string
+	ConnectionStatus            string
+	LastCheckAt                 *time.Time
+	LastCheckResult             *string
+	LastConnectionErr           *string
+	UpdatedAt                   *time.Time
+	PerformanceConnectionStatus string
+	PerformanceTokenSet         bool
+	PerformanceLastCheckAt      *time.Time
+	PerformanceLastCheckResult  *string
+	PerformanceLastError        *string
 }
 
 type ClientDetail struct {
@@ -576,6 +589,32 @@ type AdminActor struct {
 	Email  string
 }
 
+type RecommendationViewAuditMeta struct {
+	ID              int64
+	AIModel         string
+	AIPromptVersion string
+}
+
+type ChatTraceViewAuditMeta struct {
+	ID                   int64
+	SessionID            int64
+	UserMessageID        *int64
+	AssistantMessageID   *int64
+	PlannerModel         string
+	AnswerModel          string
+	PlannerPromptVersion string
+	AnswerPromptVersion  string
+	Status               string
+}
+
+type RecommendationRunViewAuditMeta struct {
+	ID              int64
+	RunType         string
+	Status          string
+	AIModel         string
+	AIPromptVersion string
+}
+
 type CreateAdminActionLogInput struct {
 	AdminUserID     *int64
 	AdminEmail      string
@@ -646,7 +685,7 @@ type IngestionRerunner interface {
 }
 
 type MetricsRerunner interface {
-	Rerun(ctx context.Context, sellerAccountID int64) error
+	Rerun(ctx context.Context, sellerAccountID int64, dateFrom, dateTo time.Time) (map[string]any, error)
 }
 
 type AlertsRerunner interface {
@@ -685,6 +724,10 @@ type Repository interface {
 	GetChatTraceDetail(ctx context.Context, sellerAccountID, traceID int64) (*ChatTraceDetail, error)
 	GetRecommendationRunDetail(ctx context.Context, sellerAccountID, runID int64) (*RecommendationRunDetail, error)
 	GetRecommendationRawAI(ctx context.Context, sellerAccountID, recommendationID int64) (*RecommendationRawAI, error)
+
+	PeekRecommendationForAudit(ctx context.Context, sellerAccountID, recommendationID int64) (RecommendationViewAuditMeta, error)
+	PeekChatTraceForAudit(ctx context.Context, sellerAccountID, traceID int64) (ChatTraceViewAuditMeta, error)
+	PeekRecommendationRunForAudit(ctx context.Context, sellerAccountID, runID int64) (RecommendationRunViewAuditMeta, error)
 
 	GetBillingState(ctx context.Context, sellerAccountID int64) (*BillingState, error)
 	ListBillingStates(ctx context.Context, filter BillingStateFilter) ([]BillingState, error)

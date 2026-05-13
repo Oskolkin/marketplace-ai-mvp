@@ -36,10 +36,23 @@ type sanitizeLimits struct {
 }
 
 func NewContextAssembler() *ContextAssembler {
+	return NewContextAssemblerWithLimits(DefaultMaxContextBytes, DefaultMaxItemsPerSection)
+}
+
+// NewContextAssemblerWithLimits sets byte and per-section item caps (0 falls back to defaults).
+func NewContextAssemblerWithLimits(maxContextBytes, maxItemsPerSection int) *ContextAssembler {
+	mb := maxContextBytes
+	if mb <= 0 {
+		mb = DefaultMaxContextBytes
+	}
+	mi := maxItemsPerSection
+	if mi <= 0 {
+		mi = DefaultMaxItemsPerSection
+	}
 	return &ContextAssembler{
-		MaxContextBytes:    DefaultMaxContextBytes,
+		MaxContextBytes:    mb,
 		MaxTextLength:      DefaultMaxTextLength,
-		MaxItemsPerSection: DefaultMaxItemsPerSection,
+		MaxItemsPerSection: mi,
 	}
 }
 
@@ -145,6 +158,7 @@ func (a *ContextAssembler) Assemble(input AssembleContextInput) (*FactContext, e
 	if ctx.ContextStats.EstimatedContextBytes > maxBytes {
 		a.shrinkContext(ctx)
 		ctx.ContextStats.Truncated = true
+		ctx.ContextStats.TruncationReason = "max_context_bytes_exceeded"
 		ctx.Limitations = dedupeStrings(append(ctx.Limitations, "Context was truncated to fit size limits."))
 		ctx.ContextStats.TotalItemsIncluded = countFactItems(ctx.Facts)
 		ctx.ContextStats.EstimatedContextBytes = estimateJSONSize(ctx)
@@ -152,6 +166,8 @@ func (a *ContextAssembler) Assemble(input AssembleContextInput) (*FactContext, e
 
 	sort.Slice(ctx.RelatedAlerts, func(i, j int) bool { return ctx.RelatedAlerts[i].ID < ctx.RelatedAlerts[j].ID })
 	sort.Slice(ctx.RelatedRecommendations, func(i, j int) bool { return ctx.RelatedRecommendations[i].ID < ctx.RelatedRecommendations[j].ID })
+	ctx.ContextTruncated = ctx.ContextStats.Truncated
+	ctx.ContextTruncationReason = ctx.ContextStats.TruncationReason
 	return ctx, nil
 }
 

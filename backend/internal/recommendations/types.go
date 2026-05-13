@@ -22,11 +22,17 @@ type Repository interface {
 }
 
 type ContextBuilder struct {
-	repo Repository
+	repo   Repository
+	limits ContextBuildLimits
 }
 
 func NewContextBuilder(repo Repository) *ContextBuilder {
-	return &ContextBuilder{repo: repo}
+	return NewContextBuilderWithLimits(repo, ContextBuildLimits{})
+}
+
+// NewContextBuilderWithLimits applies MVP context caps before OpenAI (see ApplyRecommendationContextBudget).
+func NewContextBuilderWithLimits(repo Repository, limits ContextBuildLimits) *ContextBuilder {
+	return &ContextBuilder{repo: repo, limits: limits}
 }
 
 type AIRecommendationContext struct {
@@ -41,6 +47,12 @@ type AIRecommendationContext struct {
 	Merchandising   MerchandisingContext   `json:"merchandising"`
 	Advertising     AdvertisingContext     `json:"advertising"`
 	Pricing         PricingContext         `json:"pricing"`
+	// ContextTruncated is true when item caps or byte budget trimming was applied.
+	ContextTruncated bool `json:"context_truncated,omitempty"`
+	// ContextTruncationReason explains truncation (MVP; no raw payloads).
+	ContextTruncationReason string `json:"context_truncation_reason,omitempty"`
+	// ContextApproxUncompressedBytes is len(json.Marshal(this context)) after budgeting (approx wire size).
+	ContextApproxUncompressedBytes int `json:"context_approx_uncompressed_bytes,omitempty"`
 }
 
 type ContextWindows struct {

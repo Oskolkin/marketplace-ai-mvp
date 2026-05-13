@@ -11,6 +11,119 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const adminPeekChatTraceForAudit = `-- name: AdminPeekChatTraceForAudit :one
+SELECT
+    id,
+    session_id,
+    user_message_id,
+    assistant_message_id,
+    planner_model,
+    answer_model,
+    planner_prompt_version,
+    answer_prompt_version,
+    status
+FROM chat_traces
+WHERE id = $1 AND seller_account_id = $2
+`
+
+type AdminPeekChatTraceForAuditParams struct {
+	ID              int64
+	SellerAccountID int64
+}
+
+type AdminPeekChatTraceForAuditRow struct {
+	ID                   int64
+	SessionID            int64
+	UserMessageID        pgtype.Int8
+	AssistantMessageID   pgtype.Int8
+	PlannerModel         string
+	AnswerModel          string
+	PlannerPromptVersion string
+	AnswerPromptVersion  string
+	Status               string
+}
+
+func (q *Queries) AdminPeekChatTraceForAudit(ctx context.Context, arg AdminPeekChatTraceForAuditParams) (AdminPeekChatTraceForAuditRow, error) {
+	row := q.db.QueryRow(ctx, adminPeekChatTraceForAudit, arg.ID, arg.SellerAccountID)
+	var i AdminPeekChatTraceForAuditRow
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.UserMessageID,
+		&i.AssistantMessageID,
+		&i.PlannerModel,
+		&i.AnswerModel,
+		&i.PlannerPromptVersion,
+		&i.AnswerPromptVersion,
+		&i.Status,
+	)
+	return i, err
+}
+
+const adminPeekRecommendationForAudit = `-- name: AdminPeekRecommendationForAudit :one
+SELECT
+    id,
+    COALESCE(ai_model, '') AS ai_model,
+    COALESCE(ai_prompt_version, '') AS ai_prompt_version
+FROM recommendations
+WHERE id = $1 AND seller_account_id = $2
+`
+
+type AdminPeekRecommendationForAuditParams struct {
+	ID              int64
+	SellerAccountID int64
+}
+
+type AdminPeekRecommendationForAuditRow struct {
+	ID              int64
+	AiModel         string
+	AiPromptVersion string
+}
+
+func (q *Queries) AdminPeekRecommendationForAudit(ctx context.Context, arg AdminPeekRecommendationForAuditParams) (AdminPeekRecommendationForAuditRow, error) {
+	row := q.db.QueryRow(ctx, adminPeekRecommendationForAudit, arg.ID, arg.SellerAccountID)
+	var i AdminPeekRecommendationForAuditRow
+	err := row.Scan(&i.ID, &i.AiModel, &i.AiPromptVersion)
+	return i, err
+}
+
+const adminPeekRecommendationRunForAudit = `-- name: AdminPeekRecommendationRunForAudit :one
+SELECT
+    id,
+    run_type,
+    status,
+    COALESCE(ai_model, '') AS ai_model,
+    COALESCE(ai_prompt_version, '') AS ai_prompt_version
+FROM recommendation_runs
+WHERE id = $1 AND seller_account_id = $2
+`
+
+type AdminPeekRecommendationRunForAuditParams struct {
+	ID              int64
+	SellerAccountID int64
+}
+
+type AdminPeekRecommendationRunForAuditRow struct {
+	ID              int64
+	RunType         string
+	Status          string
+	AiModel         string
+	AiPromptVersion string
+}
+
+func (q *Queries) AdminPeekRecommendationRunForAudit(ctx context.Context, arg AdminPeekRecommendationRunForAuditParams) (AdminPeekRecommendationRunForAuditRow, error) {
+	row := q.db.QueryRow(ctx, adminPeekRecommendationRunForAudit, arg.ID, arg.SellerAccountID)
+	var i AdminPeekRecommendationRunForAuditRow
+	err := row.Scan(
+		&i.ID,
+		&i.RunType,
+		&i.Status,
+		&i.AiModel,
+		&i.AiPromptVersion,
+	)
+	return i, err
+}
+
 const completeAdminActionLog = `-- name: CompleteAdminActionLog :one
 UPDATE admin_action_logs
 SET

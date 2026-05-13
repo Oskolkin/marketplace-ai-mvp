@@ -2,6 +2,7 @@ package adsync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -14,9 +15,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// ozonIntegration is the subset of Ozon integration used by advertising sync.
+type ozonIntegration interface {
+	GetDecryptedCredentials(ctx context.Context, sellerAccountID int64) (ozon.DecryptedCredentials, error)
+	GetDecryptedPerformanceBearerToken(ctx context.Context, sellerAccountID int64) (string, error)
+}
+
 type Service struct {
 	queries         *dbgen.Queries
-	ozonService     *ozon.Service
+	ozonConn        ozonIntegration
 	performance     *performance.Client
 	rawPayloads     *rawpayloads.Service
 	initialLookback time.Duration
@@ -42,10 +49,10 @@ const (
 	campaignTypeVideoBanner = "VIDEO_BANNER"
 )
 
-func NewService(db *pgxpool.Pool, ozonService *ozon.Service, rawPayloads *rawpayloads.Service) *Service {
+func NewService(db *pgxpool.Pool, ozonConn ozonIntegration, rawPayloads *rawpayloads.Service) *Service {
 	return &Service{
 		queries:         dbgen.New(db),
-		ozonService:     ozonService,
+		ozonConn:        ozonConn,
 		performance:     performance.NewClient(),
 		rawPayloads:     rawPayloads,
 		initialLookback: 30 * 24 * time.Hour,
@@ -53,13 +60,19 @@ func NewService(db *pgxpool.Pool, ozonService *ozon.Service, rawPayloads *rawpay
 }
 
 func (s *Service) Run(ctx context.Context, input RunInput) (RunResult, error) {
-	creds, err := s.ozonService.GetDecryptedCredentials(ctx, input.SellerAccountID)
+	creds, err := s.ozonConn.GetDecryptedCredentials(ctx, input.SellerAccountID)
 	if err != nil {
 		return RunResult{}, fmt.Errorf("get decrypted ozon credentials: %w", err)
 	}
-	bearerToken := resolvePerformanceToken(creds)
-	if bearerToken == "" {
-		return RunResult{}, fmt.Errorf("empty performance api bearer token")
+	bearerToken, err := s.ozonConn.GetDecryptedPerformanceBearerToken(ctx, input.SellerAccountID)
+	if err != nil {
+		if errors.Is(err, ozon.ErrPerformanceTokenNotConfigured) {
+			return RunResult{}, fmt.Errorf("ads sync: %w", ozon.ErrPerformanceTokenNotConfigured)
+		}
+		return RunResult{}, fmt.Errorf("get decrypted performance bearer token: %w", err)
+	}
+	if strings.TrimSpace(bearerToken) == "" {
+		return RunResult{}, fmt.Errorf("ads sync: %w", ozon.ErrPerformanceTokenNotConfigured)
 	}
 
 	from, to, err := s.resolveWindow(input.SourceCursor)
@@ -477,11 +490,4 @@ func dateValue(v time.Time) pgtype.Date {
 
 func normalizeCampaignType(v string) string {
 	return strings.ToUpper(strings.TrimSpace(v))
-}
-
-func resolvePerformanceToken(creds ozon.DecryptedCredentials) string {
-	if creds.APIKey != "" {
-		return creds.APIKey
-	}
-	return creds.ClientID
 }

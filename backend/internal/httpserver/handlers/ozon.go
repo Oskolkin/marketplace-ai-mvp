@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/auth"
@@ -63,9 +64,10 @@ func (h *OzonHandler) CreateConnection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	connection, err := h.ozonService.Create(r.Context(), ozon.UpsertConnectionInput{
-		SellerAccountID: sellerAccount.ID,
-		ClientID:        req.ClientID,
-		APIKey:          req.APIKey,
+		SellerAccountID:        sellerAccount.ID,
+		ClientID:               req.ClientID,
+		APIKey:                 req.APIKey,
+		PerformanceBearerToken: req.PerformanceBearerToken,
 	})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to create ozon connection")
@@ -110,6 +112,52 @@ func (h *OzonHandler) UpdateConnection(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *OzonHandler) PutPerformanceToken(w http.ResponseWriter, r *http.Request) {
+	sellerAccount, ok := auth.SellerAccountFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req struct {
+		PerformanceBearerToken *string `json:"performance_bearer_token,omitempty"`
+		ClearPerformanceToken  bool    `json:"clear_performance_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	var (
+		connection dbgen.OzonConnection
+		err        error
+	)
+	switch {
+	case req.ClearPerformanceToken:
+		connection, err = h.ozonService.ClearPerformanceBearerToken(r.Context(), sellerAccount.ID)
+	case req.PerformanceBearerToken != nil && strings.TrimSpace(*req.PerformanceBearerToken) != "":
+		connection, err = h.ozonService.SetPerformanceBearerToken(
+			r.Context(),
+			sellerAccount.ID,
+			strings.TrimSpace(*req.PerformanceBearerToken),
+		)
+	default:
+		connection, err = h.ozonService.GetBySellerAccountID(r.Context(), sellerAccount.ID)
+	}
+	if err != nil {
+		if err == ozon.ErrConnectionNotFound {
+			writeJSONError(w, http.StatusNotFound, "ozon connection not found")
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "failed to update performance token")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"connection": buildOzonConnectionResponse(connection, h.ozonService),
+	})
+}
+
 func buildOzonConnectionResponse(connection dbgen.OzonConnection, service *ozon.Service) ozonConnectionResponse {
 	var lastCheckAt *string
 	if connection.LastCheckAt.Valid {
@@ -129,6 +177,25 @@ func buildOzonConnectionResponse(connection dbgen.OzonConnection, service *ozon.
 		lastError = &value
 	}
 
+	var perfLastCheckAt *string
+	if connection.PerformanceLastCheckAt.Valid {
+		v := connection.PerformanceLastCheckAt.Time.Format(time.RFC3339)
+		perfLastCheckAt = &v
+	}
+	var perfLastCheckResult *string
+	if connection.PerformanceLastCheckResult.Valid {
+		v := connection.PerformanceLastCheckResult.String
+		perfLastCheckResult = &v
+	}
+	var perfLastError *string
+	if connection.PerformanceLastError.Valid {
+		v := connection.PerformanceLastError.String
+		perfLastError = &v
+	}
+
+	perfTokenSet := connection.PerformanceTokenEncrypted.Valid &&
+		strings.TrimSpace(connection.PerformanceTokenEncrypted.String) != ""
+
 	return ozonConnectionResponse{
 		ID:              connection.ID,
 		SellerAccountID: connection.SellerAccountID,
@@ -138,6 +205,12 @@ func buildOzonConnectionResponse(connection dbgen.OzonConnection, service *ozon.
 		LastError:       lastError,
 		HasCredentials:  true,
 		ClientIDMasked:  service.MaskedClientID(connection),
+
+		PerformanceTokenSet:        perfTokenSet,
+		PerformanceStatus:          connection.PerformanceStatus,
+		PerformanceLastCheckAt:     perfLastCheckAt,
+		PerformanceLastCheckResult: perfLastCheckResult,
+		PerformanceLastError:       perfLastError,
 	}
 }
 
@@ -155,6 +228,31 @@ func (h *OzonHandler) CheckConnection(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSONError(w, http.StatusInternalServerError, "failed to check ozon connection")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, ozonCheckResponse{
+		Status:    result.Status,
+		CheckedAt: result.CheckedAt.Format(time.RFC3339),
+		Message:   result.Message,
+		ErrorCode: result.ErrorCode,
+	})
+}
+
+func (h *OzonHandler) CheckPerformanceConnection(w http.ResponseWriter, r *http.Request) {
+	sellerAccount, ok := auth.SellerAccountFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	result, err := h.ozonService.CheckPerformanceConnection(r.Context(), sellerAccount.ID)
+	if err != nil {
+		if err == ozon.ErrConnectionNotFound {
+			writeJSONError(w, http.StatusNotFound, "ozon connection not found")
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "failed to check ozon performance connection")
 		return
 	}
 

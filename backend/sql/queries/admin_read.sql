@@ -94,7 +94,13 @@ SELECT
     oc.last_check_at,
     oc.last_check_result,
     oc.last_error,
-    oc.updated_at
+    oc.updated_at,
+    oc.performance_status AS performance_connection_status,
+    (oc.performance_token_encrypted IS NOT NULL
+        AND length(trim(oc.performance_token_encrypted)) > 0)::boolean AS performance_token_set,
+    oc.performance_last_check_at,
+    oc.performance_last_check_result,
+    oc.performance_last_error
 FROM ozon_connections oc
 WHERE oc.seller_account_id = $1
 ORDER BY oc.updated_at DESC;

@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+func testAdminActor() AdminActor {
+	uid := int64(999)
+	return AdminActor{UserID: &uid, Email: "audit-test@example.com"}
+}
+
 type fakeIngestion struct{}
 
 func (f fakeIngestion) StartInitialSync(ctx context.Context, sellerAccountID int64) (int64, string, error) {
@@ -29,6 +34,31 @@ type fakeRecommendations struct{}
 
 func (f fakeRecommendations) Rerun(ctx context.Context, sellerAccountID int64, asOfDate time.Time) (map[string]any, error) {
 	return map[string]any{"recommendation_run_id": 88, "status": "completed"}, nil
+}
+
+type fakeMetrics struct {
+	lastSeller int64
+	lastFrom   time.Time
+	lastTo     time.Time
+	result     map[string]any
+	err        error
+}
+
+func (f *fakeMetrics) Rerun(ctx context.Context, sellerAccountID int64, dateFrom, dateTo time.Time) (map[string]any, error) {
+	f.lastSeller = sellerAccountID
+	f.lastFrom = dateFrom
+	f.lastTo = dateTo
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.result != nil {
+		return f.result, nil
+	}
+	return map[string]any{
+		"status":                     "completed",
+		"account_daily_metrics_rows": 4,
+		"sku_daily_metrics_rows":     9,
+	}, nil
 }
 
 type fakeRepo struct {
@@ -57,6 +87,9 @@ type fakeRepo struct {
 	listChatFeedbackFn                     func(ctx context.Context, filter ChatFeedbackFilter, page Page) ([]ChatFeedbackItem, error)
 	listRecommendationFeedbackFn           func(ctx context.Context, sellerAccountID int64, filter RecommendationFeedbackFilter, page Page) ([]RecommendationFeedbackItem, error)
 	getRecommendationProxyFeedbackCountsFn func(ctx context.Context, sellerAccountID int64) (RecommendationFeedbackProxyStatus, error)
+	peekRecommendationForAuditFn           func(ctx context.Context, sellerAccountID, recommendationID int64) (RecommendationViewAuditMeta, error)
+	peekChatTraceForAuditFn                func(ctx context.Context, sellerAccountID, traceID int64) (ChatTraceViewAuditMeta, error)
+	peekRecommendationRunForAuditFn        func(ctx context.Context, sellerAccountID, runID int64) (RecommendationRunViewAuditMeta, error)
 }
 
 func (f *fakeRepo) ListClients(ctx context.Context, filter ClientListFilter) (*ClientListResult, error) {
@@ -155,6 +188,42 @@ func (f *fakeRepo) GetRecommendationProxyFeedbackCounts(ctx context.Context, sel
 	}
 	return RecommendationFeedbackProxyStatus{}, nil
 }
+func (f *fakeRepo) PeekRecommendationForAudit(ctx context.Context, sellerAccountID, recommendationID int64) (RecommendationViewAuditMeta, error) {
+	if f.peekRecommendationForAuditFn != nil {
+		return f.peekRecommendationForAuditFn(ctx, sellerAccountID, recommendationID)
+	}
+	return RecommendationViewAuditMeta{
+		ID:              recommendationID,
+		AIModel:         "gpt-test",
+		AIPromptVersion: "pv-1",
+	}, nil
+}
+func (f *fakeRepo) PeekChatTraceForAudit(ctx context.Context, sellerAccountID, traceID int64) (ChatTraceViewAuditMeta, error) {
+	if f.peekChatTraceForAuditFn != nil {
+		return f.peekChatTraceForAuditFn(ctx, sellerAccountID, traceID)
+	}
+	return ChatTraceViewAuditMeta{
+		ID:                   traceID,
+		SessionID:            1,
+		PlannerModel:         "planner-m",
+		AnswerModel:          "answer-m",
+		PlannerPromptVersion: "planner-pv",
+		AnswerPromptVersion: "answer-pv",
+		Status:               "completed",
+	}, nil
+}
+func (f *fakeRepo) PeekRecommendationRunForAudit(ctx context.Context, sellerAccountID, runID int64) (RecommendationRunViewAuditMeta, error) {
+	if f.peekRecommendationRunForAuditFn != nil {
+		return f.peekRecommendationRunForAuditFn(ctx, sellerAccountID, runID)
+	}
+	return RecommendationRunViewAuditMeta{
+		ID:              runID,
+		RunType:         "manual",
+		Status:          "completed",
+		AIModel:         "run-model",
+		AIPromptVersion: "run-pv",
+	}, nil
+}
 func (f *fakeRepo) GetChatTraceDetail(ctx context.Context, sellerAccountID, traceID int64) (*ChatTraceDetail, error) {
 	if f.getChatTraceDetailFn != nil {
 		return f.getChatTraceDetailFn(ctx, sellerAccountID, traceID)
@@ -189,13 +258,23 @@ func (f *fakeRepo) CreateAdminActionLog(ctx context.Context, input CreateAdminAc
 	if f.createActionFn != nil {
 		return f.createActionFn(ctx, input)
 	}
-	return nil, nil
+	return &AdminActionLog{
+		ID:              999001,
+		AdminUserID:     input.AdminUserID,
+		AdminEmail:      input.AdminEmail,
+		SellerAccountID: input.SellerAccountID,
+		ActionType:      input.ActionType,
+		TargetType:      input.TargetType,
+		TargetID:        input.TargetID,
+		RequestPayload:  input.RequestPayload,
+		Status:          AdminActionStatusRunning,
+	}, nil
 }
 func (f *fakeRepo) CompleteAdminActionLog(ctx context.Context, input CompleteAdminActionLogInput) (*AdminActionLog, error) {
 	if f.completeActionFn != nil {
 		return f.completeActionFn(ctx, input)
 	}
-	return nil, nil
+	return &AdminActionLog{ID: input.ID, Status: AdminActionStatusCompleted, ResultPayload: input.ResultPayload}, nil
 }
 func (f *fakeRepo) FailAdminActionLog(ctx context.Context, input FailAdminActionLogInput) (*AdminActionLog, error) {
 	if f.failActionFn != nil {
@@ -423,6 +502,87 @@ func TestActionMissingDependencyFailsAndAudited(t *testing.T) {
 	}
 }
 
+func TestRerunMetricsNotConfiguredAudited(t *testing.T) {
+	failed := false
+	svc, _ := NewService(ServiceDeps{
+		Repo: &fakeRepo{
+			createActionFn: func(ctx context.Context, input CreateAdminActionLogInput) (*AdminActionLog, error) {
+				return &AdminActionLog{ID: 12, Status: AdminActionStatusRunning}, nil
+			},
+			failActionFn: func(ctx context.Context, input FailAdminActionLogInput) (*AdminActionLog, error) {
+				failed = true
+				return &AdminActionLog{ID: input.ID, Status: AdminActionStatusFailed}, nil
+			},
+		},
+	})
+	_, err := svc.RerunMetrics(context.Background(), AdminActor{Email: "admin@example.com"}, RerunMetricsInput{SellerAccountID: 9})
+	if !errors.Is(err, ErrAdminActionNotConfigured) {
+		t.Fatalf("expected ErrAdminActionNotConfigured, got %v", err)
+	}
+	if !failed {
+		t.Fatalf("expected action to be failed in audit log")
+	}
+}
+
+func TestRerunMetricsInvalidDateRangeNoAudit(t *testing.T) {
+	created := false
+	svc, _ := NewService(ServiceDeps{
+		Repo: &fakeRepo{
+			createActionFn: func(ctx context.Context, input CreateAdminActionLogInput) (*AdminActionLog, error) {
+				created = true
+				return &AdminActionLog{ID: 1, Status: AdminActionStatusRunning}, nil
+			},
+		},
+		MetricsService: &fakeMetrics{},
+	})
+	from := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	_, err := svc.RerunMetrics(context.Background(), AdminActor{Email: "admin@example.com"}, RerunMetricsInput{SellerAccountID: 9, DateFrom: from, DateTo: to})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if created {
+		t.Fatalf("did not expect audit log for pre-action validation failure")
+	}
+}
+
+func TestRerunMetricsCallsRerunnerAndCompletesAudit(t *testing.T) {
+	created := false
+	completed := false
+	m := &fakeMetrics{}
+	svc, _ := NewService(ServiceDeps{
+		Repo: &fakeRepo{
+			createActionFn: func(ctx context.Context, input CreateAdminActionLogInput) (*AdminActionLog, error) {
+				created = true
+				return &AdminActionLog{ID: 50, Status: AdminActionStatusRunning}, nil
+			},
+			completeActionFn: func(ctx context.Context, input CompleteAdminActionLogInput) (*AdminActionLog, error) {
+				completed = true
+				if input.ResultPayload["account_daily_metrics_rows"] == nil {
+					t.Fatalf("expected result payload from rerunner: %+v", input.ResultPayload)
+				}
+				return &AdminActionLog{ID: input.ID, Status: AdminActionStatusCompleted, ResultPayload: input.ResultPayload}, nil
+			},
+		},
+		MetricsService: m,
+	})
+	df := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	dt := time.Date(2026, 1, 12, 0, 0, 0, 0, time.UTC)
+	log, err := svc.RerunMetrics(context.Background(), AdminActor{Email: "admin@example.com"}, RerunMetricsInput{SellerAccountID: 3, DateFrom: df, DateTo: dt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created || !completed || log == nil || log.Status != AdminActionStatusCompleted {
+		t.Fatalf("unexpected audit outcome: created=%v completed=%v log=%+v", created, completed, log)
+	}
+	if m.lastSeller != 3 {
+		t.Fatalf("unexpected seller: %d", m.lastSeller)
+	}
+	if m.lastFrom.Format("2006-01-02") != "2026-01-10" || m.lastTo.Format("2006-01-02") != "2026-01-12" {
+		t.Fatalf("unexpected date range passed to rerunner: %s..%s", m.lastFrom.Format("2006-01-02"), m.lastTo.Format("2006-01-02"))
+	}
+}
+
 func TestActorValidation(t *testing.T) {
 	svc, _ := NewService(ServiceDeps{Repo: &fakeRepo{}})
 	_, err := svc.RerunMetrics(context.Background(), AdminActor{}, RerunMetricsInput{SellerAccountID: 1})
@@ -493,7 +653,7 @@ func TestRecommendationLogsFilterAndDetailDelegation(t *testing.T) {
 		t.Fatalf("unexpected recommendation list result/filter: %+v %+v", res, gotFilter)
 	}
 
-	detail, err := svc.GetRecommendationRunDetail(context.Background(), 5, 11)
+	detail, err := svc.GetRecommendationRunDetail(context.Background(), testAdminActor(), 5, 11)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -501,7 +661,7 @@ func TestRecommendationLogsFilterAndDetailDelegation(t *testing.T) {
 		t.Fatalf("expected limitations for empty diagnostics/recommendations")
 	}
 
-	raw, err := svc.GetRecommendationRawAI(context.Background(), 5, 44)
+	raw, err := svc.GetRecommendationRawAI(context.Background(), testAdminActor(), 5, 44)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -541,7 +701,7 @@ func TestChatLogsFiltersSessionsAndMessages(t *testing.T) {
 	if err != nil || len(traces.Items) != 1 || gotChatFilter.Status != "completed" || gotChatFilter.Intent != "priorities" {
 		t.Fatalf("unexpected chat traces result/filter: %+v %+v %v", traces, gotChatFilter, err)
 	}
-	if _, err := svc.GetChatTraceDetail(context.Background(), 5, 1); err != nil {
+	if _, err := svc.GetChatTraceDetail(context.Background(), testAdminActor(), 5, 1); err != nil {
 		t.Fatal(err)
 	}
 	sessions, err := svc.ListChatSessions(context.Background(), 5, ChatSessionFilter{Status: " active ", Limit: 0, Offset: 0})
@@ -685,3 +845,5 @@ func TestActionsWithDependencies(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+var _ Repository = (*fakeRepo)(nil)

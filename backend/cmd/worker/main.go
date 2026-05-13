@@ -2,11 +2,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
+	"strconv"
+	"time"
 
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/adsync"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/alerts"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/analytics"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/config"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/db"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/dbgen"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/integrations/ozon"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/jobs"
 	appLogger "github.com/Oskolkin/marketplace-ai-mvp/backend/internal/logger"
@@ -112,10 +118,28 @@ func main() {
 	defer asynqClient.Close()
 
 	ozonSyncCoordinatorHandler := jobs.NewOzonSyncCoordinatorHandler(postgres.Pool, asynqClient, logger)
-	productsImportHandler := jobs.NewOzonImportHandler(postgres.Pool, logger, "products", productsImporter, ordersImporter, stocksImporter, adsImporter)
-	ordersImportHandler := jobs.NewOzonImportHandler(postgres.Pool, logger, "orders", productsImporter, ordersImporter, stocksImporter, adsImporter)
-	stocksImportHandler := jobs.NewOzonImportHandler(postgres.Pool, logger, "stocks", productsImporter, ordersImporter, stocksImporter, adsImporter)
-	adsImportHandler := jobs.NewOzonImportHandler(postgres.Pool, logger, "ads", productsImporter, ordersImporter, stocksImporter, adsImporter)
+
+	enqueuePostSyncRecalc := func(ctx context.Context, sellerAccountID, syncJobID int64) error {
+		task, err := jobs.NewRecalculateAfterSyncTask(sellerAccountID, syncJobID)
+		if err != nil {
+			return err
+		}
+		_, err = asynqClient.Enqueue(task,
+			asynq.TaskID("recalc-after-sync:"+strconv.FormatInt(syncJobID, 10)),
+			asynq.Unique(48*time.Hour),
+		)
+		if err != nil && !errors.Is(err, asynq.ErrDuplicateTask) {
+			return err
+		}
+		return nil
+	}
+
+	syncJobCompletedHook := jobs.WithSyncJobCompletedHook(enqueuePostSyncRecalc)
+
+	productsImportHandler := jobs.NewOzonImportHandler(postgres.Pool, logger, "products", productsImporter, ordersImporter, stocksImporter, adsImporter, syncJobCompletedHook)
+	ordersImportHandler := jobs.NewOzonImportHandler(postgres.Pool, logger, "orders", productsImporter, ordersImporter, stocksImporter, adsImporter, syncJobCompletedHook)
+	stocksImportHandler := jobs.NewOzonImportHandler(postgres.Pool, logger, "stocks", productsImporter, ordersImporter, stocksImporter, adsImporter, syncJobCompletedHook)
+	adsImportHandler := jobs.NewOzonImportHandler(postgres.Pool, logger, "ads", productsImporter, ordersImporter, stocksImporter, adsImporter, syncJobCompletedHook)
 
 	mux := jobs.NewServeMux(handler, logger, m)
 
@@ -139,6 +163,36 @@ func main() {
 	mux.HandleFunc(jobs.TaskTypeOzonImportAds, func(ctx context.Context, t *asynq.Task) error {
 		return adsImportHandler.Handle(ctx, t.Payload())
 	})
+
+	accountMetrics := analytics.NewAccountMetricsService(postgres.Pool)
+	skuMetrics := analytics.NewSKUMetricsService(postgres.Pool)
+	alertsService := alerts.NewService(alerts.NewSQLCRepository(dbgen.New(postgres.Pool)))
+	postSyncRecalcHandler := jobs.NewRecalculateAfterSyncHandler(accountMetrics, skuMetrics, alertsService, logger)
+	mux.HandleFunc(jobs.TaskTypePostSyncRecalculation, func(ctx context.Context, t *asynq.Task) error {
+		return postSyncRecalcHandler.Handle(ctx, t.Payload())
+	})
+
+	cleanupHandler := jobs.NewCleanupMaintenanceHandler(postgres.Pool, logger)
+	mux.HandleFunc(jobs.TaskTypeCleanupMaintenance, func(ctx context.Context, t *asynq.Task) error {
+		return cleanupHandler.Handle(ctx, t.Payload())
+	})
+
+	if cfg.Cleanup.Enabled && cfg.Cleanup.Schedule > 0 {
+		go func() {
+			ticker := time.NewTicker(cfg.Cleanup.Schedule)
+			defer ticker.Stop()
+			for range ticker.C {
+				task, err := jobs.NewCleanupMaintenanceTask(cfg.Cleanup.RetentionDays)
+				if err != nil {
+					logger.Error("cleanup task build failed", zap.Error(err))
+					continue
+				}
+				if _, err := asynqClient.Enqueue(task); err != nil {
+					logger.Warn("cleanup enqueue failed", zap.Error(err))
+				}
+			}
+		}()
+	}
 
 	logger.Info("starting worker")
 

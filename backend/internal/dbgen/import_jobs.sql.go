@@ -11,6 +11,35 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countImportJobsSummaryBySyncJobID = `-- name: CountImportJobsSummaryBySyncJobID :one
+SELECT
+    COUNT(*)::bigint AS total_count,
+    COUNT(*) FILTER (WHERE status IN ('pending', 'fetching', 'importing'))::bigint AS active_count,
+    COUNT(*) FILTER (WHERE status = 'failed')::bigint AS failed_count,
+    COUNT(*) FILTER (WHERE status = 'completed')::bigint AS completed_count
+FROM import_jobs
+WHERE sync_job_id = $1
+`
+
+type CountImportJobsSummaryBySyncJobIDRow struct {
+	TotalCount     int64
+	ActiveCount    int64
+	FailedCount    int64
+	CompletedCount int64
+}
+
+func (q *Queries) CountImportJobsSummaryBySyncJobID(ctx context.Context, syncJobID int64) (CountImportJobsSummaryBySyncJobIDRow, error) {
+	row := q.db.QueryRow(ctx, countImportJobsSummaryBySyncJobID, syncJobID)
+	var i CountImportJobsSummaryBySyncJobIDRow
+	err := row.Scan(
+		&i.TotalCount,
+		&i.ActiveCount,
+		&i.FailedCount,
+		&i.CompletedCount,
+	)
+	return i, err
+}
+
 const createImportJob = `-- name: CreateImportJob :one
 INSERT INTO import_jobs (
     seller_account_id,

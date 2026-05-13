@@ -15,11 +15,19 @@ type ozonConnectionResponse struct {
 	LastError       *string `json:"last_error"`
 	HasCredentials  bool    `json:"has_credentials"`
 	ClientIDMasked  string  `json:"client_id_masked"`
+
+	PerformanceTokenSet          bool    `json:"performance_token_set"`
+	PerformanceStatus            string  `json:"performance_status"`
+	PerformanceLastCheckAt       *string `json:"performance_last_check_at"`
+	PerformanceLastCheckResult   *string `json:"performance_last_check_result"`
+	PerformanceLastError         *string `json:"performance_last_error"`
 }
 
 type upsertOzonConnectionRequest struct {
 	ClientID string `json:"client_id"`
 	APIKey   string `json:"api_key"`
+	// Optional on create; for updates use PUT /performance-token.
+	PerformanceBearerToken *string `json:"performance_bearer_token,omitempty"`
 }
 
 type ozonCheckResponse struct {

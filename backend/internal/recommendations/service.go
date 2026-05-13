@@ -11,6 +11,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/aicost"
+	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/openaix"
 )
 
 type serviceContextBuilder interface {
@@ -254,7 +257,14 @@ func (s *Service) GenerateForAccountWithType(ctx context.Context, sellerAccountI
 		Context:      contextPayload,
 	})
 	if err != nil {
-		return nil, failAndWrap(err, "generate recommendations with ai client")
+		wrapped := err
+		switch {
+		case openaix.IsTemporarilyUnavailable(err):
+			wrapped = fmt.Errorf("[error_code=openai_unavailable] %w", err)
+		case errors.Is(err, ErrOpenAIRequestTooLarge):
+			wrapped = fmt.Errorf("[error_code=context_budget_exceeded] %w", err)
+		}
+		return nil, failAndWrap(wrapped, "generate recommendations with ai client")
 	}
 
 	validation, err := s.validator.Validate(aiOutput, contextPayload)
@@ -310,12 +320,18 @@ func (s *Service) GenerateForAccountWithType(ctx context.Context, sellerAccountI
 		}
 	}
 
+	est := aicost.EstimateUSD(aiOutput.Model, aiOutput.InputTokens, aiOutput.OutputTokens)
+	estCost := est.CostUSD
+	if !est.Known {
+		estCost = 0
+	}
+
 	if err := s.repo.CompleteRun(ctx, CompleteRecommendationRunInput{
 		RunID:                         runID,
 		SellerAccountID:               sellerAccountID,
 		InputTokens:                   aiOutput.InputTokens,
 		OutputTokens:                  aiOutput.OutputTokens,
-		EstimatedCost:                 0,
+		EstimatedCost:                 estCost,
 		GeneratedRecommendationsCount: len(validation.ValidRecommendations),
 		AcceptedRecommendationsCount:  0,
 	}); err != nil {

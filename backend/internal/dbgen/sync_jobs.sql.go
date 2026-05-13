@@ -136,6 +136,88 @@ func (q *Queries) GetLatestSyncJobBySellerAccountIDAndType(ctx context.Context, 
 	return i, err
 }
 
+const tryFinalizeSyncJobCompletedIfNonTerminal = `-- name: TryFinalizeSyncJobCompletedIfNonTerminal :one
+UPDATE sync_jobs
+SET
+    status = 'completed',
+    finished_at = NOW(),
+    error_message = NULL
+WHERE sync_jobs.id = $1
+  AND sync_jobs.status NOT IN ('completed', 'failed')
+  AND EXISTS (
+      SELECT 1
+      FROM import_jobs ij
+      WHERE ij.sync_job_id = $1
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM import_jobs ij
+      WHERE ij.sync_job_id = $1
+        AND ij.status <> 'completed'
+  )
+RETURNING id, seller_account_id, type, status, started_at, finished_at, error_message, created_at
+`
+
+func (q *Queries) TryFinalizeSyncJobCompletedIfNonTerminal(ctx context.Context, id int64) (SyncJob, error) {
+	row := q.db.QueryRow(ctx, tryFinalizeSyncJobCompletedIfNonTerminal, id)
+	var i SyncJob
+	err := row.Scan(
+		&i.ID,
+		&i.SellerAccountID,
+		&i.Type,
+		&i.Status,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const tryFinalizeSyncJobFailedIfNonTerminal = `-- name: TryFinalizeSyncJobFailedIfNonTerminal :one
+UPDATE sync_jobs
+SET
+    status = 'failed',
+    finished_at = NOW(),
+    error_message = $2
+WHERE sync_jobs.id = $1
+  AND sync_jobs.status NOT IN ('completed', 'failed')
+  AND EXISTS (
+      SELECT 1
+      FROM import_jobs ij
+      WHERE ij.sync_job_id = $1
+        AND ij.status = 'failed'
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM import_jobs ij
+      WHERE ij.sync_job_id = $1
+        AND ij.status IN ('pending', 'fetching', 'importing')
+  )
+RETURNING id, seller_account_id, type, status, started_at, finished_at, error_message, created_at
+`
+
+type TryFinalizeSyncJobFailedIfNonTerminalParams struct {
+	ID           int64
+	ErrorMessage pgtype.Text
+}
+
+func (q *Queries) TryFinalizeSyncJobFailedIfNonTerminal(ctx context.Context, arg TryFinalizeSyncJobFailedIfNonTerminalParams) (SyncJob, error) {
+	row := q.db.QueryRow(ctx, tryFinalizeSyncJobFailedIfNonTerminal, arg.ID, arg.ErrorMessage)
+	var i SyncJob
+	err := row.Scan(
+		&i.ID,
+		&i.SellerAccountID,
+		&i.Type,
+		&i.Status,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const updateSyncJobToCompleted = `-- name: UpdateSyncJobToCompleted :one
 UPDATE sync_jobs
 SET
