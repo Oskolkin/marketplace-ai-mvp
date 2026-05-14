@@ -2,6 +2,11 @@
 
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { buttonClassNames } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { LoadingState } from "@/components/ui/loading-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { getAlertsSummary, type AlertsSummaryResponse } from "@/lib/alerts-api";
 import {
   MVP_RECOMMENDATION_TYPES,
   acceptRecommendation,
@@ -19,6 +24,8 @@ import {
 
 const DEFAULT_LIMIT = 50;
 
+const PRIORITY_ORDER = ["critical", "high", "medium", "low"] as const;
+
 type FilterState = {
   status: "" | "open" | "accepted" | "dismissed" | "resolved";
   recommendationTypeSelect: string;
@@ -31,11 +38,20 @@ type FilterState = {
   offset: number;
 };
 
+type QuickFilterId = "open" | "critical" | "high" | "short_term";
+
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString();
+}
+
+function fmtDateShort(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString();
 }
 
 function fmtEntityRec(row: Pick<RecommendationItem, "entity_sku" | "entity_offer_id" | "entity_id" | "entity_type">): string {
@@ -54,10 +70,107 @@ function effectiveRecommendationType(f: FilterState): string | undefined {
   return undefined;
 }
 
+function groupRecommendationsByPriority(items: RecommendationItem[]): { level: string; rows: RecommendationItem[] }[] {
+  const by = new Map<string, RecommendationItem[]>();
+  for (const row of items) {
+    const level = row.priority_level || "other";
+    const list = by.get(level) ?? [];
+    list.push(row);
+    by.set(level, list);
+  }
+  for (const list of by.values()) {
+    list.sort((a, b) => {
+      const hz = horizonRank(a.horizon) - horizonRank(b.horizon);
+      if (hz !== 0) return hz;
+      return b.priority_score - a.priority_score;
+    });
+  }
+  const seen = new Set<string>();
+  const levels: string[] = [];
+  for (const p of PRIORITY_ORDER) {
+    if ((by.get(p) ?? []).length > 0) {
+      levels.push(p);
+      seen.add(p);
+    }
+  }
+  for (const k of by.keys()) {
+    if (!seen.has(k)) {
+      levels.push(k);
+      seen.add(k);
+    }
+  }
+  return levels.map((level) => ({ level, rows: by.get(level) ?? [] }));
+}
+
+function horizonRank(h: string): number {
+  if (h === "short_term") return 0;
+  if (h === "medium_term") return 1;
+  if (h === "long_term") return 2;
+  return 3;
+}
+
+function matchesQuickFilter(id: QuickFilterId, f: FilterState): boolean {
+  const recType = effectiveRecommendationType(f);
+  if (recType || f.confidence_level || f.entity_type) return false;
+  if (f.status !== "open") return false;
+  if (id === "open") return !f.priority_level && !f.horizon;
+  if (id === "critical") return f.priority_level === "critical" && !f.horizon;
+  if (id === "high") return f.priority_level === "high" && !f.horizon;
+  if (id === "short_term") return f.horizon === "short_term" && !f.priority_level;
+  return false;
+}
+
+function quickFilterPreset(id: QuickFilterId): Partial<FilterState> {
+  const base: Partial<FilterState> = {
+    status: "open",
+    recommendationTypeSelect: "",
+    recommendationTypeText: "",
+    confidence_level: "",
+    entity_type: "",
+    offset: 0,
+  };
+  if (id === "open") return { ...base, priority_level: "", horizon: "" };
+  if (id === "critical") return { ...base, priority_level: "critical", horizon: "" };
+  if (id === "high") return { ...base, priority_level: "high", horizon: "" };
+  return { ...base, priority_level: "", horizon: "short_term" };
+}
+
+function extractValidationWarnings(detail: RecommendationDetail): string[] {
+  const out: string[] = [];
+  if (detail.validation_warnings?.length) {
+    out.push(...detail.validation_warnings);
+  }
+  const sm = detail.supporting_metrics_payload;
+  if (sm && typeof sm === "object") {
+    for (const key of ["warnings", "validation_warnings", "validator_warnings"] as const) {
+      const v = (sm as Record<string, unknown>)[key];
+      if (Array.isArray(v)) {
+        for (const x of v) {
+          if (typeof x === "string") out.push(x);
+        }
+      }
+    }
+  }
+  return [...new Set(out)];
+}
+
+function friendlyGenerateMessage(raw: string): string {
+  const s = raw.toLowerCase();
+  if (s.includes("503") || s.includes("502") || s.includes("openai") || s.includes("unauthorized")) {
+    return "Generation failed — the AI service may be misconfigured or temporarily unavailable.";
+  }
+  if (raw.length > 220) {
+    return "Generation failed — see checklist below and server logs if needed.";
+  }
+  return raw;
+}
+
 export default function RecommendationsScreen() {
+  const [alertsSummary, setAlertsSummary] = useState<AlertsSummaryResponse | null>(null);
   const [summary, setSummary] = useState<RecommendationsSummary | null>(null);
-  const [loadingSummary, setLoadingSummary] = useState(true);
-  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [loadingPrerequisites, setLoadingPrerequisites] = useState(true);
+  const [prerequisitesError, setPrerequisitesError] = useState<string | null>(null);
+
   const [items, setItems] = useState<RecommendationItem[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
@@ -88,17 +201,19 @@ export default function RecommendationsScreen() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const loadSummary = useCallback(async () => {
-    setLoadingSummary(true);
-    setSummaryError(null);
+  const loadPrerequisites = useCallback(async () => {
+    setLoadingPrerequisites(true);
+    setPrerequisitesError(null);
     try {
-      const s = await getRecommendationsSummary();
-      setSummary(s);
+      const [alerts, rec] = await Promise.all([getAlertsSummary(), getRecommendationsSummary()]);
+      setAlertsSummary(alerts);
+      setSummary(rec);
     } catch (e: unknown) {
+      setAlertsSummary(null);
       setSummary(null);
-      setSummaryError(e instanceof Error ? e.message : "Failed to load summary");
+      setPrerequisitesError(e instanceof Error ? e.message : "Failed to load prerequisites");
     } finally {
-      setLoadingSummary(false);
+      setLoadingPrerequisites(false);
     }
   }, []);
 
@@ -127,8 +242,8 @@ export default function RecommendationsScreen() {
   }, [filters]);
 
   useEffect(() => {
-    void loadSummary();
-  }, [loadSummary]);
+    void loadPrerequisites();
+  }, [loadPrerequisites]);
 
   useEffect(() => {
     void loadList();
@@ -164,7 +279,7 @@ export default function RecommendationsScreen() {
   }, [detailId]);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadSummary(), loadList()]);
+    await Promise.all([loadPrerequisites(), loadList()]);
     if (detailId != null) {
       try {
         const d = await getRecommendationDetail(detailId);
@@ -174,7 +289,7 @@ export default function RecommendationsScreen() {
         setDetailError(e instanceof Error ? e.message : "Failed to refresh detail");
       }
     }
-  }, [detailId, loadList, loadSummary]);
+  }, [detailId, loadList, loadPrerequisites]);
 
   async function handleGenerate() {
     setGenerateLoading(true);
@@ -188,12 +303,11 @@ export default function RecommendationsScreen() {
           : { as_of_date: generateAsOf.trim() };
       const res = await generateRecommendations(payload);
       setLastGenerateResult(res);
-      setGenerateMessage(
-        `Run #${res.run_id}: generated ${res.generated_total}, valid ${res.valid_total}, rejected ${res.rejected_total}, saved ${res.upserted_total}, linked alerts ${res.linked_alerts_total}, warnings ${res.warnings_total}. Tokens in/out/total: ${res.input_tokens} / ${res.output_tokens} / ${res.total_tokens}.`,
-      );
+      setGenerateMessage("Generation finished. Summary below.");
       await refreshAll();
     } catch (e: unknown) {
-      setGenerateError(e instanceof Error ? e.message : "Generate failed");
+      const raw = e instanceof Error ? e.message : "Generate failed";
+      setGenerateError(friendlyGenerateMessage(raw));
     } finally {
       setGenerateLoading(false);
     }
@@ -212,7 +326,7 @@ export default function RecommendationsScreen() {
       else if (kind === "dismiss") updated = await dismissRecommendation(id);
       else updated = await resolveRecommendation(id);
       setActionMessage(`Recommendation #${id} is now ${updated.status}.`);
-      await Promise.all([loadSummary(), loadList()]);
+      await Promise.all([loadPrerequisites(), loadList()]);
       if (detailId === id) {
         try {
           const d = await getRecommendationDetail(id);
@@ -229,348 +343,530 @@ export default function RecommendationsScreen() {
     }
   }
 
+  const applyQuickFilter = useCallback((id: QuickFilterId) => {
+    setFilters((s) => ({ ...s, ...quickFilterPreset(id) }));
+  }, []);
+
   const typeSelectOptions = useMemo((): [string, string][] => {
     const rows: [string, string][] = MVP_RECOMMENDATION_TYPES.map((t) => [t, t]);
     return [["", "all"], ...rows];
   }, []);
 
+  const groupedItems = useMemo(() => groupRecommendationsByPriority(items), [items]);
+
+  const alertsRun = alertsSummary?.latest_run;
+  const recRun = summary?.latest_run;
+  const noOpenAlerts = alertsSummary != null && (alertsSummary.open_total ?? 0) === 0;
+  const listIsEmpty = !loadingList && !listError && items.length === 0;
+  const defaultishFilters =
+    filters.offset === 0 &&
+    !effectiveRecommendationType(filters) &&
+    !filters.confidence_level &&
+    !filters.entity_type;
+
   return (
     <main className="space-y-6 p-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Recommendations</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          AI-generated recommendations for your seller account. Actions only change recommendation status; they do not
-          modify prices, ads, or stock.
-        </p>
-      </header>
+      <PageHeader
+        title="Recommendations"
+        subtitle="AI recommendation engine: prerequisites, generation runs, validated output, and status actions."
+      />
 
-      <section className="rounded border p-4">
-        <h2 className="mb-3 text-lg font-semibold">Summary</h2>
-        {summaryError ? <p className="mb-2 text-sm text-red-700">{summaryError}</p> : null}
-        {loadingSummary ? (
-          <p className="text-sm">Loading summary...</p>
-        ) : !summary ? (
-          <p className="text-sm text-gray-600">No summary data.</p>
+      <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+        <h2 className="text-lg font-semibold text-gray-900">Before generation</h2>
+        <p className="mt-1 text-sm text-gray-600">
+          Typical order: <strong>sync</strong> → <strong>metrics / dashboard</strong> →{" "}
+          <Link href="/app/alerts" className="text-blue-700 underline">
+            run Alerts
+          </Link>{" "}
+          → then generate recommendations here.
+        </p>
+        {prerequisitesError ? (
+          <p className="mt-2 text-sm text-amber-900" role="alert">
+            {prerequisitesError}
+          </p>
+        ) : null}
+        {loadingPrerequisites ? (
+          <div className="mt-4">
+            <LoadingState message="Loading alerts & recommendations status…" />
+          </div>
         ) : (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
-              <SummaryCard label="Open recommendations" value={summary.open_total} />
-              <SummaryCard label="Critical" value={summary.by_priority.critical} />
-              <SummaryCard label="High" value={summary.by_priority.high} />
-              <SummaryCard label="Medium" value={summary.by_priority.medium} />
-              <SummaryCard label="Low" value={summary.by_priority.low} />
-              <SummaryCard label="Confidence: high" value={summary.by_confidence.high} />
-              <SummaryCard label="Confidence: medium" value={summary.by_confidence.medium} />
-              <SummaryCard label="Confidence: low" value={summary.by_confidence.low} />
-            </div>
-            <div className="rounded border bg-gray-50 p-3 text-sm">
-              <p className="mb-2 font-medium">Latest recommendation run</p>
-              {!summary.latest_run ? (
-                <p className="text-gray-600">No runs yet.</p>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-3">
+              <h3 className="text-sm font-semibold text-gray-800">Latest alerts run</h3>
+              {!alertsRun ? (
+                <p className="mt-2 text-sm text-gray-600">No alert runs yet. Open Alerts and run a job first.</p>
               ) : (
-                <div className="grid grid-cols-1 gap-1 md:grid-cols-2 xl:grid-cols-3">
-                  <p>
-                    status=<b>{summary.latest_run.status}</b>, run_type={summary.latest_run.run_type}
-                  </p>
-                  <p>as_of_date={summary.latest_run.as_of_date ?? "—"}</p>
-                  <p>ai_model={summary.latest_run.ai_model ?? "—"}</p>
-                  <p>ai_prompt_version={summary.latest_run.ai_prompt_version ?? "—"}</p>
-                  <p>generated_recommendations_count={summary.latest_run.generated_recommendations_count}</p>
-                  <p>
-                    input_tokens={summary.latest_run.input_tokens}, output_tokens={summary.latest_run.output_tokens},
-                    total_tokens={summary.latest_run.total_tokens}
-                  </p>
-                  <p>estimated_cost={summary.latest_run.estimated_cost}</p>
-                  <p>started_at={fmtDate(summary.latest_run.started_at)}</p>
-                  <p>finished_at={fmtDate(summary.latest_run.finished_at)}</p>
-                  {summary.latest_run.error_message ? (
-                    <p className="text-red-700 md:col-span-2">error={summary.latest_run.error_message}</p>
+                <ul className="mt-2 space-y-1 text-sm text-gray-800">
+                  <li>
+                    <span className="text-gray-600">Status:</span>{" "}
+                    <RunStatusBadge status={alertsRun.status} />
+                  </li>
+                  <li>
+                    <span className="text-gray-600">Run id:</span> {alertsRun.id}
+                  </li>
+                  <li>
+                    <span className="text-gray-600">Finished:</span> {fmtDate(alertsRun.finished_at)}
+                  </li>
+                  <li>
+                    <span className="text-gray-600">Open alerts:</span> {alertsSummary?.open_total ?? "—"}
+                  </li>
+                  {alertsRun.error_message ? (
+                    <li className="text-amber-900">
+                      <span className="font-medium">Error:</span> {alertsRun.error_message}
+                    </li>
                   ) : null}
-                </div>
+                </ul>
+              )}
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-3">
+              <h3 className="text-sm font-semibold text-gray-800">Latest recommendations run</h3>
+              {!recRun ? (
+                <p className="mt-2 text-sm text-gray-600">No recommendation runs yet.</p>
+              ) : (
+                <ul className="mt-2 space-y-1 text-sm text-gray-800">
+                  <li>
+                    <span className="text-gray-600">Status:</span> <RunStatusBadge status={recRun.status} />
+                  </li>
+                  <li>
+                    <span className="text-gray-600">As of:</span> {recRun.as_of_date ?? "—"}
+                  </li>
+                  <li>
+                    <span className="text-gray-600">Generated (last run):</span>{" "}
+                    {recRun.generated_recommendations_count}
+                  </li>
+                  <li>
+                    <span className="text-gray-600">Tokens:</span> {recRun.input_tokens} / {recRun.output_tokens} /{" "}
+                    {recRun.total_tokens}
+                  </li>
+                  <li>
+                    <span className="text-gray-600">Est. cost:</span>{" "}
+                    {recRun.estimated_cost != null ? recRun.estimated_cost.toFixed(4) : "—"}
+                  </li>
+                  {recRun.error_message ? (
+                    <li className="text-amber-900">
+                      <span className="font-medium">Error:</span> {recRun.error_message}
+                    </li>
+                  ) : null}
+                </ul>
               )}
             </div>
           </div>
         )}
+        <div className="mt-4 flex flex-wrap gap-2 text-sm">
+          <Link href="/app/sync-status" className={buttonClassNames("secondary")}>
+            Sync status
+          </Link>
+          <Link href="/app/dashboard" className={buttonClassNames("secondary")}>
+            Dashboard
+          </Link>
+          <Link href="/app/alerts" className={buttonClassNames("secondary")}>
+            Alerts
+          </Link>
+          <Link href="/app/pricing-constraints" className={buttonClassNames("secondary")}>
+            Pricing constraints
+          </Link>
+        </div>
       </section>
 
-      <section className="rounded border p-4">
-        <h2 className="mb-3 text-lg font-semibold">Generate recommendations</h2>
-        <div className="flex flex-wrap items-end gap-3">
+      {!loadingPrerequisites && summary ? (
+        <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-900">Summary counts</h2>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+            <SummaryCard label="Open" value={summary.open_total} />
+            <SummaryCard label="Critical" value={summary.by_priority.critical} />
+            <SummaryCard label="High" value={summary.by_priority.high} />
+            <SummaryCard label="Medium" value={summary.by_priority.medium} />
+            <SummaryCard label="Low" value={summary.by_priority.low} />
+            <SummaryCard label="Confidence high" value={summary.by_confidence.high} />
+            <SummaryCard label="Confidence medium" value={summary.by_confidence.medium} />
+            <SummaryCard label="Confidence low" value={summary.by_confidence.low} />
+          </div>
+        </section>
+      ) : null}
+
+      <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+        <h2 className="text-lg font-semibold text-gray-900">Generate recommendations</h2>
+        <p className="mt-1 text-sm text-gray-600">
+          Uses current context (alerts, metrics, pricing). Optional <code className="rounded bg-gray-100 px-1">as_of_date</code>{" "}
+          pins the reporting day.
+        </p>
+        <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="text-sm">
-            <span className="mb-1 block text-gray-700">as_of_date (optional, YYYY-MM-DD)</span>
+            <span className="mb-1 block text-gray-700">As of date</span>
             <input
-              className="w-48 rounded border px-2 py-1"
+              className="rounded-lg border border-gray-300 px-2 py-2"
               type="date"
               value={generateAsOf}
               onChange={(e) => setGenerateAsOf(e.target.value)}
+              disabled={generateLoading}
             />
           </label>
           <button
             type="button"
             disabled={generateLoading}
-            className="rounded border bg-white px-4 py-2 hover:bg-gray-50 disabled:opacity-50"
+            className={buttonClassNames("primary")}
             onClick={() => void handleGenerate()}
           >
             {generateLoading ? "Generating…" : "Generate recommendations"}
           </button>
         </div>
-        {generateError ? <p className="mt-2 text-sm text-red-700">{generateError}</p> : null}
-        {generateMessage ? <p className="mt-2 text-sm text-green-800">{generateMessage}</p> : null}
+        {generateLoading ? (
+          <div className="mt-4">
+            <LoadingState message="Running AI recommendation generation…" />
+          </div>
+        ) : null}
+        {generateMessage ? <p className="mt-3 text-sm text-green-800">{generateMessage}</p> : null}
+        {generateError ? (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950" role="alert">
+            <p className="font-medium">{generateError}</p>
+            <p className="mt-2 font-medium text-amber-900">Checklist</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5 text-amber-950">
+              <li>OpenAI API key configured for the deployment?</li>
+              <li>Alerts exist for the as-of date (run Alerts first)?</li>
+              <li>Pricing constraints set where price recommendations need them (optional)?</li>
+              <li>Context / token budget exceeded? Try a narrower as_of_date or fewer open alerts.</li>
+              <li>Validation rejecting all items? Inspect rejected reasons in server logs.</li>
+            </ul>
+          </div>
+        ) : null}
         {lastGenerateResult ? (
-          <pre className="mt-2 overflow-x-auto rounded border bg-white p-2 text-xs text-gray-800">
-            {JSON.stringify(lastGenerateResult, null, 2)}
-          </pre>
+          <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <h3 className="text-sm font-semibold text-gray-800">Last run result</h3>
+            <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <dt className="text-gray-600">Run id</dt>
+                <dd className="font-mono font-medium text-gray-900">{lastGenerateResult.run_id}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-600">As of date</dt>
+                <dd className="font-medium text-gray-900">{fmtDateShort(lastGenerateResult.as_of_date)}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-600">Generated</dt>
+                <dd className="font-medium text-gray-900">{lastGenerateResult.generated_total}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-600">Valid</dt>
+                <dd className="font-medium text-gray-900">{lastGenerateResult.valid_total}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-600">Rejected</dt>
+                <dd className="font-medium text-gray-900">{lastGenerateResult.rejected_total}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-600">Saved (upserted)</dt>
+                <dd className="font-medium text-gray-900">{lastGenerateResult.upserted_total}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-600">Linked alerts</dt>
+                <dd className="font-medium text-gray-900">{lastGenerateResult.linked_alerts_total}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-600">Warnings (items)</dt>
+                <dd className="font-medium text-gray-900">{lastGenerateResult.warnings_total}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-600">Tokens (in / out / total)</dt>
+                <dd className="font-mono text-gray-900">
+                  {lastGenerateResult.input_tokens} / {lastGenerateResult.output_tokens} /{" "}
+                  {lastGenerateResult.total_tokens}
+                </dd>
+              </div>
+              {lastGenerateResult.estimated_cost != null ? (
+                <div>
+                  <dt className="text-gray-600">Estimated cost</dt>
+                  <dd className="font-medium text-gray-900">{lastGenerateResult.estimated_cost}</dd>
+                </div>
+              ) : null}
+            </dl>
+          </div>
         ) : null}
       </section>
 
-      <section className="rounded border p-4">
-        <h2 className="mb-3 text-lg font-semibold">Filters</h2>
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-6">
-          <Select
-            label="Status"
-            value={filters.status}
-            onChange={(v) =>
-              setFilters((s) => ({
-                ...s,
-                status: v as FilterState["status"],
-                offset: 0,
-              }))
-            }
-            options={[
-              ["", "all"],
-              ["open", "open"],
-              ["accepted", "accepted"],
-              ["dismissed", "dismissed"],
-              ["resolved", "resolved"],
-            ]}
-          />
-          <Select
-            label="Type (preset)"
-            value={filters.recommendationTypeSelect}
-            onChange={(v) =>
-              setFilters((s) => ({
-                ...s,
-                recommendationTypeSelect: v,
-                offset: 0,
-              }))
-            }
-            options={typeSelectOptions}
-          />
-          <label className="text-sm md:col-span-2">
-            <span className="mb-1 block text-gray-700">Type (free text, overrides preset)</span>
-            <input
-              className="w-full rounded border px-2 py-1"
-              type="text"
-              placeholder="e.g. replenish_sku"
-              value={filters.recommendationTypeText}
-              onChange={(e) =>
-                setFilters((s) => ({
-                  ...s,
-                  recommendationTypeText: e.target.value,
-                  offset: 0,
-                }))
+      <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+        <h2 className="mb-2 text-lg font-semibold text-gray-900">Quick filters</h2>
+        <p className="mb-3 text-sm text-gray-600">Narrow the list (status = open + one dimension).</p>
+        <div className="flex flex-wrap gap-2">
+          {(["open", "critical", "high", "short_term"] as const).map((id) => (
+            <button
+              key={id}
+              type="button"
+              className={
+                matchesQuickFilter(id, filters)
+                  ? `${buttonClassNames("primary")} ring-2 ring-blue-300`
+                  : buttonClassNames("secondary")
               }
-            />
-          </label>
-          <Select
-            label="Priority"
-            value={filters.priority_level}
-            onChange={(v) =>
-              setFilters((s) => ({
-                ...s,
-                priority_level: v as FilterState["priority_level"],
-                offset: 0,
-              }))
-            }
-            options={[
-              ["", "all"],
-              ["low", "low"],
-              ["medium", "medium"],
-              ["high", "high"],
-              ["critical", "critical"],
-            ]}
-          />
-          <Select
-            label="Confidence"
-            value={filters.confidence_level}
-            onChange={(v) =>
-              setFilters((s) => ({
-                ...s,
-                confidence_level: v as FilterState["confidence_level"],
-                offset: 0,
-              }))
-            }
-            options={[
-              ["", "all"],
-              ["low", "low"],
-              ["medium", "medium"],
-              ["high", "high"],
-            ]}
-          />
-          <Select
-            label="Horizon"
-            value={filters.horizon}
-            onChange={(v) =>
-              setFilters((s) => ({
-                ...s,
-                horizon: v as FilterState["horizon"],
-                offset: 0,
-              }))
-            }
-            options={[
-              ["", "all"],
-              ["short_term", "short_term"],
-              ["medium_term", "medium_term"],
-              ["long_term", "long_term"],
-            ]}
-          />
-          <Select
-            label="Entity type"
-            value={filters.entity_type}
-            onChange={(v) =>
-              setFilters((s) => ({
-                ...s,
-                entity_type: v as FilterState["entity_type"],
-                offset: 0,
-              }))
-            }
-            options={[
-              ["", "all"],
-              ["account", "account"],
-              ["sku", "sku"],
-              ["product", "product"],
-              ["campaign", "campaign"],
-              ["pricing_constraint", "pricing_constraint"],
-            ]}
-          />
-          <label className="text-sm">
-            <span className="mb-1 block text-gray-700">Limit</span>
-            <input
-              className="w-full rounded border px-2 py-1"
-              type="number"
-              min={1}
-              max={200}
-              value={filters.limit}
-              onChange={(e) =>
-                setFilters((s) => ({
-                  ...s,
-                  limit: Math.max(1, Math.min(200, Number(e.target.value) || DEFAULT_LIMIT)),
-                  offset: 0,
-                }))
-              }
-            />
-          </label>
+              onClick={() => applyQuickFilter(id)}
+            >
+              {id === "open"
+                ? "Open"
+                : id === "critical"
+                  ? "Critical"
+                  : id === "high"
+                    ? "High"
+                    : "Short-term"}
+            </button>
+          ))}
         </div>
+
+        <details className="mt-4 rounded-lg border border-gray-200 bg-gray-50/60 p-3">
+          <summary className="cursor-pointer text-sm font-medium text-gray-800">Advanced filters</summary>
+          <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-6">
+            <Select
+              label="Status"
+              value={filters.status}
+              onChange={(v) =>
+                setFilters((s) => ({
+                  ...s,
+                  status: v as FilterState["status"],
+                  offset: 0,
+                }))
+              }
+              options={[
+                ["", "all"],
+                ["open", "open"],
+                ["accepted", "accepted"],
+                ["dismissed", "dismissed"],
+                ["resolved", "resolved"],
+              ]}
+            />
+            <Select
+              label="Type (preset)"
+              value={filters.recommendationTypeSelect}
+              onChange={(v) =>
+                setFilters((s) => ({
+                  ...s,
+                  recommendationTypeSelect: v,
+                  offset: 0,
+                }))
+              }
+              options={typeSelectOptions}
+            />
+            <label className="text-sm md:col-span-2">
+              <span className="mb-1 block text-gray-700">Type (free text)</span>
+              <input
+                className="w-full rounded border px-2 py-1"
+                type="text"
+                placeholder="e.g. replenish_sku"
+                value={filters.recommendationTypeText}
+                onChange={(e) =>
+                  setFilters((s) => ({
+                    ...s,
+                    recommendationTypeText: e.target.value,
+                    offset: 0,
+                  }))
+                }
+              />
+            </label>
+            <Select
+              label="Priority"
+              value={filters.priority_level}
+              onChange={(v) =>
+                setFilters((s) => ({
+                  ...s,
+                  priority_level: v as FilterState["priority_level"],
+                  offset: 0,
+                }))
+              }
+              options={[
+                ["", "all"],
+                ["low", "low"],
+                ["medium", "medium"],
+                ["high", "high"],
+                ["critical", "critical"],
+              ]}
+            />
+            <Select
+              label="Confidence"
+              value={filters.confidence_level}
+              onChange={(v) =>
+                setFilters((s) => ({
+                  ...s,
+                  confidence_level: v as FilterState["confidence_level"],
+                  offset: 0,
+                }))
+              }
+              options={[
+                ["", "all"],
+                ["low", "low"],
+                ["medium", "medium"],
+                ["high", "high"],
+              ]}
+            />
+            <Select
+              label="Horizon"
+              value={filters.horizon}
+              onChange={(v) =>
+                setFilters((s) => ({
+                  ...s,
+                  horizon: v as FilterState["horizon"],
+                  offset: 0,
+                }))
+              }
+              options={[
+                ["", "all"],
+                ["short_term", "short_term"],
+                ["medium_term", "medium_term"],
+                ["long_term", "long_term"],
+              ]}
+            />
+            <Select
+              label="Entity type"
+              value={filters.entity_type}
+              onChange={(v) =>
+                setFilters((s) => ({
+                  ...s,
+                  entity_type: v as FilterState["entity_type"],
+                  offset: 0,
+                }))
+              }
+              options={[
+                ["", "all"],
+                ["account", "account"],
+                ["sku", "sku"],
+                ["product", "product"],
+                ["campaign", "campaign"],
+                ["pricing_constraint", "pricing_constraint"],
+              ]}
+            />
+            <label className="text-sm">
+              <span className="mb-1 block text-gray-700">Limit</span>
+              <input
+                className="w-full rounded border px-2 py-1"
+                type="number"
+                min={1}
+                max={200}
+                value={filters.limit}
+                onChange={(e) =>
+                  setFilters((s) => ({
+                    ...s,
+                    limit: Math.max(1, Math.min(200, Number(e.target.value) || DEFAULT_LIMIT)),
+                    offset: 0,
+                  }))
+                }
+              />
+            </label>
+          </div>
+        </details>
       </section>
 
-      {listError ? <p className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">{listError}</p> : null}
+      {listError ? (
+        <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{listError}</p>
+      ) : null}
       {actionError ? <p className="text-sm text-red-700">{actionError}</p> : null}
       {actionMessage ? <p className="text-sm text-green-800">{actionMessage}</p> : null}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <section className="rounded border p-4">
-          <h2 className="mb-3 text-lg font-semibold">Recommendations</h2>
+        <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <h2 className="mb-3 text-lg font-semibold text-gray-900">Recommendations</h2>
           {loadingList ? (
-            <p className="text-sm">Loading recommendations...</p>
-          ) : listError ? (
-            <p className="text-sm text-gray-600">Could not load the list.</p>
-          ) : items.length === 0 ? (
-            <p className="text-sm text-gray-600">No recommendations for current filters.</p>
+            <LoadingState message="Loading recommendations…" />
+          ) : listIsEmpty ? (
+            <EmptyState
+              title="No recommendations"
+              message={
+                defaultishFilters
+                  ? "Nothing matches the current filters, or generation has not produced rows yet."
+                  : "No rows for these filters. Widen filters or reset quick filters."
+              }
+              action={
+                <div className="flex flex-col items-center gap-2 sm:flex-row">
+                  <button type="button" className={buttonClassNames("primary")} onClick={() => void handleGenerate()}>
+                    Generate recommendations
+                  </button>
+                  {noOpenAlerts ? (
+                    <Link href="/app/alerts" className={buttonClassNames("secondary")}>
+                      Run alerts first
+                    </Link>
+                  ) : null}
+                </div>
+              }
+            />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-collapse text-sm">
-                <thead>
-                  <tr className="border-b text-left">
-                    <th className="px-2 py-2">Priority</th>
-                    <th className="px-2 py-2">Conf.</th>
-                    <th className="px-2 py-2">Horizon</th>
-                    <th className="px-2 py-2">Type</th>
-                    <th className="px-2 py-2">Entity</th>
-                    <th className="px-2 py-2">Title</th>
-                    <th className="px-2 py-2">Action</th>
-                    <th className="px-2 py-2">Urgency</th>
-                    <th className="px-2 py-2">Status</th>
-                    <th className="px-2 py-2">Last seen</th>
-                    <th className="px-2 py-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((row) => (
-                    <Fragment key={row.id}>
-                      <tr
-                        className={`cursor-pointer border-b align-top ${detailId === row.id ? "bg-blue-50" : ""}`}
-                        onClick={() => setDetailId(row.id)}
+            <div className="space-y-6">
+              {groupedItems.map(({ level, rows }) => (
+                <Fragment key={level}>
+                  <h3 className="border-b pb-1 text-sm font-semibold uppercase tracking-wide text-gray-700">
+                    Priority: {level}{" "}
+                    <span className="font-normal normal-case text-gray-500">({rows.length})</span>
+                  </h3>
+                  <ul className="space-y-3">
+                    {rows.map((row) => (
+                      <li
+                        key={row.id}
+                        className={`rounded-lg border p-3 transition-colors ${
+                          detailId === row.id ? "border-blue-400 bg-blue-50/50" : "border-gray-200 bg-gray-50/40"
+                        }`}
                       >
-                        <td className="px-2 py-2">
-                          <Badge label={row.priority_level} />
-                          <div className="text-xs text-gray-600">{row.priority_score.toFixed(1)}</div>
-                        </td>
-                        <td className="px-2 py-2">
-                          <Badge label={row.confidence_level} />
-                        </td>
-                        <td className="px-2 py-2">{row.horizon}</td>
-                        <td className="px-2 py-2 font-mono text-xs">{row.recommendation_type}</td>
-                        <td className="px-2 py-2">{fmtEntityRec(row)}</td>
-                        <td className="px-2 py-2 font-medium">{row.title}</td>
-                        <td className="max-w-xs px-2 py-2 text-gray-800">{row.recommended_action}</td>
-                        <td className="px-2 py-2">
-                          <Badge label={row.urgency} />
-                        </td>
-                        <td className="px-2 py-2">
-                          <Badge label={row.status} />
-                        </td>
-                        <td className="px-2 py-2">{fmtDate(row.last_seen_at)}</td>
-                        <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex flex-col gap-1">
-                            <button
-                              type="button"
-                              className="rounded border px-2 py-0.5 text-left hover:bg-gray-50"
-                              onClick={() => setDetailId(row.id)}
-                            >
-                              View details
-                            </button>
-                            {row.status === "open" ? (
-                              <>
-                                <button
-                                  type="button"
-                                  disabled={actionLoadingId === row.id}
-                                  className="rounded border px-2 py-0.5 text-left hover:bg-gray-50 disabled:opacity-50"
-                                  onClick={() => void runRowAction(row.id, "accept")}
-                                >
-                                  Accept
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={actionLoadingId === row.id}
-                                  className="rounded border px-2 py-0.5 text-left hover:bg-gray-50 disabled:opacity-50"
-                                  onClick={() => void runRowAction(row.id, "dismiss")}
-                                >
-                                  Dismiss
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={actionLoadingId === row.id}
-                                  className="rounded border px-2 py-0.5 text-left hover:bg-gray-50 disabled:opacity-50"
-                                  onClick={() => void runRowAction(row.id, "resolve")}
-                                >
-                                  Resolve
-                                </button>
-                              </>
-                            ) : null}
+                        <button
+                          type="button"
+                          className="w-full text-left"
+                          onClick={() => setDetailId(row.id)}
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <PriorityBadge level={row.priority_level} />
+                            <HorizonBadge horizon={row.horizon} />
+                            <ConfidenceBadge level={row.confidence_level} />
+                            <UrgencyBadge urgency={row.urgency} />
+                            <StatusBadge status={row.status} />
+                            <span className="text-xs text-gray-500">#{row.id}</span>
                           </div>
-                        </td>
-                      </tr>
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
+                          <p className="mt-2 font-medium text-gray-900">{row.title}</p>
+                          <p className="mt-1 line-clamp-2 text-sm text-gray-700">{row.what_happened}</p>
+                          <p className="mt-1 text-xs text-gray-600">{fmtEntityRec(row)}</p>
+                          <p className="mt-1 text-xs text-gray-500">Updated {fmtDate(row.last_seen_at)}</p>
+                        </button>
+                        <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-200 pt-3">
+                          <button
+                            type="button"
+                            className={buttonClassNames("secondary")}
+                            onClick={() => setDetailId(row.id)}
+                          >
+                            Details
+                          </button>
+                          {row.status === "open" ? (
+                            <>
+                              <button
+                                type="button"
+                                disabled={actionLoadingId === row.id}
+                                className={buttonClassNames("primary")}
+                                onClick={() => void runRowAction(row.id, "accept")}
+                              >
+                                {actionLoadingId === row.id ? "…" : "Accept"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={actionLoadingId === row.id}
+                                className={buttonClassNames("secondary")}
+                                onClick={() => void runRowAction(row.id, "dismiss")}
+                              >
+                                Dismiss
+                              </button>
+                              <button
+                                type="button"
+                                disabled={actionLoadingId === row.id}
+                                className={buttonClassNames("secondary")}
+                                onClick={() => void runRowAction(row.id, "resolve")}
+                              >
+                                Resolve
+                              </button>
+                            </>
+                          ) : (
+                            <span className="self-center text-xs text-gray-500">Status: {row.status} — actions locked</span>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </Fragment>
+              ))}
             </div>
           )}
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-4 flex items-center gap-2">
             <button
               type="button"
               disabled={filters.offset === 0 || loadingList}
-              className="rounded border px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+              className={buttonClassNames("secondary")}
               onClick={() =>
                 setFilters((s) => ({
                   ...s,
@@ -583,7 +879,7 @@ export default function RecommendationsScreen() {
             <button
               type="button"
               disabled={loadingList || items.length < filters.limit}
-              className="rounded border px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+              className={buttonClassNames("secondary")}
               onClick={() =>
                 setFilters((s) => ({
                   ...s,
@@ -594,17 +890,20 @@ export default function RecommendationsScreen() {
               Next
             </button>
             <span className="text-sm text-gray-600">
-              offset={filters.offset}, limit={filters.limit}
+              offset {filters.offset}, limit {filters.limit}
             </span>
           </div>
         </section>
 
-        <section className="rounded border p-4">
-          <h2 className="mb-3 text-lg font-semibold">Detail</h2>
+        <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <h2 className="mb-3 text-lg font-semibold text-gray-900">Detail</h2>
           {detailId == null ? (
-            <p className="text-sm text-gray-600">Select a recommendation to view details.</p>
+            <EmptyState
+              title="No row selected"
+              message="Pick a recommendation from the list to inspect fields, metrics, and related alerts."
+            />
           ) : loadingDetail ? (
-            <p className="text-sm">Loading detail...</p>
+            <LoadingState message="Loading recommendation detail…" />
           ) : detailError ? (
             <p className="text-sm text-red-700">{detailError}</p>
           ) : !detail ? (
@@ -620,6 +919,19 @@ export default function RecommendationsScreen() {
           )}
         </section>
       </div>
+
+      {!loadingPrerequisites && alertsSummary && alertsSummary.open_total === 0 ? (
+        <section className="rounded-lg border border-dashed border-amber-200 bg-amber-50/60 p-4 text-sm text-amber-950">
+          <p className="font-medium">No open alerts</p>
+          <p className="mt-1">
+            Recommendations are built from alert context.{" "}
+            <Link href="/app/alerts" className="font-medium text-blue-800 underline">
+              Run alerts
+            </Link>{" "}
+            for your as-of date before expecting rich AI output.
+          </p>
+        </section>
+      ) : null}
     </main>
   );
 }
@@ -637,22 +949,38 @@ function DetailPanel({
   onDismiss: () => void;
   onResolve: () => void;
 }) {
+  const validationWarnings = extractValidationWarnings(detail);
+
   return (
     <div className="space-y-4 text-sm">
-      <div className="flex flex-wrap gap-2">
-        <Badge label={detail.priority_level} />
-        <Badge label={detail.urgency} />
-        <Badge label={detail.confidence_level} />
-        <span className="text-gray-600">{detail.horizon}</span>
-        <span className="text-gray-600">status: {detail.status}</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <PriorityBadge level={detail.priority_level} />
+        <HorizonBadge horizon={detail.horizon} />
+        <ConfidenceBadge level={detail.confidence_level} />
+        <UrgencyBadge urgency={detail.urgency} />
+        <StatusBadge status={detail.status} />
+        <span className="text-xs text-gray-500">id {detail.id}</span>
       </div>
+
+      {validationWarnings.length > 0 ? (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
+          <h3 className="font-semibold text-amber-950">Validation warnings</h3>
+          <ul className="mt-2 list-disc space-y-1 pl-4 text-amber-950">
+            {validationWarnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {detail.status === "open" ? (
-        <div className="space-y-2">
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+          <p className="mb-2 text-xs text-gray-600">Actions only change recommendation status in this MVP.</p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               disabled={actionLoadingId === detail.id}
-              className="rounded border px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+              className={buttonClassNames("primary")}
               onClick={onAccept}
             >
               {actionLoadingId === detail.id ? "Working…" : "Accept"}
@@ -660,42 +988,40 @@ function DetailPanel({
             <button
               type="button"
               disabled={actionLoadingId === detail.id}
-              className="rounded border px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+              className={buttonClassNames("secondary")}
               onClick={onDismiss}
             >
-              {actionLoadingId === detail.id ? "Working…" : "Dismiss"}
+              Dismiss
             </button>
             <button
               type="button"
               disabled={actionLoadingId === detail.id}
-              className="rounded border px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+              className={buttonClassNames("secondary")}
               onClick={onResolve}
             >
-              {actionLoadingId === detail.id ? "Working…" : "Resolve"}
+              Resolve
             </button>
           </div>
-          <p className="text-xs text-gray-600">
-            Accept marks the recommendation as taken into work; it does not change Ozon settings automatically.
-          </p>
         </div>
       ) : null}
-      <div>
-        <h3 className="font-semibold text-gray-800">What happened</h3>
+
+      <section>
+        <h3 className="font-semibold text-gray-900">What happened</h3>
         <p className="mt-1 whitespace-pre-wrap text-gray-800">{detail.what_happened}</p>
-      </div>
-      <div>
-        <h3 className="font-semibold text-gray-800">Why it matters</h3>
+      </section>
+      <section>
+        <h3 className="font-semibold text-gray-900">Why it matters</h3>
         <p className="mt-1 whitespace-pre-wrap text-gray-800">{detail.why_it_matters}</p>
-      </div>
-      <div>
-        <h3 className="font-semibold text-gray-800">Recommended action</h3>
+      </section>
+      <section>
+        <h3 className="font-semibold text-gray-900">Recommended action</h3>
         <p className="mt-1 whitespace-pre-wrap text-gray-800">{detail.recommended_action}</p>
-      </div>
-      <div>
-        <h3 className="font-semibold text-gray-800">Expected effect</h3>
+      </section>
+      <section>
+        <h3 className="font-semibold text-gray-900">Expected effect</h3>
         <p className="mt-1 whitespace-pre-wrap text-gray-800">{detail.expected_effect ?? "—"}</p>
-      </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      </section>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-600">Priority score</h3>
           <p className="text-gray-900">{detail.priority_score.toFixed(1)}</p>
@@ -706,8 +1032,8 @@ function DetailPanel({
           <p className="text-gray-900">prompt {detail.ai_prompt_version ?? "—"}</p>
         </div>
       </div>
-      <div>
-        <h3 className="font-semibold text-gray-800">Timestamps</h3>
+      <section>
+        <h3 className="font-semibold text-gray-900">Timestamps</h3>
         <ul className="mt-1 list-inside list-disc text-gray-800">
           <li>first_seen_at: {fmtDate(detail.first_seen_at)}</li>
           <li>last_seen_at: {fmtDate(detail.last_seen_at)}</li>
@@ -715,18 +1041,18 @@ function DetailPanel({
           <li>dismissed_at: {fmtDate(detail.dismissed_at)}</li>
           <li>resolved_at: {fmtDate(detail.resolved_at)}</li>
         </ul>
-      </div>
-      <div>
-        <h3 className="font-semibold text-gray-800">Supporting metrics</h3>
+      </section>
+      <section>
+        <h3 className="font-semibold text-gray-900">Supporting metrics</h3>
         <JsonBlock value={detail.supporting_metrics_payload} emptyLabel="No supporting metrics." />
-      </div>
-      <div>
-        <h3 className="font-semibold text-gray-800">Constraints checked</h3>
+      </section>
+      <section>
+        <h3 className="font-semibold text-gray-900">Constraints checked</h3>
         <ConstraintHints payload={detail.constraints_payload} />
         <JsonBlock value={detail.constraints_payload} emptyLabel="No constraints payload." />
-      </div>
-      <div>
-        <h3 className="mb-2 font-semibold text-gray-800">Related alerts</h3>
+      </section>
+      <section>
+        <h3 className="mb-2 font-semibold text-gray-900">Related alerts</h3>
         <p className="mb-2 text-xs">
           <Link href="/app/alerts" className="text-blue-700 underline">
             Open Alerts screen
@@ -737,7 +1063,7 @@ function DetailPanel({
         ) : (
           <ul className="space-y-3">
             {detail.related_alerts.map((a) => (
-              <li key={a.id} className="rounded border bg-gray-50 p-2">
+              <li key={a.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                 <div className="flex flex-wrap gap-2 text-xs">
                   <Badge label={a.severity} />
                   <Badge label={a.urgency} />
@@ -748,6 +1074,12 @@ function DetailPanel({
                 <p className="text-gray-800">{a.message}</p>
                 <p className="mt-1 text-xs text-gray-600">entity: {fmtEntityRec(a)}</p>
                 <p className="text-xs text-gray-600">status={a.status}, last_seen={fmtDate(a.last_seen_at)}</p>
+                <Link
+                  href={`/app/alerts?focusAlertId=${encodeURIComponent(String(a.id))}`}
+                  className="mt-2 inline-block text-xs font-medium text-blue-700 underline"
+                >
+                  View in Alerts (#{a.id})
+                </Link>
                 <details className="mt-2">
                   <summary className="cursor-pointer text-xs text-blue-800">Evidence payload (JSON)</summary>
                   <JsonBlock value={a.evidence_payload} emptyLabel="No evidence payload." />
@@ -756,8 +1088,8 @@ function DetailPanel({
             ))}
           </ul>
         )}
-      </div>
-      <details className="rounded border bg-gray-50 p-2">
+      </section>
+      <details className="rounded-lg border border-gray-200 bg-gray-50 p-2">
         <summary className="cursor-pointer font-medium text-gray-800">Raw AI response</summary>
         {detail.raw_ai_response === undefined || detail.raw_ai_response === null ? (
           <p className="mt-2 text-sm text-gray-600">No raw AI response.</p>
@@ -768,6 +1100,74 @@ function DetailPanel({
         )}
       </details>
     </div>
+  );
+}
+
+function RunStatusBadge({ status }: { status: string }) {
+  const s = status.toLowerCase();
+  const tone =
+    s === "completed" || s === "success" || s === "succeeded"
+      ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+      : s === "failed" || s === "error"
+        ? "border-red-300 bg-red-50 text-red-900"
+        : "border-amber-300 bg-amber-50 text-amber-900";
+  return (
+    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${tone}`}>{status}</span>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const s = status.toLowerCase();
+  const tone =
+    s === "open"
+      ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+      : s === "accepted"
+        ? "border-blue-300 bg-blue-50 text-blue-900"
+        : s === "dismissed"
+          ? "border-gray-300 bg-gray-100 text-gray-800"
+          : s === "resolved"
+            ? "border-violet-300 bg-violet-50 text-violet-900"
+            : "border-gray-200 bg-white text-gray-800";
+  return (
+    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${tone}`}>{status}</span>
+  );
+}
+
+function PriorityBadge({ level }: { level: string }) {
+  const tone =
+    level === "critical"
+      ? "border-red-400 bg-red-50 text-red-900"
+      : level === "high"
+        ? "border-orange-400 bg-orange-50 text-orange-900"
+        : level === "medium"
+          ? "border-amber-300 bg-amber-50 text-amber-900"
+          : "border-slate-300 bg-slate-50 text-slate-800";
+  return (
+    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${tone}`}>{level}</span>
+  );
+}
+
+function HorizonBadge({ horizon }: { horizon: string }) {
+  return (
+    <span className="inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-xs font-medium text-cyan-900">
+      {horizon.replaceAll("_", " ")}
+    </span>
+  );
+}
+
+function ConfidenceBadge({ level }: { level: string }) {
+  return (
+    <span className="inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-900">
+      conf: {level}
+    </span>
+  );
+}
+
+function UrgencyBadge({ urgency }: { urgency: string }) {
+  return (
+    <span className="inline-flex rounded-full border border-gray-300 bg-white px-2 py-0.5 text-xs font-medium text-gray-800">
+      urgency: {urgency.replaceAll("_", " ")}
+    </span>
   );
 }
 
@@ -826,9 +1226,9 @@ function stringifyJsonish(v: unknown): string {
 
 function SummaryCard({ label, value }: { label: string; value: number }) {
   return (
-    <article className="rounded border p-3">
+    <article className="rounded-lg border border-gray-200 bg-gray-50/80 p-3">
       <p className="text-xs text-gray-600">{label}</p>
-      <p className="text-xl font-semibold">{value}</p>
+      <p className="text-xl font-semibold text-gray-900">{value}</p>
     </article>
   );
 }

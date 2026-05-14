@@ -1,5 +1,4 @@
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8081";
+import { PUBLIC_API_BASE_URL } from "@/lib/env/api-base-url";
 
 export type ApiError = {
   error: string;
@@ -25,7 +24,7 @@ async function parseResponse<T>(res: Response): Promise<T> {
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await fetch(`${PUBLIC_API_BASE_URL}${path}`, {
     method: "GET",
     credentials: "include",
     headers: {
@@ -38,7 +37,7 @@ export async function apiGet<T>(path: string): Promise<T> {
 }
 
 export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await fetch(`${PUBLIC_API_BASE_URL}${path}`, {
     method: "POST",
     credentials: "include",
     headers: {
@@ -51,7 +50,7 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export async function apiPut<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await fetch(`${PUBLIC_API_BASE_URL}${path}`, {
     method: "PUT",
     credentials: "include",
     headers: {

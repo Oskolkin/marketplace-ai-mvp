@@ -1,13 +1,12 @@
 import { cookies } from "next/headers";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8081";
+import { PUBLIC_API_BASE_URL } from "@/lib/env/api-base-url";
 
 export async function getCurrentUserServer() {
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.toString();
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
+  const res = await fetch(`${PUBLIC_API_BASE_URL}/api/v1/auth/me`, {
     method: "GET",
     headers: {
       Cookie: cookieHeader,

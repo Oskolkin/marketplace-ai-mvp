@@ -89,6 +89,8 @@ export type RecommendationItem = {
 export type RecommendationDetail = RecommendationItem & {
   raw_ai_response?: Record<string, unknown> | string | null;
   related_alerts?: RelatedAlert[];
+  /** If API adds per-item validation warnings */
+  validation_warnings?: string[];
 };
 
 export type RecommendationRunSummary = {
@@ -165,6 +167,8 @@ export type GenerateRecommendationsResponse = {
   input_tokens: number;
   output_tokens: number;
   total_tokens: number;
+  /** Present when API returns cost fields (optional for older backends). */
+  estimated_cost?: number;
 };
 
 function buildQuery(params: Record<string, string | number | undefined>): string {

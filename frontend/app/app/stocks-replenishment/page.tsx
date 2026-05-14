@@ -1,5 +1,3 @@
-import { redirect } from "next/navigation";
-import { getCurrentUserServer } from "@/lib/server-auth";
 import StocksReplenishmentScreen from "@/components/stocks-replenishment-screen";
 
 type StocksReplenishmentPageProps = {
@@ -9,11 +7,6 @@ type StocksReplenishmentPageProps = {
 export default async function StocksReplenishmentPage({
   searchParams,
 }: StocksReplenishmentPageProps) {
-  const auth = await getCurrentUserServer();
-  if (!auth) {
-    redirect("/login");
-  }
-
   const params = searchParams ? await searchParams : undefined;
   const asOfDate = params?.as_of_date;
 

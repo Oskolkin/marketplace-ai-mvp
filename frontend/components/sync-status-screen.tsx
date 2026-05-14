@@ -1,6 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { getAdminMe } from "@/lib/admin-api";
+import { Button, buttonClassNames } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { LoadingState } from "@/components/ui/loading-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { cn } from "@/components/ui/cn";
 import {
   getOzonConnection,
   getOzonIngestionStatus,
@@ -8,6 +18,7 @@ import {
   type GetOzonConnectionResponse,
   type OzonIngestionStatusResponse,
 } from "@/lib/ozon-api";
+import { mapPerformanceConnectionStatus } from "@/lib/ozon-ui";
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "—";
@@ -35,25 +46,46 @@ export default function SyncStatusScreen() {
   const [startingSync, setStartingSync] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const importJobs = useMemo(() => sortImportJobsByDomain(status), [status]);
 
-  async function loadData() {
-    const [connectionRes, statusRes] = await Promise.all([
-      getOzonConnection(),
-      getOzonIngestionStatus(),
-    ]);
+  const failedImportJob = useMemo(() => {
+    const failed = importJobs.filter((j) => j.status === "failed" && j.error_message);
+    if (failed.length === 0) return null;
+    return failed[failed.length - 1];
+  }, [importJobs]);
 
-    setConnection(connectionRes.connection);
-    setStatus(statusRes);
-  }
+  const syncIsRunning =
+    status?.current_sync?.status === "running" || status?.current_sync?.status === "pending";
+
+  const loadData = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
+    if (!silent) {
+      setRefreshing(true);
+    }
+    try {
+      const [connectionRes, statusRes] = await Promise.all([
+        getOzonConnection(),
+        getOzonIngestionStatus(),
+      ]);
+
+      setConnection(connectionRes.connection);
+      setStatus(statusRes);
+    } finally {
+      if (!silent) {
+        setRefreshing(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     async function bootstrap() {
       try {
         setLoading(true);
         setError("");
-        await loadData();
+        await loadData({ silent: true });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load sync status");
       } finally {
@@ -62,19 +94,40 @@ export default function SyncStatusScreen() {
     }
 
     bootstrap();
+  }, [loadData]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getAdminMe()
+      .then((r) => {
+        if (!cancelled && r.is_admin) setIsAdmin(true);
+      })
+      .catch(() => {
+        /* non-admin or network: ignore */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    if (!autoRefresh) return undefined;
+    const id = window.setInterval(() => {
+      void loadData({ silent: true }).catch(() => {
+        /* keep last good state */
+      });
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [autoRefresh, loadData]);
 
   async function handleRefresh() {
     try {
-      setRefreshing(true);
       setError("");
       setSuccessMessage("");
-      await loadData();
+      await loadData({ silent: false });
       setSuccessMessage("Status refreshed");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to refresh sync status");
-    } finally {
-      setRefreshing(false);
     }
   }
 
@@ -85,9 +138,9 @@ export default function SyncStatusScreen() {
       setSuccessMessage("");
 
       await startInitialSync();
-      await loadData();
+      await loadData({ silent: true });
 
-      setSuccessMessage("Sync started");
+      setSuccessMessage("Initial sync started");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start sync");
     } finally {
@@ -96,139 +149,277 @@ export default function SyncStatusScreen() {
   }
 
   if (loading) {
-    return <p>Loading sync status...</p>;
+    return (
+      <main className="p-6">
+        <LoadingState message="Loading sync status…" />
+      </main>
+    );
   }
+
+  if (!connection) {
+    return (
+      <main className="space-y-6 p-6">
+        <PageHeader
+          title="Sync status"
+          subtitle="Technical ingestion status for Ozon connection and latest import jobs."
+        />
+        <EmptyState
+          title="No Ozon connection"
+          message="Connect Ozon Seller API on the integration page before you can run or monitor sync."
+          action={
+            <Link href="/app/integrations/ozon" className={buttonClassNames("primary")}>
+              Open Ozon Integration
+            </Link>
+          }
+        />
+      </main>
+    );
+  }
+
+  const connectionStatusRaw = status?.connection_status ?? connection?.status ?? "—";
+  const syncStatusRaw = status?.current_sync?.status ?? "missing";
+  const perfLabel = mapPerformanceConnectionStatus(
+    status?.performance_connection_status ?? connection?.performance_status
+  );
 
   return (
     <main className="space-y-6 p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Sync status</h1>
-          <p className="text-sm text-gray-600">
-            Technical ingestion status for Ozon connection and latest import jobs.
-          </p>
-        </div>
+      <PageHeader
+        title="Sync status"
+        subtitle="Technical ingestion status for Ozon connection and latest import jobs."
+      >
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            className="size-4 rounded border-gray-300"
+            checked={autoRefresh}
+            onChange={(e) => setAutoRefresh(e.target.checked)}
+          />
+          Auto refresh 5s
+        </label>
+        <Button type="button" variant="secondary" onClick={() => void handleRefresh()} disabled={refreshing}>
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </Button>
+        <Button
+          type="button"
+          variant="primary"
+          onClick={() => void handleStartSync()}
+          disabled={startingSync}
+        >
+          {startingSync ? "Starting…" : "Start initial sync"}
+        </Button>
+      </PageHeader>
 
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="rounded border px-4 py-2 disabled:opacity-50"
-          >
-            {refreshing ? "Refreshing..." : "Refresh"}
-          </button>
+      <p className="text-sm text-gray-600">
+        After sync completes, metrics and alerts are recalculated automatically. Open the dashboard
+        once you see a successful sync below.
+      </p>
 
-          <button
-            type="button"
-            onClick={handleStartSync}
-            disabled={startingSync || !connection}
-            className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
-          >
-            {startingSync ? "Starting..." : "Start sync"}
-          </button>
-        </div>
+      <div className="flex flex-wrap gap-2">
+        <Link href="/app/integrations/ozon" className={buttonClassNames("secondary")}>
+          Ozon Integration
+        </Link>
+        <Link href="/app/dashboard" className={buttonClassNames("secondary")}>
+          Dashboard
+        </Link>
+        <Link href="/app/admin" className={buttonClassNames("secondary")}>
+          {isAdmin ? "Admin / Support" : "Admin"}
+        </Link>
       </div>
 
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      {successMessage ? <p className="text-sm text-green-600">{successMessage}</p> : null}
+      {error ? <ErrorState title="Could not complete action" message={error} /> : null}
+      {successMessage ? (
+        <p className="text-sm font-medium text-emerald-800">{successMessage}</p>
+      ) : null}
 
-      <section className="rounded border p-4">
-        <h2 className="mb-3 text-lg font-semibold">Connection</h2>
-        <div className="space-y-2 text-sm">
+      {failedImportJob ? (
+        <Card className="border-amber-300 bg-amber-50/80">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base text-amber-950">Import job failed</CardTitle>
+            <CardDescription>
+              Domain <span className="font-medium">{failedImportJob.domain}</span> reported an error.
+              Other domains may still complete; check the table below.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm text-amber-950">
+            <p className="font-medium">Error</p>
+            <p className="mt-1 whitespace-pre-wrap">{failedImportJob.error_message}</p>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle>Performance API</CardTitle>
+            {status?.performance_connection_status || connection?.performance_status ? (
+              <StatusBadge
+                status={String(status?.performance_connection_status ?? connection?.performance_status)}
+                label={perfLabel}
+              />
+            ) : null}
+          </div>
+          <CardDescription>
+            Used for advertising analytics import only. Seller catalog sync does not depend on it.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm text-gray-700">
           <p>
-            <span className="font-medium">Connection status:</span>{" "}
-            {status?.connection_status ?? connection?.status ?? "—"}
+            <span className="font-medium text-gray-900">Token saved:</span>{" "}
+            {status?.performance_token_set ?? connection?.performance_token_set ? "Yes" : "No"}
           </p>
           <p>
-            <span className="font-medium">Client ID:</span>{" "}
+            <span className="font-medium text-gray-900">Last check at:</span>{" "}
+            {formatDateTime(status?.performance_last_check_at ?? connection?.performance_last_check_at)}
+          </p>
+          <p>
+            <span className="font-medium text-gray-900">Last check result:</span>{" "}
+            {status?.performance_last_check_result ?? connection?.performance_last_check_result ?? "—"}
+          </p>
+          <p>
+            <span className="font-medium text-gray-900">Last error:</span>{" "}
+            {status?.performance_last_error ?? connection?.performance_last_error ?? "—"}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle>Connection</CardTitle>
+            {connectionStatusRaw !== "—" ? (
+              <StatusBadge status={String(connectionStatusRaw)} label={String(connectionStatusRaw)} />
+            ) : null}
+          </div>
+          <CardDescription>Last check and credential health for the Ozon seller API.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm text-gray-700">
+          <p>
+            <span className="font-medium text-gray-900">Connection status:</span>{" "}
+            {connectionStatusRaw}
+          </p>
+          <p>
+            <span className="font-medium text-gray-900">Client ID:</span>{" "}
             {connection?.client_id_masked || "—"}
           </p>
           <p>
-            <span className="font-medium">Last check at:</span>{" "}
+            <span className="font-medium text-gray-900">Last check at:</span>{" "}
             {formatDateTime(status?.last_check_at ?? connection?.last_check_at)}
           </p>
           <p>
-            <span className="font-medium">Last check result:</span>{" "}
+            <span className="font-medium text-gray-900">Last check result:</span>{" "}
             {status?.last_check_result ?? connection?.last_check_result ?? "—"}
           </p>
           <p>
-            <span className="font-medium">Last connection error:</span>{" "}
+            <span className="font-medium text-gray-900">Last connection error:</span>{" "}
             {status?.last_error ?? connection?.last_error ?? "—"}
           </p>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className="rounded border p-4">
-        <h2 className="mb-3 text-lg font-semibold">Sync summary</h2>
-        <div className="space-y-2 text-sm">
+      <Card
+        className={cn(
+          syncIsRunning && "ring-2 ring-sky-400 ring-offset-2 ring-offset-gray-50",
+        )}
+      >
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle>Sync summary</CardTitle>
+            {syncIsRunning ? (
+              <StatusBadge status="running" label="Running" />
+            ) : syncStatusRaw !== "missing" ? (
+              <StatusBadge status={String(syncStatusRaw)} label={String(syncStatusRaw)} />
+            ) : (
+              <StatusBadge status="missing" label="No active job" />
+            )}
+          </div>
+          <CardDescription>Current job and last successful full sync.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm text-gray-700">
           <p>
-            <span className="font-medium">Current sync status:</span>{" "}
-            {status?.current_sync?.status ?? "—"}
-          </p>
-          <p>
-            <span className="font-medium">Current sync type:</span>{" "}
+            <span className="font-medium text-gray-900">Current sync type:</span>{" "}
             {status?.current_sync?.type ?? "—"}
           </p>
           <p>
-            <span className="font-medium">Current sync started at:</span>{" "}
+            <span className="font-medium text-gray-900">Current sync started at:</span>{" "}
             {formatDateTime(status?.current_sync?.started_at)}
           </p>
           <p>
-            <span className="font-medium">Current sync finished at:</span>{" "}
+            <span className="font-medium text-gray-900">Current sync finished at:</span>{" "}
             {formatDateTime(status?.current_sync?.finished_at)}
           </p>
           <p>
-            <span className="font-medium">Last successful update:</span>{" "}
+            <span className="font-medium text-gray-900">Last successful update:</span>{" "}
             {formatDateTime(status?.last_successful_sync_at)}
           </p>
+          {!status?.last_successful_sync_at ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50/80 px-3 py-2 text-amber-950">
+              No successful full sync yet — the dashboard may stay empty until ingestion completes.
+              Use &quot;Start initial sync&quot; from this page or Ozon Integration if you have not
+              started one.
+            </p>
+          ) : null}
           <p>
-            <span className="font-medium">Last sync error:</span>{" "}
+            <span className="font-medium text-gray-900">Last sync error:</span>{" "}
             {status?.current_sync?.error_message ?? "—"}
           </p>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className="rounded border p-4">
-        <h2 className="mb-3 text-lg font-semibold">Latest import jobs by domain</h2>
-
-        {importJobs.length === 0 ? (
-          <p className="text-sm text-gray-600">No import jobs yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b text-left">
-                  <th className="px-2 py-2">Domain</th>
-                  <th className="px-2 py-2">Status</th>
-                  <th className="px-2 py-2">Source cursor</th>
-                  <th className="px-2 py-2">Received</th>
-                  <th className="px-2 py-2">Imported</th>
-                  <th className="px-2 py-2">Failed</th>
-                  <th className="px-2 py-2">Started</th>
-                  <th className="px-2 py-2">Finished</th>
-                  <th className="px-2 py-2">Error</th>
-                </tr>
-              </thead>
-              <tbody>
-                {importJobs.map((job) => (
-                  <tr key={job.id} className="border-b align-top">
-                    <td className="px-2 py-2 font-medium">{job.domain}</td>
-                    <td className="px-2 py-2">{job.status}</td>
-                    <td className="px-2 py-2">{job.source_cursor ?? "—"}</td>
-                    <td className="px-2 py-2">{job.records_received}</td>
-                    <td className="px-2 py-2">{job.records_imported}</td>
-                    <td className="px-2 py-2">{job.records_failed}</td>
-                    <td className="px-2 py-2">{formatDateTime(job.started_at)}</td>
-                    <td className="px-2 py-2">{formatDateTime(job.finished_at)}</td>
-                    <td className="px-2 py-2">{job.error_message ?? "—"}</td>
+      <Card>
+        <CardHeader>
+          <CardTitle>Latest import jobs by domain</CardTitle>
+          <CardDescription>Per-domain import progress for the latest sync.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {importJobs.length === 0 ? (
+            <EmptyState
+              title="No import jobs yet"
+              message="Start initial sync first — import rows appear here while products, orders, stocks, and ads are pulled from Ozon."
+              action={
+                <Link href="/app/integrations/ozon" className={buttonClassNames("secondary")}>
+                  Open Ozon Integration
+                </Link>
+              }
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 text-left">
+                    <th className="px-2 py-2 font-medium text-gray-700">Domain</th>
+                    <th className="px-2 py-2 font-medium text-gray-700">Status</th>
+                    <th className="px-2 py-2 font-medium text-gray-700">Source cursor</th>
+                    <th className="px-2 py-2 font-medium text-gray-700">Received</th>
+                    <th className="px-2 py-2 font-medium text-gray-700">Imported</th>
+                    <th className="px-2 py-2 font-medium text-gray-700">Failed</th>
+                    <th className="px-2 py-2 font-medium text-gray-700">Started</th>
+                    <th className="px-2 py-2 font-medium text-gray-700">Finished</th>
+                    <th className="px-2 py-2 font-medium text-gray-700">Error</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                </thead>
+                <tbody>
+                  {importJobs.map((job) => (
+                    <tr key={job.id} className="border-b border-gray-100 align-top">
+                      <td className="px-2 py-2 font-medium text-gray-900">{job.domain}</td>
+                      <td className="px-2 py-2">
+                        <StatusBadge status={job.status} label={job.status} />
+                      </td>
+                      <td className="px-2 py-2">{job.source_cursor ?? "—"}</td>
+                      <td className="px-2 py-2">{job.records_received}</td>
+                      <td className="px-2 py-2">{job.records_imported}</td>
+                      <td className="px-2 py-2">{job.records_failed}</td>
+                      <td className="px-2 py-2">{formatDateTime(job.started_at)}</td>
+                      <td className="px-2 py-2">{formatDateTime(job.finished_at)}</td>
+                      <td className="px-2 py-2">{job.error_message ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </main>
   );
 }

@@ -3,6 +3,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { buttonClassNames } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   getAdminChatMessages,
   getAdminChatSessions,
@@ -61,6 +63,23 @@ type AdminActionKey =
   | "rerun_metrics"
   | "rerun_alerts"
   | "rerun_recommendations";
+
+function importJobFailureStats(detail: AdminClientDetail): { failedJobs: number; sumFailedRecords: number } {
+  const jobs = detail.operational_status.latest_import_jobs ?? [];
+  const failedJobs = jobs.filter((j) => (j.status || "").toLowerCase() === "failed").length;
+  const sumFailed = jobs.reduce((a, j) => a + (j.records_failed ?? 0), 0);
+  return { failedJobs, sumFailedRecords: sumFailed };
+}
+
+function jsonTitleNeedsRawAiAuditCopy(title: string): boolean {
+  const t = title.toLowerCase();
+  return (
+    t.includes("raw openai") ||
+    t.includes("raw ai response") ||
+    t.includes("raw planner") ||
+    t.includes("raw answer")
+  );
+}
 
 export default function AdminClientDetailScreen({ sellerAccountId }: Props) {
   const [adminReady, setAdminReady] = useState<"loading" | "allowed" | "forbidden" | "error">("loading");
@@ -258,17 +277,6 @@ export default function AdminClientDetailScreen({ sellerAccountId }: Props) {
       .finally(() => setTabLoading(false));
   }, [activeTab, adminReady, detail, sellerAccountId, traceIntentFilter, traceSessionFilter, traceStatusFilter]);
 
-  const headerBadges = useMemo(() => {
-    if (!detail) return null;
-    return (
-      <div className="mt-2 flex flex-wrap gap-2">
-        <Badge value={detail.overview.seller_status} />
-        <Badge value={detail.billing?.status ?? "no billing"} />
-        <Badge value={detail.connections[0]?.status ?? "no connection"} />
-      </div>
-    );
-  }, [detail]);
-
   async function runAction(
     key: AdminActionKey,
     requestPayload: Record<string, unknown>,
@@ -302,6 +310,15 @@ export default function AdminClientDetailScreen({ sellerAccountId }: Props) {
 
   async function maybeRefreshAfterAction(key: AdminActionKey, result: AdminActionExecutionResult) {
     if (!result.ok) return;
+    const refreshDetail: AdminActionKey[] = ["rerun_sync", "rerun_metrics", "rerun_alerts", "rerun_recommendations"];
+    if (refreshDetail.includes(key)) {
+      try {
+        const updated = await getAdminClientDetail(sellerAccountId);
+        setDetail(updated);
+      } catch {
+        /* ignore */
+      }
+    }
     if (key === "reset_cursor" && activeTab === "actions") {
       const data = await getAdminSyncCursors(sellerAccountId, { limit: 50 });
       setCursors(data.items);
@@ -309,10 +326,6 @@ export default function AdminClientDetailScreen({ sellerAccountId }: Props) {
     if (key === "rerun_recommendations" && activeTab === "actions") {
       const data = await getAdminRecommendationRuns(sellerAccountId, { limit: 20 });
       setRuns(data.items);
-    }
-    if (key === "rerun_alerts" && detail) {
-      const updated = await getAdminClientDetail(sellerAccountId);
-      setDetail(updated);
     }
   }
 
@@ -385,39 +398,15 @@ export default function AdminClientDetailScreen({ sellerAccountId }: Props) {
 
   return (
     <main className="space-y-4 p-6">
-      <header className="rounded border bg-white p-4">
+      <div>
         <Link href="/app/admin" className="text-sm text-blue-700 underline">
           ← Back to clients
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold">
-          {detail.overview.seller_name} #{detail.overview.seller_account_id}
-        </h1>
-        <p className="text-sm text-gray-600">Owner: {detail.overview.owner_email ?? "—"}</p>
-        {headerBadges}
-      </header>
+      </div>
 
-      <nav className="flex flex-wrap gap-2">
-        {[
-          ["overview", "Overview"],
-          ["sync_import", "Sync / Import"],
-          ["cursors", "Cursors"],
-          ["alerts", "Alerts"],
-          ["recommendations", "Recommendations"],
-          ["chat_logs", "AI Chat Logs"],
-          ["feedback", "Feedback"],
-          ["billing", "Billing"],
-          ["actions", "Admin actions"],
-        ].map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            className={`rounded border px-3 py-1 text-sm ${activeTab === id ? "bg-gray-100" : "bg-white hover:bg-gray-50"}`}
-            onClick={() => setActiveTab(id as AdminTab)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
+      <ClientSummaryStrip detail={detail} />
+
+      <AdminTabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
       {tabError ? <p className="text-sm text-red-700">{tabError}</p> : null}
       {tabLoading ? <p className="text-sm">Loading tab data...</p> : null}
@@ -447,16 +436,165 @@ export default function AdminClientDetailScreen({ sellerAccountId }: Props) {
       ) : null}
 
       {!tabLoading && activeTab === "sync_import" ? (
-        <section className="space-y-3">
-          <Card title="Sync jobs">{syncJobs.length === 0 ? <p className="text-sm text-gray-600">No sync jobs found.</p> : <SimpleList rows={syncJobs.map((x) => `#${x.id} ${x.type} ${x.status} started=${fmtDate(x.started_at)}`)} />}</Card>
-          <Card title="Import jobs">{importJobs.length === 0 ? <p className="text-sm text-gray-600">No import jobs found.</p> : <SimpleList rows={importJobs.map((x) => `#${x.id} ${x.domain} ${x.status} rec=${x.records_received}/${x.records_imported}/${x.records_failed}`)} />}</Card>
-          <Card title="Import errors">{importErrors.length === 0 ? <p className="text-sm text-gray-600">No import errors found.</p> : <SimpleList rows={importErrors.map((x) => `job #${x.import_job_id} ${x.domain} ${x.error_message}`)} />}</Card>
+        <section className="space-y-4">
+          <Card title="Sync jobs">
+            {syncJobs.length === 0 ? (
+              <EmptyState title="No sync jobs" message="No sync jobs returned for this account (limit 20)." />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b text-xs uppercase text-gray-500">
+                      <th className="px-2 py-2">ID</th>
+                      <th className="px-2 py-2">Type</th>
+                      <th className="px-2 py-2">Status</th>
+                      <th className="px-2 py-2">Started</th>
+                      <th className="px-2 py-2">Finished</th>
+                      <th className="px-2 py-2">Error</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {syncJobs.map((x) => (
+                      <tr key={x.id} className="border-b align-top">
+                        <td className="px-2 py-2 font-mono">#{x.id}</td>
+                        <td className="px-2 py-2">{x.type}</td>
+                        <td className="px-2 py-2">
+                          <Badge value={x.status} />
+                        </td>
+                        <td className="px-2 py-2 text-xs">{fmtDate(x.started_at)}</td>
+                        <td className="px-2 py-2 text-xs">{fmtDate(x.finished_at)}</td>
+                        <td className="max-w-md px-2 py-2 text-xs text-red-800">
+                          {x.error_message ? (
+                            <pre className="max-h-28 overflow-auto whitespace-pre-wrap rounded border bg-red-50/80 p-2">
+                              {x.error_message}
+                            </pre>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+          <Card title="Import jobs">
+            {importJobs.length === 0 ? (
+              <EmptyState title="No import jobs" message="No import jobs in the last fetch (limit 20)." />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b text-xs uppercase text-gray-500">
+                      <th className="px-2 py-2">ID</th>
+                      <th className="px-2 py-2">Sync</th>
+                      <th className="px-2 py-2">Domain</th>
+                      <th className="px-2 py-2">Status</th>
+                      <th className="px-2 py-2">Recv / OK / Fail</th>
+                      <th className="px-2 py-2">Error</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importJobs.map((x) => (
+                      <tr key={x.id} className="border-b align-top">
+                        <td className="px-2 py-2 font-mono">#{x.id}</td>
+                        <td className="px-2 py-2 font-mono">#{x.sync_job_id}</td>
+                        <td className="px-2 py-2">{x.domain}</td>
+                        <td className="px-2 py-2">
+                          <Badge value={x.status} />
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {x.records_received}/{x.records_imported}/{x.records_failed}
+                        </td>
+                        <td className="max-w-md px-2 py-2 text-xs text-red-800">
+                          {x.error_message ? (
+                            <pre className="max-h-28 overflow-auto whitespace-pre-wrap rounded border bg-red-50/80 p-2">
+                              {x.error_message}
+                            </pre>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+          <Card title="Import errors">
+            {importErrors.length === 0 ? (
+              <EmptyState
+                title="No import errors"
+                message="No rows in import_errors for this fetch (limit 20). Failures may appear as job error_message above."
+              />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b text-xs uppercase text-gray-500">
+                      <th className="px-2 py-2">Import job</th>
+                      <th className="px-2 py-2">Sync</th>
+                      <th className="px-2 py-2">Domain</th>
+                      <th className="px-2 py-2">Status</th>
+                      <th className="px-2 py-2">Failed records</th>
+                      <th className="px-2 py-2">Message</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importErrors.map((x) => (
+                      <tr key={`${x.import_job_id}-${x.domain}-${x.started_at}`} className="border-b align-top">
+                        <td className="px-2 py-2 font-mono">#{x.import_job_id}</td>
+                        <td className="px-2 py-2 font-mono">#{x.sync_job_id}</td>
+                        <td className="px-2 py-2">{x.domain}</td>
+                        <td className="px-2 py-2">
+                          <Badge value={x.status} />
+                        </td>
+                        <td className="px-2 py-2">{x.records_failed}</td>
+                        <td className="max-w-lg px-2 py-2 text-xs">
+                          <pre className="max-h-36 overflow-auto whitespace-pre-wrap rounded border bg-gray-50 p-2">
+                            {x.error_message}
+                          </pre>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
         </section>
       ) : null}
 
       {!tabLoading && activeTab === "cursors" ? (
         <Card title="Sync cursors">
-          {cursors.length === 0 ? <p className="text-sm text-gray-600">No sync cursors found.</p> : <SimpleList rows={cursors.map((x) => `${x.domain} / ${x.cursor_type}: ${x.cursor_value ?? "null"} (updated ${fmtDate(x.updated_at)})`)} />}
+          {cursors.length === 0 ? (
+            <EmptyState title="No cursors" message="No sync cursor rows for this account (limit 50)." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b text-xs uppercase text-gray-500">
+                    <th className="px-2 py-2">Domain</th>
+                    <th className="px-2 py-2">Cursor type</th>
+                    <th className="px-2 py-2">Value</th>
+                    <th className="px-2 py-2">Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cursors.map((x) => (
+                    <tr key={`${x.domain}-${x.cursor_type}`} className="border-b align-top">
+                      <td className="px-2 py-2 font-medium">{x.domain}</td>
+                      <td className="px-2 py-2">{x.cursor_type}</td>
+                      <td className="max-w-md px-2 py-2 font-mono text-xs break-all">{x.cursor_value ?? "—"}</td>
+                      <td className="px-2 py-2 text-xs">{fmtDate(x.updated_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
       ) : null}
 
@@ -899,22 +1037,47 @@ export default function AdminClientDetailScreen({ sellerAccountId }: Props) {
       ) : null}
 
       {!tabLoading && activeTab === "feedback" ? (
-        <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <Card title="Chat feedback">
-            {chatFeedback.length === 0 ? <p className="text-sm text-gray-600">No feedback found.</p> : <SimpleList rows={chatFeedback.map((f) => `${String((f as { rating?: string }).rating ?? "—")} ${(f as { comment?: string }).comment ?? ""}`)} />}
-          </Card>
-          <Card title="Recommendation feedback">
+        <section className="space-y-6">
+          <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <h2 className="mb-1 text-lg font-semibold text-gray-900">Chat feedback</h2>
+            <p className="mb-3 text-sm text-gray-600">End-user ratings on AI chat answers (admin view).</p>
+            {chatFeedback.length === 0 ? (
+              <EmptyState title="No chat feedback" message="No chat feedback rows for this client (limit 20)." />
+            ) : (
+              <ul className="space-y-2 text-sm">
+                {chatFeedback.map((f, i) => (
+                  <li key={i} className="rounded-md border border-gray-100 bg-gray-50/80 px-3 py-2">
+                    <span className="font-medium text-gray-900">{String((f as { rating?: string }).rating ?? "—")}</span>
+                    <span className="text-gray-700"> — {(f as { comment?: string }).comment ?? "no comment"}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="rounded-lg border border-indigo-100 bg-indigo-50/40 p-4 shadow-sm">
+            <h2 className="mb-1 text-lg font-semibold text-indigo-950">Recommendation feedback</h2>
+            <p className="mb-3 text-sm text-indigo-900/80">Ratings tied to recommendation rows plus proxy status counts.</p>
             {!recFeedback || recFeedback.items.length === 0 ? (
-              <p className="text-sm text-gray-600">No feedback found.</p>
+              <EmptyState title="No recommendation feedback" message="No recommendation feedback for this client (limit 20)." />
             ) : (
               <>
-                <SimpleList rows={recFeedback.items.map((i) => `${i.rating} - ${i.recommendation.title} (${i.recommendation.status})`)} />
-                <p className="mt-2 text-xs text-gray-700">
-                  proxy: accepted={recFeedback.proxy_status_feedback.accepted_count}, dismissed={recFeedback.proxy_status_feedback.dismissed_count}, resolved={recFeedback.proxy_status_feedback.resolved_count}
+                <ul className="space-y-2 text-sm">
+                  {recFeedback.items.map((item) => (
+                    <li key={item.id} className="rounded-md border border-white/80 bg-white px-3 py-2">
+                      <span className="font-medium text-gray-900">{item.rating}</span>
+                      <span className="text-gray-800"> — {item.recommendation.title}</span>
+                      <span className="text-gray-600"> ({item.recommendation.status})</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-3 text-xs text-indigo-950/90">
+                  Proxy status: accepted={recFeedback.proxy_status_feedback.accepted_count}, dismissed=
+                  {recFeedback.proxy_status_feedback.dismissed_count}, resolved=
+                  {recFeedback.proxy_status_feedback.resolved_count}
                 </p>
               </>
             )}
-          </Card>
+          </div>
         </section>
       ) : null}
 
@@ -941,195 +1104,391 @@ export default function AdminClientDetailScreen({ sellerAccountId }: Props) {
       ) : null}
 
       {!tabLoading && activeTab === "actions" ? (
-        <section className="space-y-3">
-          <Card title="Rerun sync">
-            <p className="mb-2 text-sm text-gray-600">Start a new sync job for this client.</p>
-            <label className="text-sm">
-              <span className="mb-1 block text-gray-700">sync_type</span>
-              <select className="rounded border px-2 py-1 text-sm" value={syncType} onChange={(e) => setSyncType(e.target.value)}>
-                <option value="initial_sync">initial_sync</option>
-              </select>
-            </label>
-            <button
-              type="button"
-              className="mt-3 rounded border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
-              disabled={actionLoading.rerun_sync}
-              onClick={() => {
-                if (!window.confirm("Start a new sync job for this client? This will not reuse previous failed jobs.")) return;
-                const payload = { sync_type: "initial_sync" };
-                void runAction("rerun_sync", payload, () => rerunAdminSync(sellerAccountId, payload));
-              }}
-            >
-              {actionLoading.rerun_sync ? "Running..." : "Rerun sync"}
-            </button>
-            <ActionResultCard
-              result={actionResults.rerun_sync}
-              error={actionErrors.rerun_sync}
-              success={actionSuccess.rerun_sync}
-              requestPayload={actionRequestPayloads.rerun_sync}
-            />
-          </Card>
-
-          <Card title="Reset cursor">
-            <p className="mb-2 text-sm text-gray-600">Reset sync cursor for a specific domain/cursor type.</p>
-            <p className="mb-2 rounded border border-yellow-300 bg-yellow-50 p-2 text-xs text-yellow-900">
-              Warning: resetting a cursor can cause the next sync to re-import data from the selected point.
-            </p>
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+        <Card title="Support actions">
+          <p className="text-sm text-gray-600">
+            Recommended order for recovery testing: pull fresh Ozon data → reset stuck cursors if needed → rebuild
+            aggregates → regenerate downstream AI.
+          </p>
+          <div className="mt-6 divide-y divide-gray-200">
+            <div className="py-6">
+              <div className="mb-3 flex flex-wrap items-baseline gap-2">
+                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-900 text-xs font-bold text-white">
+                  1
+                </span>
+                <h3 className="text-base font-semibold text-gray-900">Rerun sync</h3>
+              </div>
+              <p className="mb-3 text-sm text-gray-600">
+                Queues a new Ozon sync job so products, orders, stocks, and ads reflect the marketplace. Run this first
+                when data looks stale or after fixing credentials.
+              </p>
               <label className="text-sm">
-                <span className="mb-1 block text-gray-700">domain</span>
-                <input className="w-full rounded border px-2 py-1 text-sm" value={cursorDomain} onChange={(e) => setCursorDomain(e.target.value)} placeholder="orders" />
+                <span className="mb-1 block text-gray-700">sync_type</span>
+                <select className="rounded border px-2 py-1 text-sm" value={syncType} onChange={(e) => setSyncType(e.target.value)}>
+                  <option value="initial_sync">initial_sync</option>
+                </select>
               </label>
-              <label className="text-sm">
-                <span className="mb-1 block text-gray-700">cursor_type</span>
-                <input className="w-full rounded border px-2 py-1 text-sm" value={cursorType} onChange={(e) => setCursorType(e.target.value)} placeholder="source_cursor" />
-              </label>
-              <label className="text-sm">
-                <span className="mb-1 block text-gray-700">cursor_value (optional)</span>
-                <input className="w-full rounded border px-2 py-1 text-sm" value={cursorValue} onChange={(e) => setCursorValue(e.target.value)} placeholder="empty = null" />
-              </label>
+              <button
+                type="button"
+                className={`mt-3 ${buttonClassNames("primary")}`}
+                disabled={actionLoading.rerun_sync}
+                onClick={() => {
+                  if (!window.confirm("Start a new sync job for this client?")) return;
+                  const payload = { sync_type: syncType };
+                  void runAction("rerun_sync", payload, () => rerunAdminSync(sellerAccountId, payload));
+                }}
+              >
+                {actionLoading.rerun_sync ? "Running…" : "Rerun sync"}
+              </button>
+              <ActionResultCard
+                result={actionResults.rerun_sync}
+                error={actionErrors.rerun_sync}
+                success={actionSuccess.rerun_sync}
+                requestPayload={actionRequestPayloads.rerun_sync}
+              />
             </div>
-            {(!cursorDomain.trim() || !cursorType.trim()) && actionErrors.reset_cursor ? (
-              <p className="mt-2 text-sm text-red-700">{actionErrors.reset_cursor}</p>
-            ) : null}
-            <button
-              type="button"
-              className="mt-3 rounded border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
-              disabled={actionLoading.reset_cursor || !cursorDomain.trim() || !cursorType.trim()}
-              onClick={() => {
-                const domain = cursorDomain.trim();
-                const cursor_type = cursorType.trim();
-                if (!domain || !cursor_type) {
-                  setActionErrors((prev) => ({ ...prev, reset_cursor: "domain and cursor_type are required" }));
-                  return;
-                }
-                if (!window.confirm("Reset this sync cursor? The next sync may re-import data for this domain.")) return;
-                const payload = {
-                  domain,
-                  cursor_type,
-                  cursor_value: cursorValue.trim() === "" ? null : cursorValue.trim(),
-                };
-                void runAction("reset_cursor", payload, () => resetAdminCursor(sellerAccountId, payload));
-              }}
-            >
-              {actionLoading.reset_cursor ? "Running..." : "Reset cursor"}
-            </button>
-            <ActionResultCard
-              result={actionResults.reset_cursor}
-              error={actionErrors.reset_cursor}
-              success={actionSuccess.reset_cursor}
-              requestPayload={actionRequestPayloads.reset_cursor}
-            />
-          </Card>
 
-          <Card title="Rerun metrics">
-            <p className="mb-2 text-sm text-gray-600">Recompute metrics for a date range.</p>
-            <p className="mb-2 rounded border border-yellow-200 bg-yellow-50 p-2 text-xs text-yellow-900">
-              This action may fail with not configured status if metrics dependency is not wired in this environment.
-            </p>
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              <label className="text-sm">
-                <span className="mb-1 block text-gray-700">date_from</span>
-                <input className="w-full rounded border px-2 py-1 text-sm" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-              </label>
-              <label className="text-sm">
-                <span className="mb-1 block text-gray-700">date_to</span>
-                <input className="w-full rounded border px-2 py-1 text-sm" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-              </label>
+            <div className="py-6">
+              <div className="mb-3 flex flex-wrap items-baseline gap-2">
+                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-900 text-xs font-bold text-white">
+                  2
+                </span>
+                <h3 className="text-base font-semibold text-gray-900">Reset cursor</h3>
+              </div>
+              <p className="mb-3 text-sm text-gray-600">
+                Clears or sets a domain cursor so the next sync can re-read from a chosen point. Use when imports are
+                stuck or you need a controlled replay (dangerous in production).
+              </p>
+              <p className="mb-3 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950">
+                Warning: resetting a cursor can cause the next sync to re-import overlapping data.
+              </p>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                <label className="text-sm">
+                  <span className="mb-1 block text-gray-700">domain</span>
+                  <input
+                    className="w-full rounded border px-2 py-1 text-sm"
+                    value={cursorDomain}
+                    onChange={(e) => setCursorDomain(e.target.value)}
+                    placeholder="orders"
+                  />
+                </label>
+                <label className="text-sm">
+                  <span className="mb-1 block text-gray-700">cursor_type</span>
+                  <input
+                    className="w-full rounded border px-2 py-1 text-sm"
+                    value={cursorType}
+                    onChange={(e) => setCursorType(e.target.value)}
+                    placeholder="source_cursor"
+                  />
+                </label>
+                <label className="text-sm">
+                  <span className="mb-1 block text-gray-700">cursor_value (optional)</span>
+                  <input
+                    className="w-full rounded border px-2 py-1 text-sm"
+                    value={cursorValue}
+                    onChange={(e) => setCursorValue(e.target.value)}
+                    placeholder="empty = null"
+                  />
+                </label>
+              </div>
+              {(!cursorDomain.trim() || !cursorType.trim()) && actionErrors.reset_cursor ? (
+                <p className="mt-2 text-sm text-red-700">{actionErrors.reset_cursor}</p>
+              ) : null}
+              <button
+                type="button"
+                className={`mt-3 ${buttonClassNames("secondary")}`}
+                disabled={actionLoading.reset_cursor || !cursorDomain.trim() || !cursorType.trim()}
+                onClick={() => {
+                  const domain = cursorDomain.trim();
+                  const cursor_type = cursorType.trim();
+                  if (!domain || !cursor_type) {
+                    setActionErrors((prev) => ({ ...prev, reset_cursor: "domain and cursor_type are required" }));
+                    return;
+                  }
+                  if (!window.confirm("Reset this sync cursor?")) return;
+                  const payload = {
+                    domain,
+                    cursor_type,
+                    cursor_value: cursorValue.trim() === "" ? null : cursorValue.trim(),
+                  };
+                  void runAction("reset_cursor", payload, () => resetAdminCursor(sellerAccountId, payload));
+                }}
+              >
+                {actionLoading.reset_cursor ? "Running…" : "Reset cursor"}
+              </button>
+              <ActionResultCard
+                result={actionResults.reset_cursor}
+                error={actionErrors.reset_cursor}
+                success={actionSuccess.reset_cursor}
+                requestPayload={actionRequestPayloads.reset_cursor}
+              />
             </div>
-            <button
-              type="button"
-              className="mt-3 rounded border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
-              disabled={actionLoading.rerun_metrics}
-              onClick={() => {
-                if (!dateFrom || !dateTo) {
-                  setActionErrors((prev) => ({ ...prev, rerun_metrics: "date_from and date_to are required" }));
-                  return;
-                }
-                if (new Date(dateFrom).getTime() > new Date(dateTo).getTime()) {
-                  setActionErrors((prev) => ({ ...prev, rerun_metrics: "date_from must be earlier than or equal to date_to" }));
-                  return;
-                }
-                if (!window.confirm("Rerun metrics for the selected date range?")) return;
-                const payload = { date_from: dateFrom, date_to: dateTo };
-                void runAction("rerun_metrics", payload, () => rerunAdminMetrics(sellerAccountId, payload));
-              }}
-            >
-              {actionLoading.rerun_metrics ? "Running..." : "Rerun metrics"}
-            </button>
-            <ActionResultCard
-              result={actionResults.rerun_metrics}
-              error={actionErrors.rerun_metrics}
-              success={actionSuccess.rerun_metrics}
-              requestPayload={actionRequestPayloads.rerun_metrics}
-            />
-          </Card>
 
-          <Card title="Rerun alerts">
-            <p className="mb-2 text-sm text-gray-600">Run Alerts Engine for selected date.</p>
-            <label className="text-sm">
-              <span className="mb-1 block text-gray-700">as_of_date</span>
-              <input className="w-full rounded border px-2 py-1 text-sm md:w-64" type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} />
-            </label>
-            <button
-              type="button"
-              className="mt-3 rounded border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
-              disabled={actionLoading.rerun_alerts}
-              onClick={() => {
-                if (!asOfDate) {
-                  setActionErrors((prev) => ({ ...prev, rerun_alerts: "as_of_date is required" }));
-                  return;
-                }
-                if (!window.confirm("Rerun Alerts Engine for this client and date?")) return;
-                const payload = { as_of_date: asOfDate };
-                void runAction("rerun_alerts", payload, () => rerunAdminAlerts(sellerAccountId, payload));
-              }}
-            >
-              {actionLoading.rerun_alerts ? "Running..." : "Rerun alerts"}
-            </button>
-            <ActionResultCard
-              result={actionResults.rerun_alerts}
-              error={actionErrors.rerun_alerts}
-              success={actionSuccess.rerun_alerts}
-              requestPayload={actionRequestPayloads.rerun_alerts}
-            />
-          </Card>
+            <div className="py-6">
+              <div className="mb-3 flex flex-wrap items-baseline gap-2">
+                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-900 text-xs font-bold text-white">
+                  3
+                </span>
+                <h3 className="text-base font-semibold text-gray-900">Rerun metrics</h3>
+              </div>
+              <p className="mb-3 text-sm text-gray-600">
+                Recomputes dashboard aggregates for the date window. Run after a successful sync so KPIs and SKU
+                tables match imported facts.
+              </p>
+              <p className="mb-3 rounded border border-amber-100 bg-amber-50/80 p-2 text-xs text-amber-950">
+                May fail if metrics workers are not configured in this environment.
+              </p>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                <label className="text-sm">
+                  <span className="mb-1 block text-gray-700">date_from</span>
+                  <input className="w-full rounded border px-2 py-1 text-sm" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                </label>
+                <label className="text-sm">
+                  <span className="mb-1 block text-gray-700">date_to</span>
+                  <input className="w-full rounded border px-2 py-1 text-sm" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                </label>
+              </div>
+              <button
+                type="button"
+                className={`mt-3 ${buttonClassNames("secondary")}`}
+                disabled={actionLoading.rerun_metrics}
+                onClick={() => {
+                  if (!dateFrom || !dateTo) {
+                    setActionErrors((prev) => ({ ...prev, rerun_metrics: "date_from and date_to are required" }));
+                    return;
+                  }
+                  if (new Date(dateFrom).getTime() > new Date(dateTo).getTime()) {
+                    setActionErrors((prev) => ({
+                      ...prev,
+                      rerun_metrics: "date_from must be earlier than or equal to date_to",
+                    }));
+                    return;
+                  }
+                  if (!window.confirm("Rerun metrics for the selected date range?")) return;
+                  const payload = { date_from: dateFrom, date_to: dateTo };
+                  void runAction("rerun_metrics", payload, () => rerunAdminMetrics(sellerAccountId, payload));
+                }}
+              >
+                {actionLoading.rerun_metrics ? "Running…" : "Rerun metrics"}
+              </button>
+              <ActionResultCard
+                result={actionResults.rerun_metrics}
+                error={actionErrors.rerun_metrics}
+                success={actionSuccess.rerun_metrics}
+                requestPayload={actionRequestPayloads.rerun_metrics}
+              />
+            </div>
 
-          <Card title="Rerun recommendations">
-            <p className="mb-2 text-sm text-gray-600">Run AI recommendation generation for selected date.</p>
-            <p className="mb-2 rounded border border-yellow-300 bg-yellow-50 p-2 text-xs text-yellow-900">
-              Warning: rerunning recommendations can call OpenAI API and create token usage / estimated cost.
-            </p>
-            <label className="text-sm">
-              <span className="mb-1 block text-gray-700">as_of_date</span>
-              <input className="w-full rounded border px-2 py-1 text-sm md:w-64" type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} />
-            </label>
-            <button
-              type="button"
-              className="mt-3 rounded border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
-              disabled={actionLoading.rerun_recommendations}
-              onClick={() => {
-                if (!asOfDate) {
-                  setActionErrors((prev) => ({ ...prev, rerun_recommendations: "as_of_date is required" }));
-                  return;
-                }
-                if (!window.confirm("Rerun AI recommendations? This can call OpenAI API and create additional token usage/cost.")) return;
-                const payload = { as_of_date: asOfDate };
-                void runAction("rerun_recommendations", payload, () => rerunAdminRecommendations(sellerAccountId, payload));
-              }}
-            >
-              {actionLoading.rerun_recommendations ? "Running..." : "Rerun recommendations"}
-            </button>
-            <ActionResultCard
-              result={actionResults.rerun_recommendations}
-              error={actionErrors.rerun_recommendations}
-              success={actionSuccess.rerun_recommendations}
-              requestPayload={actionRequestPayloads.rerun_recommendations}
-            />
-          </Card>
-        </section>
+            <div className="py-6">
+              <div className="mb-3 flex flex-wrap items-baseline gap-2">
+                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-900 text-xs font-bold text-white">
+                  4
+                </span>
+                <h3 className="text-base font-semibold text-gray-900">Rerun alerts</h3>
+              </div>
+              <p className="mb-3 text-sm text-gray-600">
+                Rebuilds sales/stock/ads/price alerts for the as-of date. Run before recommendations when you need a
+                clean alert set for AI context.
+              </p>
+              <label className="text-sm">
+                <span className="mb-1 block text-gray-700">as_of_date</span>
+                <input className="w-full rounded border px-2 py-1 text-sm md:w-64" type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} />
+              </label>
+              <button
+                type="button"
+                className={`mt-3 ${buttonClassNames("secondary")}`}
+                disabled={actionLoading.rerun_alerts}
+                onClick={() => {
+                  if (!asOfDate) {
+                    setActionErrors((prev) => ({ ...prev, rerun_alerts: "as_of_date is required" }));
+                    return;
+                  }
+                  if (!window.confirm("Rerun Alerts Engine for this client and date?")) return;
+                  const payload = { as_of_date: asOfDate };
+                  void runAction("rerun_alerts", payload, () => rerunAdminAlerts(sellerAccountId, payload));
+                }}
+              >
+                {actionLoading.rerun_alerts ? "Running…" : "Rerun alerts"}
+              </button>
+              <ActionResultCard
+                result={actionResults.rerun_alerts}
+                error={actionErrors.rerun_alerts}
+                success={actionSuccess.rerun_alerts}
+                requestPayload={actionRequestPayloads.rerun_alerts}
+              />
+            </div>
+
+            <div className="py-6">
+              <div className="mb-3 flex flex-wrap items-baseline gap-2">
+                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-900 text-xs font-bold text-white">
+                  5
+                </span>
+                <h3 className="text-base font-semibold text-gray-900">Rerun recommendations</h3>
+              </div>
+              <p className="mb-3 text-sm text-gray-600">
+                Calls the AI recommendation engine for the as-of date. Requires sensible metrics + alerts context; may
+                consume OpenAI tokens and incur cost.
+              </p>
+              <p className="mb-3 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950">
+                Calls OpenAI — confirm budget and as_of_date before running.
+              </p>
+              <label className="text-sm">
+                <span className="mb-1 block text-gray-700">as_of_date</span>
+                <input className="w-full rounded border px-2 py-1 text-sm md:w-64" type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} />
+              </label>
+              <button
+                type="button"
+                className={`mt-3 ${buttonClassNames("primary")}`}
+                disabled={actionLoading.rerun_recommendations}
+                onClick={() => {
+                  if (!asOfDate) {
+                    setActionErrors((prev) => ({ ...prev, rerun_recommendations: "as_of_date is required" }));
+                    return;
+                  }
+                  if (!window.confirm("Rerun AI recommendations? This may call OpenAI and incur cost.")) return;
+                  const payload = { as_of_date: asOfDate };
+                  void runAction("rerun_recommendations", payload, () => rerunAdminRecommendations(sellerAccountId, payload));
+                }}
+              >
+                {actionLoading.rerun_recommendations ? "Running…" : "Rerun recommendations"}
+              </button>
+              <ActionResultCard
+                result={actionResults.rerun_recommendations}
+                error={actionErrors.rerun_recommendations}
+                success={actionSuccess.rerun_recommendations}
+                requestPayload={actionRequestPayloads.rerun_recommendations}
+              />
+            </div>
+          </div>
+        </Card>
       ) : null}
     </main>
+  );
+}
+
+const ADMIN_TABS: { id: AdminTab; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "sync_import", label: "Sync & Import" },
+  { id: "cursors", label: "Cursors" },
+  { id: "alerts", label: "Alerts" },
+  { id: "recommendations", label: "Recommendations" },
+  { id: "chat_logs", label: "Chat Logs" },
+  { id: "feedback", label: "Feedback" },
+  { id: "billing", label: "Billing" },
+  { id: "actions", label: "Actions" },
+];
+
+function AdminTabBar({
+  activeTab,
+  onTabChange,
+}: {
+  activeTab: AdminTab;
+  onTabChange: (t: AdminTab) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-1.5 shadow-sm">
+      <div className="flex flex-wrap gap-1" role="tablist" aria-label="Client admin sections">
+        {ADMIN_TABS.map((t) => {
+          const active = activeTab === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              className={[
+                "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                active
+                  ? "border border-gray-300 bg-white text-gray-900 shadow-sm"
+                  : "border border-transparent text-gray-600 hover:bg-white hover:text-gray-900",
+              ].join(" ")}
+              onClick={() => onTabChange(t.id)}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ClientSummaryStrip({ detail }: { detail: AdminClientDetail }) {
+  const conn = detail.connections[0];
+  const sync = detail.operational_status.latest_sync_job;
+  const recRun = detail.operational_status.latest_recommendation_run;
+  const chatTrace = detail.operational_status.latest_chat_trace;
+  const { failedJobs, sumFailedRecords } = importJobFailureStats(detail);
+  const billing = detail.billing;
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">
+            {detail.overview.seller_name}{" "}
+            <span className="text-gray-500">#{detail.overview.seller_account_id}</span>
+          </h1>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Badge value={detail.overview.seller_status} />
+            {conn ? <Badge value={`Seller API: ${conn.status}`} /> : <Badge value="Seller API: —" />}
+            {conn ? (
+              <Badge
+                value={`Performance: ${conn.performance_connection_status}${conn.performance_token_set ? " · token" : " · no token"}`}
+              />
+            ) : null}
+            {billing ? <Badge value={`Billing: ${billing.plan_code} / ${billing.status}`} /> : <Badge value="Billing: not set" />}
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <SummaryCell label="Owner email" value={detail.overview.owner_email ?? "—"} />
+        <SummaryCell
+          label="Latest sync"
+          value={sync ? `#${sync.id} · ${sync.status}` : "—"}
+          hint={sync ? fmtDate(sync.finished_at ?? sync.started_at) : undefined}
+        />
+        <SummaryCell
+          label="Latest import issues"
+          value={
+            failedJobs > 0 || sumFailedRecords > 0
+              ? `${failedJobs} failed job(s), ${sumFailedRecords} failed record(s) (latest batch)`
+              : "None in latest import jobs"
+          }
+        />
+        <SummaryCell
+          label="Latest AI recommendations run"
+          value={recRun ? `#${recRun.id} · ${recRun.status}` : "—"}
+          hint={
+            recRun
+              ? `gen ${recRun.generated_recommendations_count} · in/out ${recRun.input_tokens}/${recRun.output_tokens}${recRun.error_message ? ` · ${recRun.error_message}` : ""}`
+              : undefined
+          }
+        />
+        <SummaryCell
+          label="Latest chat trace"
+          value={chatTrace ? `#${chatTrace.id} · ${chatTrace.status}` : "—"}
+          hint={
+            chatTrace
+              ? `${chatTrace.detected_intent ?? "intent —"} · session #${chatTrace.session_id}${chatTrace.error_message ? ` · ${chatTrace.error_message}` : ""}`
+              : undefined
+          }
+        />
+        <SummaryCell
+          label="Open alerts / recommendations"
+          value={`${detail.operational_status.open_alerts_count} / ${detail.operational_status.open_recommendations_count}`}
+        />
+      </div>
+    </section>
+  );
+}
+
+function SummaryCell({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="rounded-md border border-gray-100 bg-gray-50/80 px-3 py-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="mt-0.5 font-medium text-gray-900">{value}</p>
+      {hint ? <p className="mt-1 text-xs text-gray-600">{hint}</p> : null}
+    </div>
   );
 }
 
@@ -1142,15 +1501,21 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function SimpleList({ rows }: { rows: string[] }) {
+function CopyJsonButton({ jsonText }: { jsonText: string }) {
+  const [done, setDone] = useState(false);
   return (
-    <ul className="space-y-1 text-sm">
-      {rows.map((r, i) => (
-        <li key={`${i}-${r}`} className="rounded border bg-gray-50 px-2 py-1">
-          {r}
-        </li>
-      ))}
-    </ul>
+    <button
+      type="button"
+      className={`${buttonClassNames("secondary")} text-xs`}
+      onClick={() => {
+        void navigator.clipboard.writeText(jsonText).then(() => {
+          setDone(true);
+          window.setTimeout(() => setDone(false), 2000);
+        });
+      }}
+    >
+      {done ? "Copied" : "Copy JSON"}
+    </button>
   );
 }
 
@@ -1165,33 +1530,51 @@ function ActionResultCard({
   success: string | null;
   requestPayload: Record<string, unknown> | null;
 }) {
+  const resultJson = useMemo(() => {
+    if (!result?.result_payload) return "";
+    try {
+      return JSON.stringify(result.result_payload, null, 2);
+    } catch {
+      return String(result.result_payload);
+    }
+  }, [result]);
+
   return (
-    <div className="mt-3 space-y-2">
+    <div className="mt-4 space-y-3 rounded-lg border border-gray-200 bg-gray-50/80 p-3 text-sm">
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      {success ? <p className="text-sm text-green-700">{success}</p> : null}
+      {success ? <p className="text-sm text-green-800">{success}</p> : null}
       {!result ? null : (
-        <div className="rounded border bg-gray-50 p-2 text-sm">
+        <div className="space-y-2">
           <p>
-            Last result: Action log #{result.id}
+            <span className="text-gray-600">Action log</span>{" "}
+            <span className="font-mono font-medium">#{result.id}</span>
           </p>
           <p>
-            Status: <b>{result.status}</b>
+            Status: <b>{result.status}</b> · finished {fmtDate(result.finished_at)}
           </p>
-          <p>Finished: {fmtDate(result.finished_at)}</p>
-          {result.error_message ? <p className="text-red-700">Error: {result.error_message}</p> : null}
+          {result.error_message ? <p className="text-red-800">Error: {result.error_message}</p> : null}
           {requestPayload ? (
-            <details className="mt-2">
-              <summary className="cursor-pointer text-xs">Request payload</summary>
-              <pre className="mt-1 overflow-auto rounded border bg-white p-2 text-xs">
-                {JSON.stringify(requestPayload, null, 2)}
-              </pre>
+            <details className="rounded border bg-white">
+              <summary className="cursor-pointer px-2 py-2 text-xs font-medium text-gray-800">Request payload</summary>
+              <div className="border-t border-gray-100 p-2">
+                <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded border bg-gray-50 p-2 text-xs">
+                  {JSON.stringify(requestPayload, null, 2)}
+                </pre>
+              </div>
             </details>
           ) : null}
-          <details className="mt-2">
-            <summary className="cursor-pointer text-xs">Result payload</summary>
-            <pre className="mt-1 overflow-auto rounded border bg-white p-2 text-xs">
-              {JSON.stringify(result.result_payload ?? {}, null, 2)}
-            </pre>
+          <details className="rounded border bg-white">
+            <summary className="cursor-pointer px-2 py-2 text-xs font-medium text-gray-800">Result payload</summary>
+            <div className="border-t border-gray-100 p-2">
+              {resultJson ? (
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <CopyJsonButton jsonText={resultJson} />
+                </div>
+              ) : null}
+              <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded border bg-gray-50 p-3 text-xs leading-relaxed">
+                {resultJson || "{}"}
+              </pre>
+            </div>
           </details>
         </div>
       )}
@@ -1210,22 +1593,33 @@ function InternalSupportDataNotice() {
 function JsonDetailsBlock({
   title,
   data,
-  defaultOpen = false,
 }: {
   title: string;
   data: unknown;
-  defaultOpen?: boolean;
 }) {
+  const rawUx = jsonTitleNeedsRawAiAuditCopy(title);
+  const jsonText = !isEmptyData(data) ? JSON.stringify(data, null, 2) : "";
+
   return (
-    <details className="rounded border bg-white p-2" open={defaultOpen}>
-      <summary className="cursor-pointer text-xs font-medium">{title}</summary>
-      {isEmptyData(data) ? (
-        <p className="mt-2 text-xs text-gray-600">No data available.</p>
-      ) : (
-        <pre className="mt-2 overflow-auto rounded border bg-gray-50 p-2 text-xs">
-          {JSON.stringify(data, null, 2)}
-        </pre>
-      )}
+    <details className="rounded border bg-white p-2">
+      <summary className="cursor-pointer text-xs font-medium text-gray-900">{title}</summary>
+      <div className="mt-2 border-t border-gray-100 pt-2">
+        {rawUx ? (
+          <p className="mb-2 text-xs font-medium text-amber-900">Viewing raw AI payload creates audit log.</p>
+        ) : null}
+        {isEmptyData(data) ? (
+          <p className="text-xs text-gray-600">No data available.</p>
+        ) : (
+          <>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <CopyJsonButton jsonText={jsonText} />
+            </div>
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded border bg-gray-50 p-2 text-xs">
+              {jsonText}
+            </pre>
+          </>
+        )}
+      </div>
     </details>
   );
 }

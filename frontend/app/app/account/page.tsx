@@ -1,9 +1,5 @@
-import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { getCurrentUserServer } from "@/lib/server-auth";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8081";
+import { PUBLIC_API_BASE_URL } from "@/lib/env/api-base-url";
 
 type AccountResponse = {
   id: number;
@@ -12,16 +8,10 @@ type AccountResponse = {
 };
 
 export default async function AccountPage() {
-  const auth = await getCurrentUserServer();
-
-  if (!auth) {
-    redirect("/login");
-  }
-
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.toString();
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/account`, {
+  const res = await fetch(`${PUBLIC_API_BASE_URL}/api/v1/account`, {
     headers: {
       Cookie: cookieHeader,
       "Content-Type": "application/json",

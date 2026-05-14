@@ -1,7 +1,6 @@
 import { apiGet, apiPut } from "@/lib/api";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8081";
+import { PUBLIC_API_BASE_URL } from "@/lib/env/api-base-url";
 
 function buildQuery(params: Record<string, string | number | undefined>): string {
   const query = new URLSearchParams();
@@ -620,7 +619,7 @@ async function performAdminActionRequest(
   path: string,
   payload: unknown,
 ): Promise<AdminActionExecutionResult> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await fetch(`${PUBLIC_API_BASE_URL}${path}`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },

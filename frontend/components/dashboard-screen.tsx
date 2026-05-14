@@ -2,6 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { buttonClassNames } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { LoadingState } from "@/components/ui/loading-state";
+import { MetricCard } from "@/components/ui/metric-card";
+import { PageHeader } from "@/components/ui/page-header";
 import {
   getDashboardSKUTable,
   getDashboardStocks,
@@ -117,29 +124,17 @@ function priorityLabel(value: string): string {
   return value.replaceAll("_", " ");
 }
 
-function formatLatestAlertsRunLine(
-  alertsLoading: boolean,
-  alertsError: string,
-  alertsSummary: AlertsSummaryResponse | null,
-): string {
-  if (alertsLoading) return "Alerts: loading...";
-  if (alertsError || !alertsSummary) return "Alerts: unavailable";
-  const run = alertsSummary.latest_run;
-  if (!run) return "Alerts: no run yet";
-  return `Alerts: ${run.status} ${fmtDateTime(run.finished_at ?? run.started_at)}`;
-}
-
-function formatLatestRecommendationsRunLine(
-  recSummaryLoading: boolean,
-  recSummaryError: string,
-  recSummary: RecommendationsSummary | null,
-): string {
-  if (recSummaryLoading) return "AI recommendations: loading...";
-  if (recSummaryError || !recSummary) return "AI recommendations: unavailable";
-  const run = recSummary.latest_run;
-  if (!run) return "AI recommendations: no run yet";
-  const modelPrompt = [run.ai_model, run.ai_prompt_version].filter(Boolean).join(" / ");
-  return `AI recommendations: ${run.status} ${fmtDateTime(run.finished_at ?? run.started_at)}${modelPrompt ? ` · ${modelPrompt}` : ""}`;
+function isLikelyAdsPerformanceTokenIssue(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("performance") ||
+    m.includes("token") ||
+    m.includes("bearer") ||
+    m.includes("401") ||
+    m.includes("403") ||
+    m.includes("unauthorized") ||
+    m.includes("forbidden")
+  );
 }
 
 function formatCriticalSkuEntity(item: CriticalSKUItem): string {
@@ -289,9 +284,9 @@ function formatAdRiskReason(
 }
 
 function toAdRiskRow(row: Record<string, unknown>): AdRiskRow {
-  const spend = getNum(row, ["spend", "total_spend", "ad_spend", "cost"]) ?? 0;
-  const revenue = getNum(row, ["revenue", "attributed_revenue", "sales_revenue"]) ?? 0;
-  const orders = getNum(row, ["orders", "orders_count", "attributed_orders"]) ?? 0;
+  const spend = getNum(row, ["spend_total", "spend", "total_spend", "ad_spend", "cost"]) ?? 0;
+  const revenue = getNum(row, ["revenue_total", "revenue", "attributed_revenue", "sales_revenue"]) ?? 0;
+  const orders = getNum(row, ["orders_total", "orders", "orders_count", "attributed_orders"]) ?? 0;
   const roas = computeRoas(row, revenue, spend);
   const daysOfCover = getNum(row, ["days_of_cover", "stock_days_of_cover"]);
   const lowStockFlag =
@@ -302,7 +297,10 @@ function toAdRiskRow(row: Record<string, unknown>): AdRiskRow {
   const title =
     getStr(row, ["campaign_name", "name", "title", "product_name", "sku_name"]) ?? "Advertising entity";
   const campaignName = getStr(row, ["campaign_name", "campaign_title", "campaign"]);
-  const campaignId = getStr(row, ["campaign_id", "external_campaign_id", "id"]);
+  const campaignIdStr = getStr(row, ["campaign_id", "external_campaign_id", "id"]);
+  const campaignIdNum = getNum(row, ["campaign_external_id"]);
+  const campaignId =
+    campaignIdStr ?? (campaignIdNum != null ? String(Math.trunc(campaignIdNum)) : null);
   const sku = getStr(row, ["sku", "entity_sku"]);
   const offerId = getStr(row, ["offer_id", "entity_offer_id"]);
   const campaignLabel = campaignName
@@ -525,6 +523,43 @@ type DashboardState = {
   recSummary: RecommendationsSummary | null;
   topRecommendations: RecommendationItem[];
 };
+
+type TodayActionPanel =
+  | { mode: "recommendations"; items: RecommendationItem[] }
+  | { mode: "alerts"; items: AlertItem[] }
+  | { mode: "inventory"; critical: CriticalSKUItem[]; stock: StocksReplenishmentItem[] }
+  | { mode: "empty" };
+
+function buildTodaysActionPanel(
+  state: DashboardState,
+  flags: {
+    recListLoading: boolean;
+    recListError: string;
+    alertsLoading: boolean;
+    alertsError: string;
+    criticalSkusLoading: boolean;
+    criticalSkusError: string;
+    stockRisksLoading: boolean;
+    stockRisksError: string;
+  },
+): TodayActionPanel {
+  if (!flags.recListLoading && !flags.recListError && state.topRecommendations.length > 0) {
+    return { mode: "recommendations", items: state.topRecommendations };
+  }
+  if (!flags.alertsLoading && !flags.alertsError && state.topAlerts.length > 0) {
+    return { mode: "alerts", items: state.topAlerts };
+  }
+  const critical =
+    !flags.criticalSkusLoading && !flags.criticalSkusError
+      ? state.criticalSkuRows.slice(0, 4)
+      : [];
+  const stock =
+    !flags.stockRisksLoading && !flags.stockRisksError ? state.stockRiskRows.slice(0, 4) : [];
+  if (critical.length > 0 || stock.length > 0) {
+    return { mode: "inventory", critical, stock };
+  }
+  return { mode: "empty" };
+}
 
 type DashboardScreenProps = {
   initialAsOfDate?: string;
@@ -821,30 +856,68 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
   }, [initialAsOfDate]);
 
   if (loading) {
-    return <main className="p-6">Loading dashboard...</main>;
-  }
-
-  if (error || !state.summary) {
     return (
       <main className="p-6">
-        <p className="text-red-600">{error || "Failed to load dashboard summary"}</p>
+        <LoadingState message="Loading dashboard…" />
+      </main>
+    );
+  }
+
+  if (!state.summary) {
+    return (
+      <main className="space-y-4 p-6">
+        {error ? (
+          <ErrorState
+            title="Dashboard unavailable"
+            message={error}
+            action={
+              <Link href="/app/sync-status" className={buttonClassNames("secondary")}>
+                Open Sync Status
+              </Link>
+            }
+          />
+        ) : (
+          <EmptyState
+            title="No dashboard summary"
+            message="Metrics are not ready yet. Complete a successful Ozon sync, wait for recalculation, then refresh this page."
+            action={
+              <Link href="/app/sync-status" className={buttonClassNames("primary")}>
+                Open Sync Status
+              </Link>
+            }
+          />
+        )}
       </main>
     );
   }
 
   const { kpi, summary } = state.summary;
 
-  const freshnessItems = [
-    summary.as_of_date
-      ? `Data as of ${summary.as_of_date}${summary.as_of_date_source ? ` (${summary.as_of_date_source})` : ""}`
-      : "Data as of: not available",
-    summary.data_freshness ? `Freshness: ${summary.data_freshness}` : "Freshness: not available",
-    summary.last_successful_update
-      ? `Last sync ${fmtDateTime(summary.last_successful_update)}`
-      : "Last sync: not available",
-    formatLatestAlertsRunLine(alertsLoading, alertsError, state.alertsSummary),
-    formatLatestRecommendationsRunLine(recSummaryLoading, recSummaryError, state.recSummary),
-  ];
+  const alertsRunFailed =
+    !alertsLoading &&
+    !alertsError &&
+    state.alertsSummary?.latest_run &&
+    (state.alertsSummary.latest_run.status?.toLowerCase() === "failed" ||
+      Boolean(state.alertsSummary.latest_run.error_message));
+
+  const recRunFailed =
+    !recSummaryLoading &&
+    !recSummaryError &&
+    state.recSummary?.latest_run &&
+    (state.recSummary.latest_run.status?.toLowerCase() === "failed" ||
+      Boolean(state.recSummary.latest_run.error_message));
+
+  const actionPanel = buildTodaysActionPanel(state, {
+    recListLoading,
+    recListError,
+    alertsLoading,
+    alertsError,
+    criticalSkusLoading,
+    criticalSkusError,
+    stockRisksLoading,
+    stockRisksError,
+  });
+
   const topChangeRows = selectTopChanges(state.skuRows, state.topChangeAlerts, 5);
   const salesAlertTypeCounts = state.topChangeAlerts.reduce<Record<string, number>>((acc, alert) => {
     if (!["sales_revenue_drop", "sku_revenue_drop", "sku_negative_contribution"].includes(alert.alert_type)) {
@@ -856,39 +929,258 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
 
   return (
     <main className="space-y-6 p-6">
-      <header className="space-y-2">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
-          <p className="text-sm text-gray-600">
-            Daily work center for metrics, risks, and AI recommendations.
-          </p>
-        </div>
-        <div className="rounded border bg-gray-50/80 px-3 py-2 text-xs text-gray-700">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            {freshnessItems.map((item, idx) => (
-              <span key={`${item}-${idx}`} className="inline-flex items-center">
-                {idx > 0 ? <span className="mr-2 text-gray-400">·</span> : null}
-                {item}
-              </span>
-            ))}
-          </div>
-        </div>
-      </header>
+      <div className="space-y-3">
+        <PageHeader
+          title="Dashboard"
+          subtitle="Daily work center for metrics, risks, and AI recommendations."
+        />
+
+        <Card className="border-gray-200 bg-gray-50/60">
+          <CardContent className="grid gap-3 py-3 sm:grid-cols-2 lg:grid-cols-5 lg:gap-4">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Data as of</p>
+              <p className="mt-0.5 text-sm font-medium text-gray-900">
+                {summary.as_of_date
+                  ? `${summary.as_of_date}${summary.as_of_date_source ? ` (${summary.as_of_date_source})` : ""}`
+                  : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                Last successful sync
+              </p>
+              <p className="mt-0.5 text-sm font-medium text-gray-900">
+                {summary.last_successful_update ? fmtDateTime(summary.last_successful_update) : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                Alerts latest run
+              </p>
+              <p className="mt-0.5 text-sm font-medium text-gray-900">
+                {alertsLoading
+                  ? "Loading…"
+                  : alertsError || !state.alertsSummary
+                    ? "Unavailable"
+                    : state.alertsSummary.latest_run
+                      ? `${state.alertsSummary.latest_run.status} · ${fmtDateTime(state.alertsSummary.latest_run.finished_at ?? state.alertsSummary.latest_run.started_at)}`
+                      : "No run yet"}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                Recommendations latest run
+              </p>
+              <p className="mt-0.5 text-sm font-medium text-gray-900">
+                {recSummaryLoading
+                  ? "Loading…"
+                  : recSummaryError || !state.recSummary
+                    ? "Unavailable"
+                    : state.recSummary.latest_run
+                      ? `${state.recSummary.latest_run.status} · ${fmtDateTime(state.recSummary.latest_run.finished_at ?? state.recSummary.latest_run.started_at)}`
+                      : "No run yet"}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Data freshness</p>
+              <p className="mt-0.5 text-sm font-medium text-gray-900">
+                {summary.data_freshness || "—"}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {(alertsError || alertsRunFailed) && (
+        <Card className="border-amber-300 bg-amber-50/90">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base text-amber-950">Alerts need attention</CardTitle>
+            <CardDescription className="text-amber-900/90">
+              {alertsError
+                ? "The alerts summary could not be loaded from the API."
+                : "The latest alerts run reported a failure — open Alerts for details and re-run if needed."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/app/alerts" className={buttonClassNames("secondary")}>
+              Open Alerts
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {(recSummaryError || recRunFailed || recListError) && (
+        <Card className="border-amber-300 bg-amber-50/90">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base text-amber-950">Recommendations need attention</CardTitle>
+            <CardDescription className="text-amber-900/90">
+              {recSummaryError
+                ? "The recommendations summary could not be loaded."
+                : recListError
+                  ? "The recommendations list could not be loaded."
+                  : "The latest recommendation run reported a failure — open Recommendations to inspect."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/app/recommendations" className={buttonClassNames("secondary")}>
+              Open Recommendations
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {adRisksError ? (
+        <Card className="border-amber-300 bg-amber-50/90">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base text-amber-950">Advertising analytics unavailable</CardTitle>
+            <CardDescription className="text-amber-900/90">
+              {isLikelyAdsPerformanceTokenIssue(adRisksError)
+                ? "Ad metrics often require a Performance API token. Add or check the token on Ozon Integration — Seller sync and core dashboard KPIs still work."
+                : `${adRisksError}`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Link href="/app/integrations/ozon" className={buttonClassNames("secondary")}>
+              Ozon Integration
+            </Link>
+            <Link href="/app/sync-status" className={buttonClassNames("ghost", "border border-amber-200")}>
+              Sync status
+            </Link>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           title="Revenue"
           value={fmtMoney(kpi.revenue_current)}
-          sub={`DoD ${fmtMoney(kpi.revenue_day_to_day_delta.abs)} | WoW ${fmtMoney(kpi.revenue_week_to_week_delta.abs)}`}
+          hint={`Day-to-day: ${fmtMoney(kpi.revenue_day_to_day_delta.abs)} (${fmtDeltaPct(kpi.revenue_day_to_day_delta.pct)}) · Week-to-week: ${fmtMoney(kpi.revenue_week_to_week_delta.abs)} (${fmtDeltaPct(kpi.revenue_week_to_week_delta.pct)})`}
         />
         <MetricCard
           title="Orders"
           value={fmtNum(kpi.orders_current)}
-          sub={`DoD ${fmtNum(kpi.orders_day_to_day_delta)}`}
+          hint={`Day-to-day delta: ${fmtNum(kpi.orders_day_to_day_delta)} orders (same KPI window as revenue)`}
         />
-        <MetricCard title="Returns" value={fmtNum(kpi.returns_current)} sub="Current day" />
-        <MetricCard title="Cancels" value={fmtNum(kpi.cancels_current)} sub="Current day" />
+        <MetricCard
+          title="Returns"
+          value={fmtNum(kpi.returns_current)}
+          hint="Current reporting day — compare with data as-of above"
+        />
+        <MetricCard
+          title="Cancels"
+          value={fmtNum(kpi.cancels_current)}
+          hint="Current reporting day — compare with data as-of above"
+        />
       </section>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Today&apos;s action list</CardTitle>
+          <CardDescription>
+            Highest-priority items to validate in the MVP — recommendations first, then alerts, then
+            inventory signals.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          {recListLoading || alertsLoading || criticalSkusLoading || stockRisksLoading ? (
+            <p className="text-gray-600">Loading actions…</p>
+          ) : actionPanel.mode === "recommendations" ? (
+            <div className="space-y-2">
+              {actionPanel.items.map((r) => (
+                <Link
+                  href="/app/recommendations"
+                  key={r.id}
+                  className="block rounded-lg border border-gray-200 bg-white p-3 shadow-sm hover:bg-gray-50"
+                >
+                  <p className="text-xs text-gray-600">
+                    <span className="rounded border border-gray-200 px-1.5 py-0.5">
+                      {priorityLabel(r.priority_level)}
+                    </span>{" "}
+                    <span className="rounded border border-gray-200 px-1.5 py-0.5">
+                      {priorityLabel(r.confidence_level)}
+                    </span>
+                  </p>
+                  <p className="mt-1 font-medium text-gray-900">{r.title}</p>
+                  <p className="mt-1 line-clamp-2 text-xs text-gray-700">{r.recommended_action}</p>
+                  <p className="mt-1 text-xs text-gray-500">{formatEntityLabel(r)}</p>
+                </Link>
+              ))}
+            </div>
+          ) : actionPanel.mode === "alerts" ? (
+            <div className="space-y-2">
+              {actionPanel.items.map((a) => (
+                <Link
+                  href="/app/alerts"
+                  key={a.id}
+                  className="block rounded-lg border border-gray-200 bg-white p-3 shadow-sm hover:bg-gray-50"
+                >
+                  <p className="text-xs text-gray-600">
+                    {a.severity} · {a.alert_group}
+                  </p>
+                  <p className="mt-1 font-medium text-gray-900">{a.title}</p>
+                  <p className="mt-1 line-clamp-2 text-xs text-gray-700">{a.message}</p>
+                </Link>
+              ))}
+            </div>
+          ) : actionPanel.mode === "inventory" ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              {actionPanel.critical.length > 0 ? (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase text-gray-500">Critical SKU</p>
+                  <div className="space-y-2">
+                    {actionPanel.critical.map((item) => (
+                      <Link
+                        key={`${item.ozon_product_id}-${item.sku ?? ""}`}
+                        href="/app/critical-skus"
+                        className="block rounded-lg border border-gray-200 bg-white p-2 text-xs hover:bg-gray-50"
+                      >
+                        <span className="font-medium text-gray-900">
+                          {item.product_name || "Product"}
+                        </span>
+                        <span className="mt-1 block text-gray-600">{buildCriticalSkuReason(item)}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {actionPanel.stock.length > 0 ? (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase text-gray-500">Stock risks</p>
+                  <div className="space-y-2">
+                    {actionPanel.stock.map((item) => (
+                      <Link
+                        key={`${item.ozon_product_id}-${item.sku ?? ""}`}
+                        href="/app/stocks-replenishment"
+                        className="block rounded-lg border border-gray-200 bg-white p-2 text-xs hover:bg-gray-50"
+                      >
+                        <span className="font-medium text-gray-900">
+                          {item.product_name || "Product"}
+                        </span>
+                        <span className="mt-1 block text-gray-600">{formatStockRiskReason(item)}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <EmptyState
+              title="No prioritized actions yet"
+              message="Run alerts and generate recommendations after sync, or open downstream screens when data appears."
+              action={
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Link href="/app/alerts" className={buttonClassNames("secondary")}>
+                    Run Alerts
+                  </Link>
+                  <Link href="/app/recommendations" className={buttonClassNames("primary")}>
+                    Generate recommendations
+                  </Link>
+                </div>
+              }
+            />
+          )}
+        </CardContent>
+      </Card>
 
       <section className="rounded border-2 border-blue-200 bg-blue-50/40 p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
@@ -903,8 +1195,8 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
         <div className="space-y-3 text-sm">
           {recSummaryLoading ? (
             <p className="text-sm">Loading recommendations...</p>
-          ) : recSummaryError ? (
-            <p className="text-sm text-red-600">{recSummaryError}</p>
+          ) : recSummaryError || recListError || recRunFailed ? (
+            <p className="text-sm text-gray-600">See the recommendations notice above.</p>
           ) : !state.recSummary ? (
             <p className="text-sm text-gray-600">Recommendations summary is unavailable.</p>
           ) : (
@@ -913,27 +1205,27 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
                 <MetricCard
                   title="Open recommendations"
                   value={fmtNum(state.recSummary.open_total)}
-                  sub="Open items"
+                  hint="Open items"
                 />
                 <MetricCard
                   title="Critical"
                   value={fmtNum(state.recSummary.by_priority.critical)}
-                  sub="By priority"
+                  hint="By priority"
                 />
                 <MetricCard
                   title="High"
                   value={fmtNum(state.recSummary.by_priority.high)}
-                  sub="By priority"
+                  hint="By priority"
                 />
                 <MetricCard
                   title="Medium"
                   value={fmtNum(state.recSummary.by_priority.medium)}
-                  sub="By priority"
+                  hint="By priority"
                 />
                 <MetricCard
                   title="Latest run status"
                   value={state.recSummary.latest_run?.status ?? "No run"}
-                  sub={state.recSummary.latest_run ? "Recommendation run" : "No recommendation run yet"}
+                  hint={state.recSummary.latest_run ? "Recommendation run" : "No recommendation run yet"}
                 />
               </div>
               <p className="text-xs text-gray-600">
@@ -946,14 +1238,20 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
 
           {recListLoading ? (
             <p className="text-sm">Loading recommendations...</p>
-          ) : recListError ? (
-            <p className="text-sm text-red-600">{recListError}</p>
+          ) : recListError || recSummaryError || recRunFailed ? (
+            <p className="text-sm text-gray-600">See the recommendations notice at the top of the page.</p>
           ) : state.recSummary?.open_total === 0 ? (
-            <p className="rounded border border-green-300 bg-green-50 p-2 text-green-700">
-              No open recommendations.
-            </p>
+            <EmptyState
+              title="No open recommendations"
+              message="Generate AI recommendations after alerts and metrics are available."
+              action={
+                <Link href="/app/recommendations" className={buttonClassNames("primary")}>
+                  Generate recommendations
+                </Link>
+              }
+            />
           ) : state.topRecommendations.length === 0 ? (
-            <p className="text-gray-600">No critical/high/medium recommendations to highlight.</p>
+            <p className="text-sm text-gray-600">No critical/high/medium recommendations to highlight in this teaser.</p>
           ) : (
             <div>
               <p className="mb-2 font-medium">Top priority actions</p>
@@ -1014,8 +1312,8 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
         </div>
         {alertsLoading ? (
           <p className="text-sm">Loading alerts teaser...</p>
-        ) : alertsError ? (
-          <p className="text-sm text-red-600">{alertsError}</p>
+        ) : alertsError || alertsRunFailed ? (
+          <p className="text-sm text-gray-600">See the alerts notice at the top of the page.</p>
         ) : !state.alertsSummary ? (
           <p className="text-sm text-gray-600">Alerts summary is unavailable.</p>
         ) : (
@@ -1024,17 +1322,17 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
               <MetricCard
                 title="Open alerts"
                 value={fmtNum(state.alertsSummary.open_total)}
-                sub="Current seller account"
+                hint="Current seller account"
               />
               <MetricCard
                 title="Critical"
                 value={fmtNum(state.alertsSummary.critical_count)}
-                sub="Open critical alerts"
+                hint="Open critical alerts"
               />
               <MetricCard
                 title="High"
                 value={fmtNum(state.alertsSummary.high_count)}
-                sub="Open high alerts"
+                hint="Open high alerts"
               />
             </div>
 
@@ -1094,14 +1392,25 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
         {criticalSkusLoading ? (
           <p className="text-sm">Loading critical SKU...</p>
         ) : criticalSkusError ? (
-          <p className="text-sm text-red-600">
-            Critical SKU is unavailable.
-            {criticalSkusError ? ` ${criticalSkusError}` : ""}
-          </p>
+          <Card className="border-amber-200 bg-amber-50/80">
+            <CardContent className="py-3 text-sm text-amber-950">
+              <p className="font-medium">Critical SKU block unavailable</p>
+              <p className="mt-1 text-amber-900/90">{criticalSkusError}</p>
+              <Link href="/app/critical-skus" className={`mt-3 inline-flex ${buttonClassNames("secondary")}`}>
+                Open Critical SKU
+              </Link>
+            </CardContent>
+          </Card>
         ) : state.criticalSkuRows.length === 0 ? (
-          <p className="rounded border border-green-300 bg-green-50 p-2 text-sm text-green-700">
-            No critical SKU detected.
-          </p>
+          <EmptyState
+            title="No critical SKU"
+            message="No critical SKU detected for the selected period."
+            action={
+              <Link href="/app/critical-skus" className={buttonClassNames("secondary")}>
+                Open Critical SKU
+              </Link>
+            }
+          />
         ) : (
           <div className="space-y-2">
             {state.criticalSkuRows.map((item) => (
@@ -1143,14 +1452,25 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
         {stockRisksLoading ? (
           <p className="text-sm">Loading stock risks...</p>
         ) : stockRisksError ? (
-          <p className="text-sm text-red-600">
-            Stock risks are unavailable.
-            {stockRisksError ? ` ${stockRisksError}` : ""}
-          </p>
+          <Card className="border-amber-200 bg-amber-50/80">
+            <CardContent className="py-3 text-sm text-amber-950">
+              <p className="font-medium">Stock risks unavailable</p>
+              <p className="mt-1 text-amber-900/90">{stockRisksError}</p>
+              <Link href="/app/stocks-replenishment" className={`mt-3 inline-flex ${buttonClassNames("secondary")}`}>
+                Stocks & replenishment
+              </Link>
+            </CardContent>
+          </Card>
         ) : state.stockRiskRows.length === 0 ? (
-          <p className="rounded border border-green-300 bg-green-50 p-2 text-sm text-green-700">
-            No stock risks detected.
-          </p>
+          <EmptyState
+            title="No stock risks"
+            message="No urgent replenishment risks for the current view."
+            action={
+              <Link href="/app/stocks-replenishment" className={buttonClassNames("secondary")}>
+                Open Stocks & replenishment
+              </Link>
+            }
+          />
         ) : (
           <div className="space-y-2">
             {state.stockRiskRows.map((item) => (
@@ -1185,37 +1505,36 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
       <section className="rounded border p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">Ad risks</h2>
-          <span className="text-xs text-gray-600">Advertising detail screen is not available yet.</span>
+          <Link href="/app/advertising" className="text-xs text-blue-700 hover:underline">
+            Open Advertising
+          </Link>
         </div>
         {adRisksLoading ? (
           <p className="text-sm">Loading ad risks...</p>
         ) : adRisksError ? (
-          <p className="text-sm text-red-600">
-            Ad risks are unavailable.
-            {adRisksError ? ` ${adRisksError}` : ""}
-          </p>
+          <p className="text-sm text-gray-600">See the advertising notice at the top of the page.</p>
         ) : (
           <div className="space-y-3 text-sm">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
               <MetricCard
                 title="Total spend"
                 value={fmtMoney(state.adRiskSummary?.totalSpend ?? 0)}
-                sub="Selected period"
+                hint="Selected period"
               />
               <MetricCard
                 title="Weak campaigns"
                 value={fmtNum(state.adRiskSummary?.weakCampaigns ?? 0)}
-                sub="Low efficiency"
+                hint="Low efficiency"
               />
               <MetricCard
                 title="Spend without result"
                 value={fmtNum(state.adRiskSummary?.spendWithoutResult ?? 0)}
-                sub="No orders or revenue"
+                hint="No orders or revenue"
               />
               <MetricCard
                 title="Low-stock advertised SKUs"
                 value={fmtNum(state.adRiskSummary?.lowStockAdvertisedSkus ?? 0)}
-                sub="Needs stock check"
+                hint="Needs stock check"
               />
             </div>
 
@@ -1266,14 +1585,30 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
         {pricingRisksLoading ? (
           <p className="text-sm">Loading price/economics risks...</p>
         ) : pricingRisksError ? (
-          <p className="text-sm text-red-600">
-            Price & economics risks are unavailable.
-            {pricingRisksError ? ` ${pricingRisksError}` : ""}
-          </p>
+          <Card className="border-amber-200 bg-amber-50/80">
+            <CardContent className="py-3 text-sm text-amber-950">
+              <p className="font-medium">Price & economics risks unavailable</p>
+              <p className="mt-1 text-amber-900/90">{pricingRisksError}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link href="/app/alerts" className={buttonClassNames("secondary")}>
+                  View alerts
+                </Link>
+                <Link href="/app/pricing-constraints" className={buttonClassNames("secondary")}>
+                  Pricing constraints
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         ) : state.pricingRiskRows.length === 0 ? (
-          <p className="rounded border border-green-300 bg-green-50 p-2 text-sm text-green-700">
-            No price/economics risks detected.
-          </p>
+          <EmptyState
+            title="No price risks"
+            message="No price or economics risks matched this dashboard view."
+            action={
+              <Link href="/app/alerts" className={buttonClassNames("secondary")}>
+                View alerts
+              </Link>
+            }
+          />
         ) : (
           <div className="space-y-2">
             {state.pricingRiskRows.map((alert) => (
@@ -1453,12 +1788,3 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
   );
 }
 
-function MetricCard(props: { title: string; value: string; sub: string }) {
-  return (
-    <article className="rounded border p-4">
-      <h3 className="text-sm text-gray-600">{props.title}</h3>
-      <p className="mt-1 text-2xl font-semibold">{props.value}</p>
-      <p className="mt-2 text-xs text-gray-500">{props.sub}</p>
-    </article>
-  );
-}
