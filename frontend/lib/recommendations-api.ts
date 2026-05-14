@@ -75,7 +75,6 @@ export type RecommendationItem = {
   constraints_payload: Record<string, unknown>;
   ai_model: string | null;
   ai_prompt_version: string | null;
-  raw_ai_response?: Record<string, unknown> | string | null;
   first_seen_at: string;
   last_seen_at: string;
   accepted_at: string | null;
@@ -87,7 +86,6 @@ export type RecommendationItem = {
 };
 
 export type RecommendationDetail = RecommendationItem & {
-  raw_ai_response?: Record<string, unknown> | string | null;
   related_alerts?: RelatedAlert[];
   /** If API adds per-item validation warnings */
   validation_warnings?: string[];

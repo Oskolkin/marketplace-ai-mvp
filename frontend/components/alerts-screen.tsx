@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
+import { buttonClassNames } from "@/components/ui/button";
 import {
   dismissAlert,
   getAlerts,
@@ -38,10 +39,12 @@ function fmtEntity(row: AlertItem): string {
   return row.entity_type;
 }
 
-export default function AlertsScreen() {
+export default function AlertsScreen({ initialFocusAlertId }: { initialFocusAlertId?: number }) {
   const [summary, setSummary] = useState<AlertsSummaryResponse | null>(null);
   const [items, setItems] = useState<AlertItem[]>([]);
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+  const [focusHighlightId, setFocusHighlightId] = useState<number | null>(null);
+  const [focusAlertMissing, setFocusAlertMissing] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
     status: "",
     group: "",
@@ -97,6 +100,49 @@ export default function AlertsScreen() {
     // list depends on all filter values
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.status, filters.group, filters.severity, filters.entityType, filters.limit, filters.offset]);
+
+  useEffect(() => {
+    if (initialFocusAlertId == null) {
+      setFocusHighlightId(null);
+      setFocusAlertMissing(false);
+      return;
+    }
+    if (loadingList) {
+      return;
+    }
+    const hit = items.some((a) => a.id === initialFocusAlertId);
+    if (hit) {
+      setExpanded((prev) => ({ ...prev, [initialFocusAlertId]: true }));
+      setFocusHighlightId(initialFocusAlertId);
+      setFocusAlertMissing(false);
+    } else {
+      setFocusHighlightId(null);
+      setFocusAlertMissing(true);
+    }
+  }, [initialFocusAlertId, items, loadingList]);
+
+  useEffect(() => {
+    if (focusHighlightId == null || loadingList || typeof document === "undefined") {
+      return;
+    }
+    const el = document.getElementById(`alert-row-${focusHighlightId}`);
+    if (el) {
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
+    }
+  }, [focusHighlightId, loadingList, items]);
+
+  function resetFiltersForFocus() {
+    setFilters({
+      status: "",
+      group: "",
+      severity: "",
+      entityType: "",
+      limit: 50,
+      offset: 0,
+    });
+  }
 
   async function handleRun() {
     try {
@@ -174,6 +220,22 @@ export default function AlertsScreen() {
       {error ? <p className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700">{error}</p> : null}
       {statusMessage ? (
         <p className="rounded border border-green-300 bg-green-50 p-2 text-sm text-green-700">{statusMessage}</p>
+      ) : null}
+
+      {initialFocusAlertId != null && focusAlertMissing && !loadingList ? (
+        <div
+          className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+          role="status"
+        >
+          <p className="font-medium">Focused alert not in the current list</p>
+          <p className="mt-1 text-amber-900">
+            Alert #{initialFocusAlertId} is not on this page. It may be hidden by filters, on another page, or no
+            longer available.
+          </p>
+          <button type="button" className={`${buttonClassNames("secondary")} mt-3`} onClick={resetFiltersForFocus}>
+            Reset filters and pagination
+          </button>
+        </div>
       ) : null}
 
       <section className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
@@ -308,7 +370,12 @@ export default function AlertsScreen() {
               <tbody>
                 {items.map((row) => (
                   <Fragment key={row.id}>
-                    <tr key={row.id} className="border-b align-top">
+                    <tr
+                      id={`alert-row-${row.id}`}
+                      className={`border-b align-top ${
+                        focusHighlightId === row.id ? "bg-amber-50/80 ring-2 ring-amber-400/90 ring-inset" : ""
+                      }`}
+                    >
                       <td className="px-2 py-2">
                         <Badge label={row.severity} />
                       </td>

@@ -46,7 +46,6 @@ type recommendationResponse struct {
 	ConstraintsPayload       map[string]any         `json:"constraints_payload"`
 	AIModel                  *string                `json:"ai_model"`
 	AIPromptVersion          *string                `json:"ai_prompt_version"`
-	RawAIResponse            map[string]any         `json:"raw_ai_response,omitempty"`
 	FirstSeenAt              string                 `json:"first_seen_at"`
 	LastSeenAt               string                 `json:"last_seen_at"`
 	AcceptedAt               *string                `json:"accepted_at"`
@@ -144,7 +143,7 @@ func (h *RecommendationsHandler) ListRecommendations(w http.ResponseWriter, r *h
 	}
 	respItems := make([]recommendationResponse, 0, len(items))
 	for _, item := range items {
-		respItems = append(respItems, mapRecommendationResponse(item, false))
+		respItems = append(respItems, mapRecommendationResponse(item))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items":  respItems,
@@ -353,7 +352,7 @@ func (h *RecommendationsHandler) handleAction(w http.ResponseWriter, r *http.Req
 		writeJSONError(w, http.StatusInternalServerError, "failed to update recommendation")
 		return
 	}
-	writeJSON(w, http.StatusOK, mapRecommendationResponse(item, true))
+	writeJSON(w, http.StatusOK, mapRecommendationResponse(item))
 }
 
 func parseRecommendationsFilter(r *http.Request) (recommendations.ListFilter, error) {
@@ -401,8 +400,8 @@ func parseRecommendationID(r *http.Request) (int64, error) {
 	return id, nil
 }
 
-func mapRecommendationResponse(item recommendations.Recommendation, includeRaw bool) recommendationResponse {
-	resp := recommendationResponse{
+func mapRecommendationResponse(item recommendations.Recommendation) recommendationResponse {
+	return recommendationResponse{
 		ID:                       item.ID,
 		Source:                   item.Source,
 		RecommendationType:       item.RecommendationType,
@@ -433,14 +432,10 @@ func mapRecommendationResponse(item recommendations.Recommendation, includeRaw b
 		CreatedAt:                item.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:                item.UpdatedAt.UTC().Format(time.RFC3339),
 	}
-	if includeRaw {
-		resp.RawAIResponse = item.RawAIResponse
-	}
-	return resp
 }
 
 func mapRecommendationDetailResponse(detail recommendations.RecommendationDetail) recommendationResponse {
-	resp := mapRecommendationResponse(detail.Recommendation, true)
+	resp := mapRecommendationResponse(detail.Recommendation)
 	resp.RelatedAlerts = make([]relatedAlertResponse, 0, len(detail.RelatedAlerts))
 	for _, a := range detail.RelatedAlerts {
 		resp.RelatedAlerts = append(resp.RelatedAlerts, relatedAlertResponse{

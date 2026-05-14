@@ -647,11 +647,22 @@ func TestAdminRecommendationLogsHandlers(t *testing.T) {
 	})
 
 	t.Run("recommendation raw ai success", func(t *testing.T) {
+		now := time.Now().UTC()
 		h := NewAdminHandler(&fakeAdminService{
 			getRecommendationRawAIFn: func(ctx context.Context, actor admin.AdminActor, sellerAccountID, recommendationID int64) (*admin.RecommendationRawAI, error) {
 				return &admin.RecommendationRawAI{
-					Recommendation: admin.RecommendationItem{ID: recommendationID, RecommendationType: "pricing", Title: "x", Status: "open"},
-					RelatedAlerts:  []admin.RecommendationAlertItem{{ID: 10, AlertType: "stockout"}},
+					Recommendation: admin.RecommendationItem{
+						ID:                       recommendationID,
+						RecommendationType:       "pricing",
+						Title:                    "x",
+						Status:                   "open",
+						SupportingMetricsPayload: map[string]any{},
+						ConstraintsPayload:       map[string]any{},
+						RawAIResponse:            map[string]any{"admin_only": true},
+						CreatedAt:                now,
+						UpdatedAt:                now,
+					},
+					RelatedAlerts: []admin.RecommendationAlertItem{{ID: 10, AlertType: "stockout"}},
 				}, nil
 			},
 		})
@@ -662,6 +673,19 @@ func TestAdminRecommendationLogsHandlers(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 		}
+		var body map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		rec, ok := body["recommendation"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected recommendation object, got %#v", body["recommendation"])
+		}
+		raw, ok := rec["raw_ai_response"].(map[string]any)
+		if !ok || raw["admin_only"] != true {
+			t.Fatalf("admin raw endpoint must include raw_ai_response; got %#v", rec["raw_ai_response"])
+		}
+		// Audit log write is enforced in admin.TestViewRawAIRawSuccessWritesAuditLog (service layer).
 	})
 
 	t.Run("recommendation raw ai invalid id", func(t *testing.T) {

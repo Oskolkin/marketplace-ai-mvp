@@ -47,7 +47,8 @@ export default function SyncStatusScreen() {
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  /** "pending" = getAdminMe not settled yet; only "show" renders /app/admin link */
+  const [adminNavLink, setAdminNavLink] = useState<"pending" | "show" | "hide">("pending");
 
   const importJobs = useMemo(() => sortImportJobsByDomain(status), [status]);
 
@@ -100,10 +101,14 @@ export default function SyncStatusScreen() {
     let cancelled = false;
     void getAdminMe()
       .then((r) => {
-        if (!cancelled && r.is_admin) setIsAdmin(true);
+        if (cancelled) return;
+        setAdminNavLink(r.is_admin ? "show" : "hide");
       })
       .catch(() => {
-        /* non-admin or network: ignore */
+        if (!cancelled) {
+          /* non-admin or network: ignore error, treat as no admin link */
+          setAdminNavLink("hide");
+        }
       });
     return () => {
       cancelled = true;
@@ -222,9 +227,11 @@ export default function SyncStatusScreen() {
         <Link href="/app/dashboard" className={buttonClassNames("secondary")}>
           Dashboard
         </Link>
-        <Link href="/app/admin" className={buttonClassNames("secondary")}>
-          {isAdmin ? "Admin / Support" : "Admin"}
-        </Link>
+        {adminNavLink === "show" ? (
+          <Link href="/app/admin" className={buttonClassNames("secondary")}>
+            Admin / Support
+          </Link>
+        ) : null}
       </div>
 
       {error ? <ErrorState title="Could not complete action" message={error} /> : null}

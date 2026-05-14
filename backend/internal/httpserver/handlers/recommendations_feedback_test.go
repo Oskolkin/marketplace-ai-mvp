@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -59,8 +60,91 @@ func TestRecommendationsHandlerAddFeedback(t *testing.T) {
 	})
 }
 
+func TestRecommendationsHandlerPublicResponsesOmitRawAIResponse(t *testing.T) {
+	now := time.Now().UTC()
+	withRaw := recommendations.Recommendation{
+		ID:                   12,
+		Source:               "ai",
+		RecommendationType:   "replenish_sku",
+		Horizon:              "short_term",
+		EntityType:           "account",
+		Title:                "t",
+		WhatHappened:         "w",
+		WhyItMatters:         "y",
+		RecommendedAction:    "a",
+		PriorityScore:        1,
+		PriorityLevel:        "low",
+		Urgency:              "low",
+		ConfidenceLevel:      "low",
+		Status:               "open",
+		SupportingMetrics:    map[string]any{},
+		Constraints:          map[string]any{},
+		FirstSeenAt:          now,
+		LastSeenAt:           now,
+		CreatedAt:            now,
+		UpdatedAt:            now,
+		RawAIResponse:        map[string]any{"must_not_leak": true},
+	}
+
+	makeGET := func(id string) *http.Request {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/recommendations/"+id, nil)
+		ctx := auth.WithAuthContext(req.Context(), dbgen.User{ID: 1, Email: "u@x.y"}, dbgen.SellerAccount{ID: 7})
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("id", id)
+		return req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
+	}
+
+	makeAction := func(id string, action string) *http.Request {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/recommendations/"+id+"/"+action, nil)
+		ctx := auth.WithAuthContext(req.Context(), dbgen.User{ID: 1, Email: "u@x.y"}, dbgen.SellerAccount{ID: 7})
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("id", id)
+		return req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
+	}
+
+	t.Run("GET detail", func(t *testing.T) {
+		repo := &mockRecommendationsRepo{getByID: &withRaw}
+		svc := recommendations.NewService(repo, nil, nil, nil, recommendations.ServiceConfig{})
+		h := NewRecommendationsHandler(svc)
+		rr := httptest.NewRecorder()
+		h.GetRecommendationByID(rr, makeGET("12"))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+		}
+		var out map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := out["raw_ai_response"]; ok {
+			t.Fatalf("public GET /recommendations/{id} must not include raw_ai_response")
+		}
+	})
+
+	t.Run("POST accept", func(t *testing.T) {
+		accepted := withRaw
+		accepted.Status = "accepted"
+		repo := &mockRecommendationsRepo{actionRec: &accepted}
+		svc := recommendations.NewService(repo, nil, nil, nil, recommendations.ServiceConfig{})
+		h := NewRecommendationsHandler(svc)
+		rr := httptest.NewRecorder()
+		h.AcceptRecommendation(rr, makeAction("12", "accept"))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+		}
+		var out map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := out["raw_ai_response"]; ok {
+			t.Fatalf("public POST accept must not include raw_ai_response")
+		}
+	})
+}
+
 type mockRecommendationsRepo struct {
-	getErr error
+	getErr    error
+	getByID   *recommendations.Recommendation
+	actionRec *recommendations.Recommendation
 }
 
 func (m *mockRecommendationsRepo) CreateRun(context.Context, recommendations.CreateRecommendationRunInput) (int64, error) {
@@ -86,18 +170,30 @@ func (m *mockRecommendationsRepo) GetRecommendationByID(context.Context, int64, 
 	if m.getErr != nil {
 		return recommendations.Recommendation{}, m.getErr
 	}
+	if m.getByID != nil {
+		return *m.getByID, nil
+	}
 	return recommendations.Recommendation{ID: 1}, nil
 }
 func (m *mockRecommendationsRepo) ListAlertsByRecommendationID(context.Context, int64, int64) ([]recommendations.RelatedAlert, error) {
 	return nil, nil
 }
 func (m *mockRecommendationsRepo) AcceptRecommendation(context.Context, int64, int64) (recommendations.Recommendation, error) {
+	if m.actionRec != nil {
+		return *m.actionRec, nil
+	}
 	return recommendations.Recommendation{}, nil
 }
 func (m *mockRecommendationsRepo) DismissRecommendation(context.Context, int64, int64) (recommendations.Recommendation, error) {
+	if m.actionRec != nil {
+		return *m.actionRec, nil
+	}
 	return recommendations.Recommendation{}, nil
 }
 func (m *mockRecommendationsRepo) ResolveRecommendation(context.Context, int64, int64) (recommendations.Recommendation, error) {
+	if m.actionRec != nil {
+		return *m.actionRec, nil
+	}
 	return recommendations.Recommendation{}, nil
 }
 func (m *mockRecommendationsRepo) CountOpenRecommendations(context.Context, int64) (int64, error) {

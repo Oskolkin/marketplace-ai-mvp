@@ -1179,107 +1179,109 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
               }
             />
           )}
+          <p className="border-t border-gray-100 pt-3 text-center text-xs text-gray-600">
+            <Link href="/app/recommendations" className="font-medium text-blue-700 underline hover:text-blue-900">
+              All recommendations
+            </Link>
+          </p>
         </CardContent>
       </Card>
 
-      <section className="rounded border-2 border-blue-200 bg-blue-50/40 p-4">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <div>
-            <h2 className="text-lg font-semibold">Today&apos;s priorities</h2>
-            <p className="text-xs text-gray-700">Top AI recommendations for today.</p>
-          </div>
-          <Link href="/app/recommendations" className="shrink-0 rounded border px-3 py-1 text-sm hover:bg-gray-50">
-            View recommendations
-          </Link>
-        </div>
-        <div className="space-y-3 text-sm">
-          {recSummaryLoading ? (
-            <p className="text-sm">Loading recommendations...</p>
-          ) : recSummaryError || recListError || recRunFailed ? (
-            <p className="text-sm text-gray-600">See the recommendations notice above.</p>
-          ) : !state.recSummary ? (
-            <p className="text-sm text-gray-600">Recommendations summary is unavailable.</p>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-                <MetricCard
-                  title="Open recommendations"
-                  value={fmtNum(state.recSummary.open_total)}
-                  hint="Open items"
-                />
-                <MetricCard
-                  title="Critical"
-                  value={fmtNum(state.recSummary.by_priority.critical)}
-                  hint="By priority"
-                />
-                <MetricCard
-                  title="High"
-                  value={fmtNum(state.recSummary.by_priority.high)}
-                  hint="By priority"
-                />
-                <MetricCard
-                  title="Medium"
-                  value={fmtNum(state.recSummary.by_priority.medium)}
-                  hint="By priority"
-                />
-                <MetricCard
-                  title="Latest run status"
-                  value={state.recSummary.latest_run?.status ?? "No run"}
-                  hint={state.recSummary.latest_run ? "Recommendation run" : "No recommendation run yet"}
-                />
-              </div>
-              <p className="text-xs text-gray-600">
-                {state.recSummary.latest_run
-                  ? formatRunLine(state.recSummary.latest_run)
-                  : "No recommendation run yet"}
-              </p>
-            </>
-          )}
-
-          {recListLoading ? (
-            <p className="text-sm">Loading recommendations...</p>
-          ) : recListError || recSummaryError || recRunFailed ? (
-            <p className="text-sm text-gray-600">See the recommendations notice at the top of the page.</p>
-          ) : state.recSummary?.open_total === 0 ? (
-            <EmptyState
-              title="No open recommendations"
-              message="Generate AI recommendations after alerts and metrics are available."
-              action={
-                <Link href="/app/recommendations" className={buttonClassNames("primary")}>
-                  Generate recommendations
-                </Link>
-              }
-            />
-          ) : state.topRecommendations.length === 0 ? (
-            <p className="text-sm text-gray-600">No critical/high/medium recommendations to highlight in this teaser.</p>
-          ) : (
-            <div>
-              <p className="mb-2 font-medium">Top priority actions</p>
-              <div className="space-y-2">
-                {state.topRecommendations.map((r) => (
-                  <Link
-                    href="/app/recommendations"
-                    key={r.id}
-                    className="block rounded border bg-white p-3 hover:bg-gray-50"
-                  >
-                    <p className="text-xs text-gray-600">
-                      <span className="inline-flex rounded border px-1.5 py-0.5">{priorityLabel(r.priority_level)}</span>{" "}
-                      <span className="inline-flex rounded border px-1.5 py-0.5">{priorityLabel(r.urgency)}</span>{" "}
-                      <span className="inline-flex rounded border px-1.5 py-0.5">{priorityLabel(r.confidence_level)}</span>{" "}
-                      <span className="inline-flex rounded border px-1.5 py-0.5">{priorityLabel(r.horizon)}</span>
-                    </p>
-                    <p className="mt-1 font-medium">{r.title}</p>
-                    <p className="mt-1 line-clamp-3 text-xs text-gray-700">{r.recommended_action}</p>
-                    <p className="mt-1 text-xs text-gray-600">
-                      {formatEntityLabel(r)} | last_seen={fmtDateTime(r.last_seen_at)}
-                    </p>
-                  </Link>
-                ))}
-              </div>
+      <Card>
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 [&::-webkit-details-marker]:hidden">
+            <div className="min-w-0 flex-1">
+              <CardTitle className="text-base">Recommendations summary</CardTitle>
+              <CardDescription className="mt-0.5">
+                Counts and latest run — expand for details. Actions stay in Today&apos;s list above.
+              </CardDescription>
             </div>
-          )}
-        </div>
-      </section>
+            <span className="flex shrink-0 items-center gap-2 text-sm text-gray-600">
+              <span className="hidden text-gray-500 sm:inline">Expand</span>
+              <span
+                className="inline-block text-gray-400 transition-transform group-open:rotate-90"
+                aria-hidden
+              >
+                ▸
+              </span>
+              <Link
+                href="/app/recommendations"
+                className={`${buttonClassNames("secondary")} no-underline`}
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                View recommendations
+              </Link>
+            </span>
+          </summary>
+          <CardContent className="space-y-3 border-t border-gray-100 pt-3 text-sm">
+            {recSummaryLoading ? (
+              <p className="text-sm text-gray-600">Loading recommendations summary…</p>
+            ) : recSummaryError || recListError || recRunFailed ? (
+              <p className="text-sm text-gray-600">See the recommendations notice above.</p>
+            ) : !state.recSummary ? (
+              <p className="text-sm text-gray-600">Recommendations summary is unavailable.</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+                  <MetricCard
+                    title="Open recommendations"
+                    value={fmtNum(state.recSummary.open_total)}
+                    hint="Open items"
+                  />
+                  <MetricCard
+                    title="Critical"
+                    value={fmtNum(state.recSummary.by_priority.critical)}
+                    hint="By priority"
+                  />
+                  <MetricCard
+                    title="High"
+                    value={fmtNum(state.recSummary.by_priority.high)}
+                    hint="By priority"
+                  />
+                  <MetricCard
+                    title="Medium"
+                    value={fmtNum(state.recSummary.by_priority.medium)}
+                    hint="By priority"
+                  />
+                  <MetricCard
+                    title="Latest run status"
+                    value={state.recSummary.latest_run?.status ?? "No run"}
+                    hint={state.recSummary.latest_run ? "Recommendation run" : "No recommendation run yet"}
+                  />
+                </div>
+                <p className="text-xs text-gray-600">
+                  {state.recSummary.latest_run
+                    ? formatRunLine(state.recSummary.latest_run)
+                    : "No recommendation run yet"}
+                </p>
+              </>
+            )}
+
+            {recListLoading ? (
+              <p className="text-sm text-gray-600">Loading recommendation counts…</p>
+            ) : recListError || recSummaryError || recRunFailed ? null : state.recSummary?.open_total === 0 ? (
+              <EmptyState
+                title="No open recommendations"
+                message="Generate AI recommendations after alerts and metrics are available."
+                action={
+                  <Link href="/app/recommendations" className={buttonClassNames("primary")}>
+                    Generate recommendations
+                  </Link>
+                }
+              />
+            ) : (
+              <p className="text-xs text-gray-600">
+                Top open items appear in <strong>Today&apos;s action list</strong>.{" "}
+                <Link href="/app/recommendations" className="font-medium text-blue-700 underline hover:text-blue-900">
+                  Open Recommendations
+                </Link>{" "}
+                to filter, accept, or dismiss.
+              </p>
+            )}
+          </CardContent>
+        </details>
+      </Card>
 
       <section className="rounded border p-4">
         <div className="flex items-center justify-between gap-3">

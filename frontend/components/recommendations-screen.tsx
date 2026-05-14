@@ -165,7 +165,11 @@ function friendlyGenerateMessage(raw: string): string {
   return raw;
 }
 
-export default function RecommendationsScreen() {
+export default function RecommendationsScreen({
+  initialFocusRecommendationId,
+}: {
+  initialFocusRecommendationId?: number;
+}) {
   const [alertsSummary, setAlertsSummary] = useState<AlertsSummaryResponse | null>(null);
   const [summary, setSummary] = useState<RecommendationsSummary | null>(null);
   const [loadingPrerequisites, setLoadingPrerequisites] = useState(true);
@@ -250,6 +254,13 @@ export default function RecommendationsScreen() {
   }, [loadList]);
 
   useEffect(() => {
+    if (initialFocusRecommendationId == null || initialFocusRecommendationId <= 0) {
+      return;
+    }
+    setDetailId(initialFocusRecommendationId);
+  }, [initialFocusRecommendationId]);
+
+  useEffect(() => {
     if (detailId == null) {
       setDetail(null);
       setDetailError(null);
@@ -277,6 +288,26 @@ export default function RecommendationsScreen() {
       cancelled = true;
     };
   }, [detailId]);
+
+  useEffect(() => {
+    if (
+      initialFocusRecommendationId == null ||
+      detailId !== initialFocusRecommendationId ||
+      loadingList ||
+      typeof document === "undefined"
+    ) {
+      return;
+    }
+    if (!items.some((r) => r.id === detailId)) {
+      return;
+    }
+    const el = document.getElementById(`recommendation-row-${detailId}`);
+    if (el) {
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
+    }
+  }, [initialFocusRecommendationId, detailId, items, loadingList]);
 
   const refreshAll = useCallback(async () => {
     await Promise.all([loadPrerequisites(), loadList()]);
@@ -363,6 +394,42 @@ export default function RecommendationsScreen() {
     !effectiveRecommendationType(filters) &&
     !filters.confidence_level &&
     !filters.entity_type;
+
+  const showFocusRecommendationMissing = useMemo(() => {
+    return (
+      initialFocusRecommendationId != null &&
+      detailId === initialFocusRecommendationId &&
+      !loadingList &&
+      !listError &&
+      !loadingDetail &&
+      detailError == null &&
+      detail != null &&
+      !items.some((r) => r.id === initialFocusRecommendationId)
+    );
+  }, [
+    initialFocusRecommendationId,
+    detailId,
+    loadingList,
+    listError,
+    loadingDetail,
+    detailError,
+    detail,
+    items,
+  ]);
+
+  function resetFocusFilters() {
+    setFilters({
+      status: "",
+      recommendationTypeSelect: "",
+      recommendationTypeText: "",
+      priority_level: "",
+      confidence_level: "",
+      horizon: "",
+      entity_type: "",
+      limit: DEFAULT_LIMIT,
+      offset: 0,
+    });
+  }
 
   return (
     <main className="space-y-6 p-6">
@@ -756,6 +823,22 @@ export default function RecommendationsScreen() {
       {actionError ? <p className="text-sm text-red-700">{actionError}</p> : null}
       {actionMessage ? <p className="text-sm text-green-800">{actionMessage}</p> : null}
 
+      {showFocusRecommendationMissing ? (
+        <div
+          className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+          role="status"
+        >
+          <p className="font-medium">Focused recommendation not in the current list</p>
+          <p className="mt-1 text-amber-900">
+            Recommendation #{initialFocusRecommendationId} is open in the detail panel but does not appear in the
+            filtered list. Reset filters to try to locate it here.
+          </p>
+          <button type="button" className={`${buttonClassNames("secondary")} mt-3`} onClick={resetFocusFilters}>
+            Reset filters and pagination
+          </button>
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
           <h2 className="mb-3 text-lg font-semibold text-gray-900">Recommendations</h2>
@@ -793,6 +876,7 @@ export default function RecommendationsScreen() {
                   <ul className="space-y-3">
                     {rows.map((row) => (
                       <li
+                        id={`recommendation-row-${row.id}`}
                         key={row.id}
                         className={`rounded-lg border p-3 transition-colors ${
                           detailId === row.id ? "border-blue-400 bg-blue-50/50" : "border-gray-200 bg-gray-50/40"
@@ -1089,16 +1173,6 @@ function DetailPanel({
           </ul>
         )}
       </section>
-      <details className="rounded-lg border border-gray-200 bg-gray-50 p-2">
-        <summary className="cursor-pointer font-medium text-gray-800">Raw AI response</summary>
-        {detail.raw_ai_response === undefined || detail.raw_ai_response === null ? (
-          <p className="mt-2 text-sm text-gray-600">No raw AI response.</p>
-        ) : isEmptyJsonish(detail.raw_ai_response) ? (
-          <p className="mt-2 text-sm text-gray-600">Empty raw AI response.</p>
-        ) : (
-          <RawAIBlock value={detail.raw_ai_response} />
-        )}
-      </details>
     </div>
   );
 }
@@ -1189,17 +1263,6 @@ function JsonBlock({ value, emptyLabel }: { value: unknown; emptyLabel?: string 
   }
   return (
     <pre className="mt-1 max-h-64 overflow-auto rounded border bg-white p-2 text-xs break-words whitespace-pre-wrap">
-      {stringifyJsonish(value)}
-    </pre>
-  );
-}
-
-function RawAIBlock({ value }: { value: unknown }) {
-  if (isEmptyJsonish(value)) {
-    return <p className="mt-2 text-sm text-gray-600">Empty raw AI response.</p>;
-  }
-  return (
-    <pre className="mt-2 max-h-96 overflow-auto rounded border bg-white p-2 text-xs break-words whitespace-pre-wrap">
       {stringifyJsonish(value)}
     </pre>
   );
