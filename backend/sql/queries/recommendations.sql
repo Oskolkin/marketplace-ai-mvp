@@ -242,6 +242,37 @@ FROM recommendations
 WHERE seller_account_id = $1
   AND status = 'open';
 
+-- name: CountRecommendationsBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM recommendations
+WHERE seller_account_id = $1;
+
+-- name: CountRecommendationAlertLinksBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM recommendation_alert_links
+WHERE seller_account_id = $1;
+
+-- name: CountRecommendationsWithNonEmptyPayloadsBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM recommendations
+WHERE seller_account_id = $1
+  AND supporting_metrics_payload IS NOT NULL
+  AND supporting_metrics_payload <> '{}'::jsonb
+  AND constraints_payload IS NOT NULL
+  AND constraints_payload <> '{}'::jsonb;
+
+-- name: CountRecommendationsWithRawAIBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM recommendations
+WHERE seller_account_id = $1
+  AND raw_ai_response IS NOT NULL
+  AND raw_ai_response <> '{}'::jsonb;
+
+-- name: CountRecommendationRunsBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM recommendation_runs
+WHERE seller_account_id = $1;
+
 -- name: LinkRecommendationAlert :exec
 INSERT INTO recommendation_alert_links (
     recommendation_id,

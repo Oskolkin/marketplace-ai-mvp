@@ -26,6 +26,7 @@ const (
 	AdminActionRerunRecommendations AdminActionType = "rerun_recommendations"
 	AdminActionUpdateBillingState   AdminActionType = "update_billing_state"
 	AdminActionViewRawAIPayload     AdminActionType = "view_raw_ai_payload"
+	AdminActionSeedCreated          AdminActionType = "seed_created"
 )
 
 // Target types for AdminActionViewRawAIPayload (admin_action_logs.target_type).

@@ -130,6 +130,59 @@ func (q *Queries) CompleteChatTrace(ctx context.Context, arg CompleteChatTracePa
 	return i, err
 }
 
+const countChatMessagesBySellerAccountID = `-- name: CountChatMessagesBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM chat_messages
+WHERE seller_account_id = $1
+`
+
+func (q *Queries) CountChatMessagesBySellerAccountID(ctx context.Context, sellerAccountID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countChatMessagesBySellerAccountID, sellerAccountID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countChatSessionsBySellerAccountID = `-- name: CountChatSessionsBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM chat_sessions
+WHERE seller_account_id = $1
+`
+
+func (q *Queries) CountChatSessionsBySellerAccountID(ctx context.Context, sellerAccountID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countChatSessionsBySellerAccountID, sellerAccountID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countChatTracesBySellerAccountID = `-- name: CountChatTracesBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM chat_traces
+WHERE seller_account_id = $1
+`
+
+func (q *Queries) CountChatTracesBySellerAccountID(ctx context.Context, sellerAccountID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countChatTracesBySellerAccountID, sellerAccountID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countCompletedChatTracesBySellerAccountID = `-- name: CountCompletedChatTracesBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM chat_traces
+WHERE seller_account_id = $1
+  AND status = 'completed'
+`
+
+func (q *Queries) CountCompletedChatTracesBySellerAccountID(ctx context.Context, sellerAccountID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countCompletedChatTracesBySellerAccountID, sellerAccountID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createChatFeedback = `-- name: CreateChatFeedback :one
 INSERT INTO chat_feedback (
     session_id,

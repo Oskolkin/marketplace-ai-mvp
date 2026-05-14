@@ -45,6 +45,11 @@ SELECT *
 FROM admin_action_logs
 WHERE id = $1;
 
+-- name: CountAdminActionLogsBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM admin_action_logs
+WHERE seller_account_id = $1;
+
 -- name: ListAdminActionLogs :many
 SELECT *
 FROM admin_action_logs

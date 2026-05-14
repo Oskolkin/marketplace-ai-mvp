@@ -211,6 +211,77 @@ func (q *Queries) CountOpenRecommendationsBySellerAccountID(ctx context.Context,
 	return count, err
 }
 
+const countRecommendationAlertLinksBySellerAccountID = `-- name: CountRecommendationAlertLinksBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM recommendation_alert_links
+WHERE seller_account_id = $1
+`
+
+func (q *Queries) CountRecommendationAlertLinksBySellerAccountID(ctx context.Context, sellerAccountID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countRecommendationAlertLinksBySellerAccountID, sellerAccountID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countRecommendationRunsBySellerAccountID = `-- name: CountRecommendationRunsBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM recommendation_runs
+WHERE seller_account_id = $1
+`
+
+func (q *Queries) CountRecommendationRunsBySellerAccountID(ctx context.Context, sellerAccountID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countRecommendationRunsBySellerAccountID, sellerAccountID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countRecommendationsBySellerAccountID = `-- name: CountRecommendationsBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM recommendations
+WHERE seller_account_id = $1
+`
+
+func (q *Queries) CountRecommendationsBySellerAccountID(ctx context.Context, sellerAccountID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countRecommendationsBySellerAccountID, sellerAccountID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countRecommendationsWithNonEmptyPayloadsBySellerAccountID = `-- name: CountRecommendationsWithNonEmptyPayloadsBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM recommendations
+WHERE seller_account_id = $1
+  AND supporting_metrics_payload IS NOT NULL
+  AND supporting_metrics_payload <> '{}'::jsonb
+  AND constraints_payload IS NOT NULL
+  AND constraints_payload <> '{}'::jsonb
+`
+
+func (q *Queries) CountRecommendationsWithNonEmptyPayloadsBySellerAccountID(ctx context.Context, sellerAccountID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countRecommendationsWithNonEmptyPayloadsBySellerAccountID, sellerAccountID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countRecommendationsWithRawAIBySellerAccountID = `-- name: CountRecommendationsWithRawAIBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM recommendations
+WHERE seller_account_id = $1
+  AND raw_ai_response IS NOT NULL
+  AND raw_ai_response <> '{}'::jsonb
+`
+
+func (q *Queries) CountRecommendationsWithRawAIBySellerAccountID(ctx context.Context, sellerAccountID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countRecommendationsWithRawAIBySellerAccountID, sellerAccountID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createRecommendationRun = `-- name: CreateRecommendationRun :one
 INSERT INTO recommendation_runs (
     seller_account_id,

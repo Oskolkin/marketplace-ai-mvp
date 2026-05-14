@@ -161,6 +161,19 @@ func (q *Queries) CompleteAdminActionLog(ctx context.Context, arg CompleteAdminA
 	return i, err
 }
 
+const countAdminActionLogsBySellerAccountID = `-- name: CountAdminActionLogsBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM admin_action_logs
+WHERE seller_account_id = $1
+`
+
+func (q *Queries) CountAdminActionLogsBySellerAccountID(ctx context.Context, sellerAccountID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countAdminActionLogsBySellerAccountID, sellerAccountID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createAdminActionLog = `-- name: CreateAdminActionLog :one
 INSERT INTO admin_action_logs (
     admin_user_id,

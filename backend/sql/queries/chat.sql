@@ -205,3 +205,24 @@ WHERE seller_account_id = $1
 ORDER BY created_at DESC, id DESC
 LIMIT $2
 OFFSET $3;
+
+-- name: CountChatSessionsBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM chat_sessions
+WHERE seller_account_id = $1;
+
+-- name: CountChatMessagesBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM chat_messages
+WHERE seller_account_id = $1;
+
+-- name: CountChatTracesBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM chat_traces
+WHERE seller_account_id = $1;
+
+-- name: CountCompletedChatTracesBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM chat_traces
+WHERE seller_account_id = $1
+  AND status = 'completed';

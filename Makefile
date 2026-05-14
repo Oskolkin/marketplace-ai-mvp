@@ -79,3 +79,50 @@ dev-check-dashboard-metrics:
 
 dev-ingest-advertising:
 	cd backend && go run ./cmd/dev-ingest-advertising --seller-account-id $(seller_account_id)
+
+# --- dev-seed-mvp (pre-billing MVP functional test) ---
+.PHONY: seed-mvp seed-mvp-reset seed-mvp-validate seed-mvp-validate-alerts seed-mvp-validate-alerts-reset seed-mvp-validate-recommendations seed-mvp-validate-derived seed-mvp-existing
+
+SEED_EMAIL        ?= demo@example.com
+SEED_PASSWORD     ?= password123
+SEED_ADMIN_EMAIL  ?= admin@example.com
+SEED_SELLER_NAME  ?= Demo Ozon Seller
+SEED_ANCHOR_DATE  ?= today
+SEED_PRODUCTS     ?= 80
+SEED_DAYS         ?= 90
+SEED_BASE         ?= 20260514
+SEED_RESET_PASSWORD ?= true
+
+# Default seller for seed-mvp-validate (override if your seeded seller id differs).
+VALIDATE_SELLER_ACCOUNT_ID ?= 1
+
+SEED_COMMON = --email $(SEED_EMAIL) --password $(SEED_PASSWORD) \
+	--admin-email $(SEED_ADMIN_EMAIL) --seller-name "$(SEED_SELLER_NAME)" \
+	--anchor-date $(SEED_ANCHOR_DATE) --products $(SEED_PRODUCTS) --days $(SEED_DAYS) \
+	--seed $(SEED_BASE) --reset-password=$(SEED_RESET_PASSWORD)
+
+# Full seed for a new demo seller (wipes MVP-shaped rows for that seller when --reset=true).
+seed-mvp seed-mvp-reset:
+	cd backend && go run ./cmd/dev-seed-mvp $(SEED_COMMON) --reset=true
+
+seed-mvp-validate:
+	cd backend && go run ./cmd/dev-seed-mvp $(SEED_COMMON) --seller-account-id=$(VALIDATE_SELLER_ACCOUNT_ID) --validate-only
+
+# Runs production Alerts Engine (same as POST /api/v1/alerts/run); requires prior seed + metrics rebuild.
+seed-mvp-validate-alerts:
+	cd backend && go run ./cmd/dev-seed-mvp $(SEED_COMMON) --seller-account-id=$(VALIDATE_SELLER_ACCOUNT_ID) --validate-alert-generation
+
+seed-mvp-validate-alerts-reset:
+	cd backend && go run ./cmd/dev-seed-mvp $(SEED_COMMON) --seller-account-id=$(VALIDATE_SELLER_ACCOUNT_ID) --validate-alert-generation --reset-derived=true
+
+# Requires OPENAI_API_KEY and existing open alerts (e.g. run seed-mvp-validate-alerts first).
+seed-mvp-validate-recommendations:
+	cd backend && go run ./cmd/dev-seed-mvp $(SEED_COMMON) --seller-account-id=$(VALIDATE_SELLER_ACCOUNT_ID) --validate-recommendation-generation
+
+# Read-only: expects manual Alerts / Recommendations / Chat / admin usage for this seller.
+seed-mvp-validate-derived:
+	cd backend && go run ./cmd/dev-seed-mvp $(SEED_COMMON) --seller-account-id=$(VALIDATE_SELLER_ACCOUNT_ID) --validate-derived
+
+seed-mvp-existing:
+	@test -n "$(SELLER_ACCOUNT_ID)" || (echo "Usage: make seed-mvp-existing SELLER_ACCOUNT_ID=1" && exit 1)
+	cd backend && go run ./cmd/dev-seed-mvp $(SEED_COMMON) --seller-account-id=$(SELLER_ACCOUNT_ID) --reset=true

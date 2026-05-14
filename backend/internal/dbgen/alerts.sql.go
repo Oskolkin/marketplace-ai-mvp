@@ -66,6 +66,32 @@ func (q *Queries) CompleteAlertRun(ctx context.Context, arg CompleteAlertRunPara
 	return i, err
 }
 
+const countAlertRunsBySellerAccountID = `-- name: CountAlertRunsBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM alert_runs
+WHERE seller_account_id = $1
+`
+
+func (q *Queries) CountAlertRunsBySellerAccountID(ctx context.Context, sellerAccountID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countAlertRunsBySellerAccountID, sellerAccountID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countAlertsBySellerAccountID = `-- name: CountAlertsBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM alerts
+WHERE seller_account_id = $1
+`
+
+func (q *Queries) CountAlertsBySellerAccountID(ctx context.Context, sellerAccountID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countAlertsBySellerAccountID, sellerAccountID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countOpenAlertsByGroup = `-- name: CountOpenAlertsByGroup :many
 SELECT
     alert_group,
@@ -187,6 +213,26 @@ func (q *Queries) CreateAlertRun(ctx context.Context, arg CreateAlertRunParams) 
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const deleteAlertRunsBySellerAccountID = `-- name: DeleteAlertRunsBySellerAccountID :exec
+DELETE FROM alert_runs
+WHERE seller_account_id = $1
+`
+
+func (q *Queries) DeleteAlertRunsBySellerAccountID(ctx context.Context, sellerAccountID int64) error {
+	_, err := q.db.Exec(ctx, deleteAlertRunsBySellerAccountID, sellerAccountID)
+	return err
+}
+
+const deleteAlertsBySellerAccountID = `-- name: DeleteAlertsBySellerAccountID :exec
+DELETE FROM alerts
+WHERE seller_account_id = $1
+`
+
+func (q *Queries) DeleteAlertsBySellerAccountID(ctx context.Context, sellerAccountID int64) error {
+	_, err := q.db.Exec(ctx, deleteAlertsBySellerAccountID, sellerAccountID)
+	return err
 }
 
 const dismissAlert = `-- name: DismissAlert :one

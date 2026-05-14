@@ -209,6 +209,24 @@ FROM alerts
 WHERE seller_account_id = $1
   AND status = 'open';
 
+-- name: CountAlertsBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM alerts
+WHERE seller_account_id = $1;
+
+-- name: DeleteAlertsBySellerAccountID :exec
+DELETE FROM alerts
+WHERE seller_account_id = $1;
+
+-- name: DeleteAlertRunsBySellerAccountID :exec
+DELETE FROM alert_runs
+WHERE seller_account_id = $1;
+
+-- name: CountAlertRunsBySellerAccountID :one
+SELECT COUNT(*)::bigint
+FROM alert_runs
+WHERE seller_account_id = $1;
+
 -- name: CreateAlertRun :one
 INSERT INTO alert_runs (
     seller_account_id,

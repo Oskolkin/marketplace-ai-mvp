@@ -32,7 +32,7 @@ function formatDateTime(value: string | null | undefined): string {
 function sortImportJobsByDomain(status: OzonIngestionStatusResponse | null) {
   if (!status) return [];
 
-  const domainOrder = ["products", "orders", "stocks", "ads"];
+  const domainOrder = ["products", "orders", "sales", "stocks", "ads"];
   return [...status.latest_import_jobs].sort((a, b) => {
     return domainOrder.indexOf(a.domain) - domainOrder.indexOf(b.domain);
   });

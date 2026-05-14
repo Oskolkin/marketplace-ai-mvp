@@ -400,6 +400,21 @@ func parseRecommendationID(r *http.Request) (int64, error) {
 	return id, nil
 }
 
+// MapPublicRecommendationJSON returns the seller-facing JSON object for a recommendation
+// (same shape as list/detail/accept responses; omits raw_ai_response by design).
+func MapPublicRecommendationJSON(item recommendations.Recommendation) (map[string]any, error) {
+	resp := mapRecommendationResponse(item)
+	b, err := json.Marshal(resp)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func mapRecommendationResponse(item recommendations.Recommendation) recommendationResponse {
 	return recommendationResponse{
 		ID:                       item.ID,
