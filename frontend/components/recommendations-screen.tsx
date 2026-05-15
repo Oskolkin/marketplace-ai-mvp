@@ -58,9 +58,61 @@ function fmtEntityRec(row: Pick<RecommendationItem, "entity_sku" | "entity_offer
   if (row.entity_sku != null && row.entity_sku !== undefined) {
     return `SKU: ${row.entity_sku}`;
   }
-  if (row.entity_offer_id) return `Offer: ${row.entity_offer_id}`;
-  if (row.entity_id) return `ID: ${row.entity_id}`;
-  return row.entity_type;
+  if (row.entity_offer_id) return `Предложение: ${row.entity_offer_id}`;
+  if (row.entity_id) return `ИД: ${row.entity_id}`;
+  return translateEntityTypeRec(row.entity_type);
+}
+
+function translateEntityTypeRec(t: string): string {
+  const m: Record<string, string> = {
+    account: "Аккаунт",
+    sku: "SKU",
+    product: "Товар",
+    campaign: "Кампания",
+    pricing_constraint: "Ограничение цены",
+  };
+  return m[t] ?? t;
+}
+
+function translateRecoStatus(s: string): string {
+  const m: Record<string, string> = {
+    open: "открыта",
+    accepted: "принята",
+    dismissed: "отклонена",
+    resolved: "закрыта",
+  };
+  return m[s] ?? s;
+}
+
+function translatePriorityLabel(level: string): string {
+  const m: Record<string, string> = {
+    critical: "критический",
+    high: "высокий",
+    medium: "средний",
+    low: "низкий",
+    other: "прочее",
+  };
+  return m[level] ?? level;
+}
+
+function translateAlertSeverityUi(s: string): string {
+  const m: Record<string, string> = {
+    low: "Низкая",
+    medium: "Средняя",
+    high: "Высокая",
+    critical: "Критическая",
+  };
+  return m[s] ?? s;
+}
+
+function translateAlertGroupUi(g: string): string {
+  const m: Record<string, string> = {
+    sales: "Продажи",
+    stock: "Склад",
+    advertising: "Реклама",
+    price_economics: "Цена / экономика",
+  };
+  return m[g] ?? g;
 }
 
 function effectiveRecommendationType(f: FilterState): string | undefined {
@@ -157,10 +209,10 @@ function extractValidationWarnings(detail: RecommendationDetail): string[] {
 function friendlyGenerateMessage(raw: string): string {
   const s = raw.toLowerCase();
   if (s.includes("503") || s.includes("502") || s.includes("openai") || s.includes("unauthorized")) {
-    return "Generation failed — the AI service may be misconfigured or temporarily unavailable.";
+    return "Генерация не удалась — служба ИИ может быть настроена неверно или временно недоступна.";
   }
   if (raw.length > 220) {
-    return "Generation failed — see checklist below and server logs if needed.";
+    return "Генерация не удалась — см. чеклист ниже и при необходимости логи сервера.";
   }
   return raw;
 }
@@ -215,7 +267,7 @@ export default function RecommendationsScreen({
     } catch (e: unknown) {
       setAlertsSummary(null);
       setSummary(null);
-      setPrerequisitesError(e instanceof Error ? e.message : "Failed to load prerequisites");
+      setPrerequisitesError(e instanceof Error ? e.message : "Не удалось загрузить предварительные данные");
     } finally {
       setLoadingPrerequisites(false);
     }
@@ -239,7 +291,7 @@ export default function RecommendationsScreen({
       setItems(data.items);
     } catch (e: unknown) {
       setItems([]);
-      setListError(e instanceof Error ? e.message : "Failed to load recommendations");
+      setListError(e instanceof Error ? e.message : "Не удалось загрузить рекомендации");
     } finally {
       setLoadingList(false);
     }
@@ -278,7 +330,7 @@ export default function RecommendationsScreen({
       .catch((e: unknown) => {
         if (!cancelled) {
           setDetail(null);
-          setDetailError(e instanceof Error ? e.message : "Failed to load detail");
+          setDetailError(e instanceof Error ? e.message : "Не удалось загрузить детали");
         }
       })
       .finally(() => {
@@ -317,7 +369,7 @@ export default function RecommendationsScreen({
         setDetail(d);
         setDetailError(null);
       } catch (e: unknown) {
-        setDetailError(e instanceof Error ? e.message : "Failed to refresh detail");
+        setDetailError(e instanceof Error ? e.message : "Не удалось обновить детали");
       }
     }
   }, [detailId, loadList, loadPrerequisites]);
@@ -334,10 +386,10 @@ export default function RecommendationsScreen({
           : { as_of_date: generateAsOf.trim() };
       const res = await generateRecommendations(payload);
       setLastGenerateResult(res);
-      setGenerateMessage("Generation finished. Summary below.");
+      setGenerateMessage("Генерация завершена. Сводка ниже.");
       await refreshAll();
     } catch (e: unknown) {
-      const raw = e instanceof Error ? e.message : "Generate failed";
+      const raw = e instanceof Error ? e.message : "Генерация не удалась";
       setGenerateError(friendlyGenerateMessage(raw));
     } finally {
       setGenerateLoading(false);
@@ -356,7 +408,7 @@ export default function RecommendationsScreen({
       if (kind === "accept") updated = await acceptRecommendation(id);
       else if (kind === "dismiss") updated = await dismissRecommendation(id);
       else updated = await resolveRecommendation(id);
-      setActionMessage(`Recommendation #${id} is now ${updated.status}.`);
+      setActionMessage(`Рекомендация №${id}: статус «${translateRecoStatus(updated.status)}».`);
       await Promise.all([loadPrerequisites(), loadList()]);
       if (detailId === id) {
         try {
@@ -364,11 +416,11 @@ export default function RecommendationsScreen({
           setDetail(d);
           setDetailError(null);
         } catch (e: unknown) {
-          setDetailError(e instanceof Error ? e.message : "Failed to refresh detail");
+          setDetailError(e instanceof Error ? e.message : "Не удалось обновить детали");
         }
       }
     } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : "Action failed");
+      setActionError(e instanceof Error ? e.message : "Действие не выполнено");
     } finally {
       setActionLoadingId(null);
     }
@@ -380,7 +432,7 @@ export default function RecommendationsScreen({
 
   const typeSelectOptions = useMemo((): [string, string][] => {
     const rows: [string, string][] = MVP_RECOMMENDATION_TYPES.map((t) => [t, t]);
-    return [["", "all"], ...rows];
+    return [["", "Все"], ...rows];
   }, []);
 
   const groupedItems = useMemo(() => groupRecommendationsByPriority(items), [items]);
@@ -434,18 +486,18 @@ export default function RecommendationsScreen({
   return (
     <main className="space-y-6 p-6">
       <PageHeader
-        title="Recommendations"
-        subtitle="AI recommendation engine: prerequisites, generation runs, validated output, and status actions."
+        title="Рекомендации"
+        subtitle="ИИ-движок рекомендаций: предпосылки, запуски генерации, проверенный результат и действия со статусом."
       />
 
       <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-900">Before generation</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Перед генерацией</h2>
         <p className="mt-1 text-sm text-gray-600">
-          Typical order: <strong>sync</strong> → <strong>metrics / dashboard</strong> →{" "}
+          Типичный порядок: <strong>синхронизация</strong> → <strong>метрики / дашборд</strong> →{" "}
           <Link href="/app/alerts" className="text-blue-700 underline">
-            run Alerts
+            запуск оповещений
           </Link>{" "}
-          → then generate recommendations here.
+          → затем генерация рекомендаций здесь.
         </p>
         {prerequisitesError ? (
           <p className="mt-2 text-sm text-amber-900" role="alert">
@@ -454,64 +506,66 @@ export default function RecommendationsScreen({
         ) : null}
         {loadingPrerequisites ? (
           <div className="mt-4">
-            <LoadingState message="Loading alerts & recommendations status…" />
+            <LoadingState message="Загрузка статуса оповещений и рекомендаций…" />
           </div>
         ) : (
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-3">
-              <h3 className="text-sm font-semibold text-gray-800">Latest alerts run</h3>
+              <h3 className="text-sm font-semibold text-gray-800">Последний запуск оповещений</h3>
               {!alertsRun ? (
-                <p className="mt-2 text-sm text-gray-600">No alert runs yet. Open Alerts and run a job first.</p>
+                <p className="mt-2 text-sm text-gray-600">
+                  Запусков оповещений ещё не было. Откройте «Оповещения» и сначала запустите задачу.
+                </p>
               ) : (
                 <ul className="mt-2 space-y-1 text-sm text-gray-800">
                   <li>
-                    <span className="text-gray-600">Status:</span>{" "}
+                    <span className="text-gray-600">Статус:</span>{" "}
                     <RunStatusBadge status={alertsRun.status} />
                   </li>
                   <li>
-                    <span className="text-gray-600">Run id:</span> {alertsRun.id}
+                    <span className="text-gray-600">ИД запуска:</span> {alertsRun.id}
                   </li>
                   <li>
-                    <span className="text-gray-600">Finished:</span> {fmtDate(alertsRun.finished_at)}
+                    <span className="text-gray-600">Завершён:</span> {fmtDate(alertsRun.finished_at)}
                   </li>
                   <li>
-                    <span className="text-gray-600">Open alerts:</span> {alertsSummary?.open_total ?? "—"}
+                    <span className="text-gray-600">Открытых оповещений:</span> {alertsSummary?.open_total ?? "—"}
                   </li>
                   {alertsRun.error_message ? (
                     <li className="text-amber-900">
-                      <span className="font-medium">Error:</span> {alertsRun.error_message}
+                      <span className="font-medium">Ошибка:</span> {alertsRun.error_message}
                     </li>
                   ) : null}
                 </ul>
               )}
             </div>
             <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-3">
-              <h3 className="text-sm font-semibold text-gray-800">Latest recommendations run</h3>
+              <h3 className="text-sm font-semibold text-gray-800">Последний запуск рекомендаций</h3>
               {!recRun ? (
-                <p className="mt-2 text-sm text-gray-600">No recommendation runs yet.</p>
+                <p className="mt-2 text-sm text-gray-600">Запусков рекомендаций ещё не было.</p>
               ) : (
                 <ul className="mt-2 space-y-1 text-sm text-gray-800">
                   <li>
-                    <span className="text-gray-600">Status:</span> <RunStatusBadge status={recRun.status} />
+                    <span className="text-gray-600">Статус:</span> <RunStatusBadge status={recRun.status} />
                   </li>
                   <li>
-                    <span className="text-gray-600">As of:</span> {recRun.as_of_date ?? "—"}
+                    <span className="text-gray-600">На дату:</span> {recRun.as_of_date ?? "—"}
                   </li>
                   <li>
-                    <span className="text-gray-600">Generated (last run):</span>{" "}
+                    <span className="text-gray-600">Сгенерировано (последний запуск):</span>{" "}
                     {recRun.generated_recommendations_count}
                   </li>
                   <li>
-                    <span className="text-gray-600">Tokens:</span> {recRun.input_tokens} / {recRun.output_tokens} /{" "}
+                    <span className="text-gray-600">Токены:</span> {recRun.input_tokens} / {recRun.output_tokens} /{" "}
                     {recRun.total_tokens}
                   </li>
                   <li>
-                    <span className="text-gray-600">Est. cost:</span>{" "}
+                    <span className="text-gray-600">Оценка стоимости:</span>{" "}
                     {recRun.estimated_cost != null ? recRun.estimated_cost.toFixed(4) : "—"}
                   </li>
                   {recRun.error_message ? (
                     <li className="text-amber-900">
-                      <span className="font-medium">Error:</span> {recRun.error_message}
+                      <span className="font-medium">Ошибка:</span> {recRun.error_message}
                     </li>
                   ) : null}
                 </ul>
@@ -521,45 +575,45 @@ export default function RecommendationsScreen({
         )}
         <div className="mt-4 flex flex-wrap gap-2 text-sm">
           <Link href="/app/sync-status" className={buttonClassNames("secondary")}>
-            Sync status
+            Статус синхронизации
           </Link>
           <Link href="/app/dashboard" className={buttonClassNames("secondary")}>
-            Dashboard
+            Дашборд
           </Link>
           <Link href="/app/alerts" className={buttonClassNames("secondary")}>
-            Alerts
+            Оповещения
           </Link>
           <Link href="/app/pricing-constraints" className={buttonClassNames("secondary")}>
-            Pricing constraints
+            Ограничения цен
           </Link>
         </div>
       </section>
 
       {!loadingPrerequisites && summary ? (
         <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900">Summary counts</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Сводные счётчики</h2>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
-            <SummaryCard label="Open" value={summary.open_total} />
-            <SummaryCard label="Critical" value={summary.by_priority.critical} />
-            <SummaryCard label="High" value={summary.by_priority.high} />
-            <SummaryCard label="Medium" value={summary.by_priority.medium} />
-            <SummaryCard label="Low" value={summary.by_priority.low} />
-            <SummaryCard label="Confidence high" value={summary.by_confidence.high} />
-            <SummaryCard label="Confidence medium" value={summary.by_confidence.medium} />
-            <SummaryCard label="Confidence low" value={summary.by_confidence.low} />
+            <SummaryCard label="Открытые" value={summary.open_total} />
+            <SummaryCard label="Критические" value={summary.by_priority.critical} />
+            <SummaryCard label="Высокие" value={summary.by_priority.high} />
+            <SummaryCard label="Средние" value={summary.by_priority.medium} />
+            <SummaryCard label="Низкие" value={summary.by_priority.low} />
+            <SummaryCard label="Уверенность: высокая" value={summary.by_confidence.high} />
+            <SummaryCard label="Уверенность: средняя" value={summary.by_confidence.medium} />
+            <SummaryCard label="Уверенность: низкая" value={summary.by_confidence.low} />
           </div>
         </section>
       ) : null}
 
       <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-900">Generate recommendations</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Сгенерировать рекомендации</h2>
         <p className="mt-1 text-sm text-gray-600">
-          Uses current context (alerts, metrics, pricing). Optional <code className="rounded bg-gray-100 px-1">as_of_date</code>{" "}
-          pins the reporting day.
+          Использует текущий контекст (оповещения, метрики, цены). Необязательный параметр{" "}
+          <code className="rounded bg-gray-100 px-1">as_of_date</code> фиксирует отчётный день.
         </p>
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="text-sm">
-            <span className="mb-1 block text-gray-700">As of date</span>
+            <span className="mb-1 block text-gray-700">Дата отчёта</span>
             <input
               className="rounded-lg border border-gray-300 px-2 py-2"
               type="date"
@@ -574,66 +628,66 @@ export default function RecommendationsScreen({
             className={buttonClassNames("primary")}
             onClick={() => void handleGenerate()}
           >
-            {generateLoading ? "Generating…" : "Generate recommendations"}
+            {generateLoading ? "Генерация…" : "Сгенерировать рекомендации"}
           </button>
         </div>
         {generateLoading ? (
           <div className="mt-4">
-            <LoadingState message="Running AI recommendation generation…" />
+            <LoadingState message="Запуск ИИ-генерации рекомендаций…" />
           </div>
         ) : null}
         {generateMessage ? <p className="mt-3 text-sm text-green-800">{generateMessage}</p> : null}
         {generateError ? (
           <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950" role="alert">
             <p className="font-medium">{generateError}</p>
-            <p className="mt-2 font-medium text-amber-900">Checklist</p>
+            <p className="mt-2 font-medium text-amber-900">Чеклист</p>
             <ul className="mt-1 list-disc space-y-1 pl-5 text-amber-950">
-              <li>OpenAI API key configured for the deployment?</li>
-              <li>Alerts exist for the as-of date (run Alerts first)?</li>
-              <li>Pricing constraints set where price recommendations need them (optional)?</li>
-              <li>Context / token budget exceeded? Try a narrower as_of_date or fewer open alerts.</li>
-              <li>Validation rejecting all items? Inspect rejected reasons in server logs.</li>
+              <li>Настроен ли ключ OpenAI API для развёртывания?</li>
+              <li>Есть ли оповещения на выбранную дату (сначала запустите оповещения)?</li>
+              <li>Заданы ли ограничения цен там, где они нужны для ценовых рекомендаций (необязательно)?</li>
+              <li>Превышен ли бюджет контекста / токенов? Попробуйте другую дату или меньше открытых оповещений.</li>
+              <li>Валидация отклоняет все элементы? Проверьте причины в логах сервера.</li>
             </ul>
           </div>
         ) : null}
         {lastGenerateResult ? (
           <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
-            <h3 className="text-sm font-semibold text-gray-800">Last run result</h3>
+            <h3 className="text-sm font-semibold text-gray-800">Результат последнего запуска</h3>
             <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
               <div>
-                <dt className="text-gray-600">Run id</dt>
+                <dt className="text-gray-600">ИД запуска</dt>
                 <dd className="font-mono font-medium text-gray-900">{lastGenerateResult.run_id}</dd>
               </div>
               <div>
-                <dt className="text-gray-600">As of date</dt>
+                <dt className="text-gray-600">Дата отчёта</dt>
                 <dd className="font-medium text-gray-900">{fmtDateShort(lastGenerateResult.as_of_date)}</dd>
               </div>
               <div>
-                <dt className="text-gray-600">Generated</dt>
+                <dt className="text-gray-600">Сгенерировано</dt>
                 <dd className="font-medium text-gray-900">{lastGenerateResult.generated_total}</dd>
               </div>
               <div>
-                <dt className="text-gray-600">Valid</dt>
+                <dt className="text-gray-600">Валидные</dt>
                 <dd className="font-medium text-gray-900">{lastGenerateResult.valid_total}</dd>
               </div>
               <div>
-                <dt className="text-gray-600">Rejected</dt>
+                <dt className="text-gray-600">Отклонено</dt>
                 <dd className="font-medium text-gray-900">{lastGenerateResult.rejected_total}</dd>
               </div>
               <div>
-                <dt className="text-gray-600">Saved (upserted)</dt>
+                <dt className="text-gray-600">Сохранено (upsert)</dt>
                 <dd className="font-medium text-gray-900">{lastGenerateResult.upserted_total}</dd>
               </div>
               <div>
-                <dt className="text-gray-600">Linked alerts</dt>
+                <dt className="text-gray-600">Связанные оповещения</dt>
                 <dd className="font-medium text-gray-900">{lastGenerateResult.linked_alerts_total}</dd>
               </div>
               <div>
-                <dt className="text-gray-600">Warnings (items)</dt>
+                <dt className="text-gray-600">Предупреждения (элементы)</dt>
                 <dd className="font-medium text-gray-900">{lastGenerateResult.warnings_total}</dd>
               </div>
               <div>
-                <dt className="text-gray-600">Tokens (in / out / total)</dt>
+                <dt className="text-gray-600">Токены (вход / выход / всего)</dt>
                 <dd className="font-mono text-gray-900">
                   {lastGenerateResult.input_tokens} / {lastGenerateResult.output_tokens} /{" "}
                   {lastGenerateResult.total_tokens}
@@ -641,7 +695,7 @@ export default function RecommendationsScreen({
               </div>
               {lastGenerateResult.estimated_cost != null ? (
                 <div>
-                  <dt className="text-gray-600">Estimated cost</dt>
+                  <dt className="text-gray-600">Оценка стоимости</dt>
                   <dd className="font-medium text-gray-900">{lastGenerateResult.estimated_cost}</dd>
                 </div>
               ) : null}
@@ -651,8 +705,8 @@ export default function RecommendationsScreen({
       </section>
 
       <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-2 text-lg font-semibold text-gray-900">Quick filters</h2>
-        <p className="mb-3 text-sm text-gray-600">Narrow the list (status = open + one dimension).</p>
+        <h2 className="mb-2 text-lg font-semibold text-gray-900">Быстрые фильтры</h2>
+        <p className="mb-3 text-sm text-gray-600">Сузить список (статус = открытые + один параметр).</p>
         <div className="flex flex-wrap gap-2">
           {(["open", "critical", "high", "short_term"] as const).map((id) => (
             <button
@@ -666,21 +720,21 @@ export default function RecommendationsScreen({
               onClick={() => applyQuickFilter(id)}
             >
               {id === "open"
-                ? "Open"
+                ? "Открытые"
                 : id === "critical"
-                  ? "Critical"
+                  ? "Критические"
                   : id === "high"
-                    ? "High"
-                    : "Short-term"}
+                    ? "Высокие"
+                    : "Краткосрочные"}
             </button>
           ))}
         </div>
 
         <details className="mt-4 rounded-lg border border-gray-200 bg-gray-50/60 p-3">
-          <summary className="cursor-pointer text-sm font-medium text-gray-800">Advanced filters</summary>
+          <summary className="cursor-pointer text-sm font-medium text-gray-800">Расширенные фильтры</summary>
           <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-6">
             <Select
-              label="Status"
+              label="Статус"
               value={filters.status}
               onChange={(v) =>
                 setFilters((s) => ({
@@ -690,15 +744,15 @@ export default function RecommendationsScreen({
                 }))
               }
               options={[
-                ["", "all"],
-                ["open", "open"],
-                ["accepted", "accepted"],
-                ["dismissed", "dismissed"],
-                ["resolved", "resolved"],
+                ["", "Все"],
+                ["open", "Открыта"],
+                ["accepted", "Принята"],
+                ["dismissed", "Отклонена"],
+                ["resolved", "Закрыта"],
               ]}
             />
             <Select
-              label="Type (preset)"
+              label="Тип (из списка)"
               value={filters.recommendationTypeSelect}
               onChange={(v) =>
                 setFilters((s) => ({
@@ -710,11 +764,11 @@ export default function RecommendationsScreen({
               options={typeSelectOptions}
             />
             <label className="text-sm md:col-span-2">
-              <span className="mb-1 block text-gray-700">Type (free text)</span>
+              <span className="mb-1 block text-gray-700">Тип (свободный ввод)</span>
               <input
                 className="w-full rounded border px-2 py-1"
                 type="text"
-                placeholder="e.g. replenish_sku"
+                placeholder="напр. replenish_sku"
                 value={filters.recommendationTypeText}
                 onChange={(e) =>
                   setFilters((s) => ({
@@ -726,7 +780,7 @@ export default function RecommendationsScreen({
               />
             </label>
             <Select
-              label="Priority"
+              label="Приоритет"
               value={filters.priority_level}
               onChange={(v) =>
                 setFilters((s) => ({
@@ -736,15 +790,15 @@ export default function RecommendationsScreen({
                 }))
               }
               options={[
-                ["", "all"],
-                ["low", "low"],
-                ["medium", "medium"],
-                ["high", "high"],
-                ["critical", "critical"],
+                ["", "Все"],
+                ["low", "Низкий"],
+                ["medium", "Средний"],
+                ["high", "Высокий"],
+                ["critical", "Критический"],
               ]}
             />
             <Select
-              label="Confidence"
+              label="Уверенность"
               value={filters.confidence_level}
               onChange={(v) =>
                 setFilters((s) => ({
@@ -754,14 +808,14 @@ export default function RecommendationsScreen({
                 }))
               }
               options={[
-                ["", "all"],
-                ["low", "low"],
-                ["medium", "medium"],
-                ["high", "high"],
+                ["", "Все"],
+                ["low", "Низкая"],
+                ["medium", "Средняя"],
+                ["high", "Высокая"],
               ]}
             />
             <Select
-              label="Horizon"
+              label="Горизонт"
               value={filters.horizon}
               onChange={(v) =>
                 setFilters((s) => ({
@@ -771,14 +825,14 @@ export default function RecommendationsScreen({
                 }))
               }
               options={[
-                ["", "all"],
-                ["short_term", "short_term"],
-                ["medium_term", "medium_term"],
-                ["long_term", "long_term"],
+                ["", "Все"],
+                ["short_term", "Краткосрочный"],
+                ["medium_term", "Среднесрочный"],
+                ["long_term", "Долгосрочный"],
               ]}
             />
             <Select
-              label="Entity type"
+              label="Тип сущности"
               value={filters.entity_type}
               onChange={(v) =>
                 setFilters((s) => ({
@@ -788,16 +842,16 @@ export default function RecommendationsScreen({
                 }))
               }
               options={[
-                ["", "all"],
-                ["account", "account"],
-                ["sku", "sku"],
-                ["product", "product"],
-                ["campaign", "campaign"],
-                ["pricing_constraint", "pricing_constraint"],
+                ["", "Все"],
+                ["account", "Аккаунт"],
+                ["sku", "SKU"],
+                ["product", "Товар"],
+                ["campaign", "Кампания"],
+                ["pricing_constraint", "Ограничение цены"],
               ]}
             />
             <label className="text-sm">
-              <span className="mb-1 block text-gray-700">Limit</span>
+              <span className="mb-1 block text-gray-700">Лимит</span>
               <input
                 className="w-full rounded border px-2 py-1"
                 type="number"
@@ -828,38 +882,38 @@ export default function RecommendationsScreen({
           className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
           role="status"
         >
-          <p className="font-medium">Focused recommendation not in the current list</p>
+          <p className="font-medium">Выбранная рекомендация не в текущем списке</p>
           <p className="mt-1 text-amber-900">
-            Recommendation #{initialFocusRecommendationId} is open in the detail panel but does not appear in the
-            filtered list. Reset filters to try to locate it here.
+            Рекомендация №{initialFocusRecommendationId} открыта в панели деталей, но отсутствует в отфильтрованном
+            списке. Сбросьте фильтры, чтобы попытаться найти её здесь.
           </p>
           <button type="button" className={`${buttonClassNames("secondary")} mt-3`} onClick={resetFocusFilters}>
-            Reset filters and pagination
+            Сбросить фильтры и пагинацию
           </button>
         </div>
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-3 text-lg font-semibold text-gray-900">Recommendations</h2>
+          <h2 className="mb-3 text-lg font-semibold text-gray-900">Рекомендации</h2>
           {loadingList ? (
-            <LoadingState message="Loading recommendations…" />
+            <LoadingState message="Загрузка рекомендаций…" />
           ) : listIsEmpty ? (
             <EmptyState
-              title="No recommendations"
+              title="Нет рекомендаций"
               message={
                 defaultishFilters
-                  ? "Nothing matches the current filters, or generation has not produced rows yet."
-                  : "No rows for these filters. Widen filters or reset quick filters."
+                  ? "Ничего не подходит под фильтры или генерация ещё не создала записи."
+                  : "Нет строк для этих фильтров. Ослабьте фильтры или сбросьте быстрые фильтры."
               }
               action={
                 <div className="flex flex-col items-center gap-2 sm:flex-row">
                   <button type="button" className={buttonClassNames("primary")} onClick={() => void handleGenerate()}>
-                    Generate recommendations
+                    Сгенерировать рекомендации
                   </button>
                   {noOpenAlerts ? (
                     <Link href="/app/alerts" className={buttonClassNames("secondary")}>
-                      Run alerts first
+                      Сначала запустите оповещения
                     </Link>
                   ) : null}
                 </div>
@@ -870,7 +924,7 @@ export default function RecommendationsScreen({
               {groupedItems.map(({ level, rows }) => (
                 <Fragment key={level}>
                   <h3 className="border-b pb-1 text-sm font-semibold uppercase tracking-wide text-gray-700">
-                    Priority: {level}{" "}
+                    Приоритет: {translatePriorityLabel(level)}{" "}
                     <span className="font-normal normal-case text-gray-500">({rows.length})</span>
                   </h3>
                   <ul className="space-y-3">
@@ -898,7 +952,7 @@ export default function RecommendationsScreen({
                           <p className="mt-2 font-medium text-gray-900">{row.title}</p>
                           <p className="mt-1 line-clamp-2 text-sm text-gray-700">{row.what_happened}</p>
                           <p className="mt-1 text-xs text-gray-600">{fmtEntityRec(row)}</p>
-                          <p className="mt-1 text-xs text-gray-500">Updated {fmtDate(row.last_seen_at)}</p>
+                          <p className="mt-1 text-xs text-gray-500">Обновлено {fmtDate(row.last_seen_at)}</p>
                         </button>
                         <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-200 pt-3">
                           <button
@@ -906,7 +960,7 @@ export default function RecommendationsScreen({
                             className={buttonClassNames("secondary")}
                             onClick={() => setDetailId(row.id)}
                           >
-                            Details
+                            Детали
                           </button>
                           {row.status === "open" ? (
                             <>
@@ -916,7 +970,7 @@ export default function RecommendationsScreen({
                                 className={buttonClassNames("primary")}
                                 onClick={() => void runRowAction(row.id, "accept")}
                               >
-                                {actionLoadingId === row.id ? "…" : "Accept"}
+                                {actionLoadingId === row.id ? "…" : "Принять"}
                               </button>
                               <button
                                 type="button"
@@ -924,7 +978,7 @@ export default function RecommendationsScreen({
                                 className={buttonClassNames("secondary")}
                                 onClick={() => void runRowAction(row.id, "dismiss")}
                               >
-                                Dismiss
+                                Отклонить
                               </button>
                               <button
                                 type="button"
@@ -932,11 +986,13 @@ export default function RecommendationsScreen({
                                 className={buttonClassNames("secondary")}
                                 onClick={() => void runRowAction(row.id, "resolve")}
                               >
-                                Resolve
+                                Закрыть
                               </button>
                             </>
                           ) : (
-                            <span className="self-center text-xs text-gray-500">Status: {row.status} — actions locked</span>
+                            <span className="self-center text-xs text-gray-500">
+                              Статус: {translateRecoStatus(row.status)} — действия недоступны
+                            </span>
                           )}
                         </div>
                       </li>
@@ -958,7 +1014,7 @@ export default function RecommendationsScreen({
                 }))
               }
             >
-              Prev
+              Назад
             </button>
             <button
               type="button"
@@ -971,27 +1027,27 @@ export default function RecommendationsScreen({
                 }))
               }
             >
-              Next
+              Вперёд
             </button>
             <span className="text-sm text-gray-600">
-              offset {filters.offset}, limit {filters.limit}
+              смещение {filters.offset}, лимит {filters.limit}
             </span>
           </div>
         </section>
 
         <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-3 text-lg font-semibold text-gray-900">Detail</h2>
+          <h2 className="mb-3 text-lg font-semibold text-gray-900">Детали</h2>
           {detailId == null ? (
             <EmptyState
-              title="No row selected"
-              message="Pick a recommendation from the list to inspect fields, metrics, and related alerts."
+              title="Строка не выбрана"
+              message="Выберите рекомендацию из списка, чтобы просмотреть поля, метрики и связанные оповещения."
             />
           ) : loadingDetail ? (
-            <LoadingState message="Loading recommendation detail…" />
+            <LoadingState message="Загрузка деталей рекомендации…" />
           ) : detailError ? (
             <p className="text-sm text-red-700">{detailError}</p>
           ) : !detail ? (
-            <p className="text-sm text-gray-600">No detail.</p>
+            <p className="text-sm text-gray-600">Нет данных.</p>
           ) : (
             <DetailPanel
               detail={detail}
@@ -1006,13 +1062,13 @@ export default function RecommendationsScreen({
 
       {!loadingPrerequisites && alertsSummary && alertsSummary.open_total === 0 ? (
         <section className="rounded-lg border border-dashed border-amber-200 bg-amber-50/60 p-4 text-sm text-amber-950">
-          <p className="font-medium">No open alerts</p>
+          <p className="font-medium">Нет открытых оповещений</p>
           <p className="mt-1">
-            Recommendations are built from alert context.{" "}
+            Рекомендации строятся на основе контекста оповещений.{" "}
             <Link href="/app/alerts" className="font-medium text-blue-800 underline">
-              Run alerts
+              Запустите оповещения
             </Link>{" "}
-            for your as-of date before expecting rich AI output.
+            для выбранной даты, прежде чем ожидать содержательный ответ ИИ.
           </p>
         </section>
       ) : null}
@@ -1043,12 +1099,12 @@ function DetailPanel({
         <ConfidenceBadge level={detail.confidence_level} />
         <UrgencyBadge urgency={detail.urgency} />
         <StatusBadge status={detail.status} />
-        <span className="text-xs text-gray-500">id {detail.id}</span>
+        <span className="text-xs text-gray-500">идентификатор {detail.id}</span>
       </div>
 
       {validationWarnings.length > 0 ? (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
-          <h3 className="font-semibold text-amber-950">Validation warnings</h3>
+          <h3 className="font-semibold text-amber-950">Предупреждения валидации</h3>
           <ul className="mt-2 list-disc space-y-1 pl-4 text-amber-950">
             {validationWarnings.map((w) => (
               <li key={w}>{w}</li>
@@ -1059,7 +1115,9 @@ function DetailPanel({
 
       {detail.status === "open" ? (
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-          <p className="mb-2 text-xs text-gray-600">Actions only change recommendation status in this MVP.</p>
+          <p className="mb-2 text-xs text-gray-600">
+            Действия в этом MVP только меняют статус рекомендации.
+          </p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -1067,7 +1125,7 @@ function DetailPanel({
               className={buttonClassNames("primary")}
               onClick={onAccept}
             >
-              {actionLoadingId === detail.id ? "Working…" : "Accept"}
+              {actionLoadingId === detail.id ? "Подождите…" : "Принять"}
             </button>
             <button
               type="button"
@@ -1075,7 +1133,7 @@ function DetailPanel({
               className={buttonClassNames("secondary")}
               onClick={onDismiss}
             >
-              Dismiss
+              Отклонить
             </button>
             <button
               type="button"
@@ -1083,90 +1141,92 @@ function DetailPanel({
               className={buttonClassNames("secondary")}
               onClick={onResolve}
             >
-              Resolve
+              Закрыть
             </button>
           </div>
         </div>
       ) : null}
 
       <section>
-        <h3 className="font-semibold text-gray-900">What happened</h3>
+        <h3 className="font-semibold text-gray-900">Что произошло</h3>
         <p className="mt-1 whitespace-pre-wrap text-gray-800">{detail.what_happened}</p>
       </section>
       <section>
-        <h3 className="font-semibold text-gray-900">Why it matters</h3>
+        <h3 className="font-semibold text-gray-900">Почему это важно</h3>
         <p className="mt-1 whitespace-pre-wrap text-gray-800">{detail.why_it_matters}</p>
       </section>
       <section>
-        <h3 className="font-semibold text-gray-900">Recommended action</h3>
+        <h3 className="font-semibold text-gray-900">Рекомендуемое действие</h3>
         <p className="mt-1 whitespace-pre-wrap text-gray-800">{detail.recommended_action}</p>
       </section>
       <section>
-        <h3 className="font-semibold text-gray-900">Expected effect</h3>
+        <h3 className="font-semibold text-gray-900">Ожидаемый эффект</h3>
         <p className="mt-1 whitespace-pre-wrap text-gray-800">{detail.expected_effect ?? "—"}</p>
       </section>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-600">Priority score</h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-600">Оценка приоритета</h3>
           <p className="text-gray-900">{detail.priority_score.toFixed(1)}</p>
         </div>
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-600">AI</h3>
-          <p className="text-gray-900">model {detail.ai_model ?? "—"}</p>
-          <p className="text-gray-900">prompt {detail.ai_prompt_version ?? "—"}</p>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-600">ИИ</h3>
+          <p className="text-gray-900">модель {detail.ai_model ?? "—"}</p>
+          <p className="text-gray-900">промпт {detail.ai_prompt_version ?? "—"}</p>
         </div>
       </div>
       <section>
-        <h3 className="font-semibold text-gray-900">Timestamps</h3>
+        <h3 className="font-semibold text-gray-900">Метки времени</h3>
         <ul className="mt-1 list-inside list-disc text-gray-800">
-          <li>first_seen_at: {fmtDate(detail.first_seen_at)}</li>
-          <li>last_seen_at: {fmtDate(detail.last_seen_at)}</li>
-          <li>accepted_at: {fmtDate(detail.accepted_at)}</li>
-          <li>dismissed_at: {fmtDate(detail.dismissed_at)}</li>
-          <li>resolved_at: {fmtDate(detail.resolved_at)}</li>
+          <li>впервые замечено: {fmtDate(detail.first_seen_at)}</li>
+          <li>последний раз: {fmtDate(detail.last_seen_at)}</li>
+          <li>принято: {fmtDate(detail.accepted_at)}</li>
+          <li>отклонено: {fmtDate(detail.dismissed_at)}</li>
+          <li>закрыто: {fmtDate(detail.resolved_at)}</li>
         </ul>
       </section>
       <section>
-        <h3 className="font-semibold text-gray-900">Supporting metrics</h3>
-        <JsonBlock value={detail.supporting_metrics_payload} emptyLabel="No supporting metrics." />
+        <h3 className="font-semibold text-gray-900">Поддерживающие метрики</h3>
+        <JsonBlock value={detail.supporting_metrics_payload} emptyLabel="Нет поддерживающих метрик." />
       </section>
       <section>
-        <h3 className="font-semibold text-gray-900">Constraints checked</h3>
+        <h3 className="font-semibold text-gray-900">Проверенные ограничения</h3>
         <ConstraintHints payload={detail.constraints_payload} />
-        <JsonBlock value={detail.constraints_payload} emptyLabel="No constraints payload." />
+        <JsonBlock value={detail.constraints_payload} emptyLabel="Нет данных об ограничениях." />
       </section>
       <section>
-        <h3 className="mb-2 font-semibold text-gray-900">Related alerts</h3>
+        <h3 className="mb-2 font-semibold text-gray-900">Связанные оповещения</h3>
         <p className="mb-2 text-xs">
           <Link href="/app/alerts" className="text-blue-700 underline">
-            Open Alerts screen
+            Открыть экран оповещений
           </Link>
         </p>
         {!detail.related_alerts || detail.related_alerts.length === 0 ? (
-          <p className="text-gray-600">No linked alerts.</p>
+          <p className="text-gray-600">Нет связанных оповещений.</p>
         ) : (
           <ul className="space-y-3">
             {detail.related_alerts.map((a) => (
               <li key={a.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                 <div className="flex flex-wrap gap-2 text-xs">
-                  <Badge label={a.severity} />
-                  <Badge label={a.urgency} />
-                  <span className="text-gray-700">{a.alert_group}</span>
+                  <Badge label={translateAlertSeverityUi(a.severity)} />
+                  <Badge label={a.urgency.replaceAll("_", " ")} />
+                  <span className="text-gray-700">{translateAlertGroupUi(a.alert_group)}</span>
                   <span className="font-mono text-gray-700">{a.alert_type}</span>
                 </div>
                 <p className="mt-1 font-medium">{a.title}</p>
                 <p className="text-gray-800">{a.message}</p>
-                <p className="mt-1 text-xs text-gray-600">entity: {fmtEntityRec(a)}</p>
-                <p className="text-xs text-gray-600">status={a.status}, last_seen={fmtDate(a.last_seen_at)}</p>
+                <p className="mt-1 text-xs text-gray-600">сущность: {fmtEntityRec(a)}</p>
+                <p className="text-xs text-gray-600">
+                  статус={translateRecoStatus(a.status)}, последний раз={fmtDate(a.last_seen_at)}
+                </p>
                 <Link
                   href={`/app/alerts?focusAlertId=${encodeURIComponent(String(a.id))}`}
                   className="mt-2 inline-block text-xs font-medium text-blue-700 underline"
                 >
-                  View in Alerts (#{a.id})
+                  Открыть в оповещениях (№{a.id})
                 </Link>
                 <details className="mt-2">
-                  <summary className="cursor-pointer text-xs text-blue-800">Evidence payload (JSON)</summary>
-                  <JsonBlock value={a.evidence_payload} emptyLabel="No evidence payload." />
+                  <summary className="cursor-pointer text-xs text-blue-800">Доказательства (JSON)</summary>
+                  <JsonBlock value={a.evidence_payload} emptyLabel="Нет данных доказательств." />
                 </details>
               </li>
             ))}
@@ -1175,6 +1235,20 @@ function DetailPanel({
       </section>
     </div>
   );
+}
+
+function translateRunStatus(status: string): string {
+  const s = status.toLowerCase();
+  const m: Record<string, string> = {
+    completed: "завершено",
+    success: "успех",
+    succeeded: "успешно",
+    failed: "ошибка",
+    error: "ошибка",
+    running: "выполняется",
+    pending: "в очереди",
+  };
+  return m[s] ?? status;
 }
 
 function RunStatusBadge({ status }: { status: string }) {
@@ -1186,7 +1260,9 @@ function RunStatusBadge({ status }: { status: string }) {
         ? "border-red-300 bg-red-50 text-red-900"
         : "border-amber-300 bg-amber-50 text-amber-900";
   return (
-    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${tone}`}>{status}</span>
+    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${tone}`}>
+      {translateRunStatus(status)}
+    </span>
   );
 }
 
@@ -1202,8 +1278,16 @@ function StatusBadge({ status }: { status: string }) {
           : s === "resolved"
             ? "border-violet-300 bg-violet-50 text-violet-900"
             : "border-gray-200 bg-white text-gray-800";
+  const labels: Record<string, string> = {
+    open: "Открыта",
+    accepted: "Принята",
+    dismissed: "Отклонена",
+    resolved: "Закрыта",
+  };
   return (
-    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${tone}`}>{status}</span>
+    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${tone}`}>
+      {labels[s] ?? status}
+    </span>
   );
 }
 
@@ -1216,23 +1300,43 @@ function PriorityBadge({ level }: { level: string }) {
         : level === "medium"
           ? "border-amber-300 bg-amber-50 text-amber-900"
           : "border-slate-300 bg-slate-50 text-slate-800";
+  const ru =
+    level === "critical"
+      ? "Критический"
+      : level === "high"
+        ? "Высокий"
+        : level === "medium"
+          ? "Средний"
+          : level === "low"
+            ? "Низкий"
+            : level;
   return (
-    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${tone}`}>{level}</span>
+    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${tone}`}>{ru}</span>
   );
 }
 
 function HorizonBadge({ horizon }: { horizon: string }) {
+  const ru =
+    horizon === "short_term"
+      ? "Краткосрочный"
+      : horizon === "medium_term"
+        ? "Среднесрочный"
+        : horizon === "long_term"
+          ? "Долгосрочный"
+          : horizon.replaceAll("_", " ");
   return (
     <span className="inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-xs font-medium text-cyan-900">
-      {horizon.replaceAll("_", " ")}
+      {ru}
     </span>
   );
 }
 
 function ConfidenceBadge({ level }: { level: string }) {
+  const lv =
+    level === "low" ? "низкая" : level === "medium" ? "средняя" : level === "high" ? "высокая" : level;
   return (
     <span className="inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-900">
-      conf: {level}
+      уверенность: {lv}
     </span>
   );
 }
@@ -1240,7 +1344,7 @@ function ConfidenceBadge({ level }: { level: string }) {
 function UrgencyBadge({ urgency }: { urgency: string }) {
   return (
     <span className="inline-flex rounded-full border border-gray-300 bg-white px-2 py-0.5 text-xs font-medium text-gray-800">
-      urgency: {urgency.replaceAll("_", " ")}
+      срочность: {urgency.replaceAll("_", " ")}
     </span>
   );
 }
@@ -1250,16 +1354,16 @@ function ConstraintHints({ payload }: { payload: Record<string, unknown> }) {
   if (keys.length === 0) return null;
   const has = (sub: string) => keys.some((k) => k.toLowerCase().includes(sub));
   const bits: string[] = [];
-  if (has("pric") || has("margin")) bits.push("pricing / margin fields present");
-  if (has("stock")) bits.push("stock risk fields present");
-  if (has("ad") || has("campaign")) bits.push("advertising fields present");
+  if (has("pric") || has("margin")) bits.push("есть поля цены / маржи");
+  if (has("stock")) bits.push("есть поля складского риска");
+  if (has("ad") || has("campaign")) bits.push("есть поля рекламы");
   if (bits.length === 0) return null;
   return <p className="mb-1 text-xs text-gray-600">{bits.join(" · ")}</p>;
 }
 
 function JsonBlock({ value, emptyLabel }: { value: unknown; emptyLabel?: string }) {
   if (isEmptyJsonish(value)) {
-    return <p className="text-gray-600">{emptyLabel ?? "(empty)"}</p>;
+    return <p className="text-gray-600">{emptyLabel ?? "(пусто)"}</p>;
   }
   return (
     <pre className="mt-1 max-h-64 overflow-auto rounded border bg-white p-2 text-xs break-words whitespace-pre-wrap">

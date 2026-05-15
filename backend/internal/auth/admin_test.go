@@ -76,12 +76,17 @@ func TestAdminMiddleware(t *testing.T) {
 	}{
 		{
 			name:       "admin user allowed",
-			ctx:        WithAuthContext(context.Background(), adminUser, seller),
+			ctx:        WithAuthContext(context.Background(), adminUser, &seller),
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "admin user without seller account allowed",
+			ctx:        WithAuthContext(context.Background(), adminUser, nil),
 			wantStatus: http.StatusOK,
 		},
 		{
 			name:       "non admin user forbidden",
-			ctx:        WithAuthContext(context.Background(), nonAdminUser, seller),
+			ctx:        WithAuthContext(context.Background(), nonAdminUser, &seller),
 			wantStatus: http.StatusForbidden,
 		},
 		{

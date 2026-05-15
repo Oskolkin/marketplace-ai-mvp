@@ -1,4 +1,5 @@
 import { cn } from "@/components/ui/cn";
+import { statusLabelRu } from "@/lib/status-labels";
 
 /** Normalized keys after lowercasing and replacing spaces with underscores */
 export type StatusBadgeValue =
@@ -84,7 +85,7 @@ export type StatusBadgeProps = {
 export function StatusBadge({ status, label, className }: StatusBadgeProps) {
   const key = normalizeStatus(status);
   const style = STYLE[key] ?? DEFAULT_STYLE;
-  const text = label ?? status;
+  const text = label ?? statusLabelRu(status);
 
   return (
     <span

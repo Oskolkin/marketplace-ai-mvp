@@ -38,9 +38,9 @@ export default function AdminSupportLink() {
       href="/app/admin"
       className="rounded border px-4 py-2 hover:bg-gray-50"
     >
-      <span className="block">Admin / Support</span>
+      <span className="block">Админка / поддержка</span>
       <span className="text-xs text-gray-600">
-        Internal support tools for clients, sync, AI diagnostics, feedback, and billing.
+        Внутренние инструменты поддержки: клиенты, синхронизация, диагностика ИИ, отзывы и биллинг.
       </span>
     </Link>
   );

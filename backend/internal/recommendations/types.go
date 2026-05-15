@@ -69,11 +69,12 @@ type AccountContext struct {
 }
 
 type AlertsContext struct {
-	OpenTotal  int64         `json:"open_total"`
-	BySeverity []NamedCount  `json:"by_severity"`
-	ByGroup    []NamedCount  `json:"by_group"`
-	TopOpen    []AlertSignal `json:"top_open"`
-	LatestRun  *RunInfo      `json:"latest_run,omitempty"`
+	OpenTotal              int64         `json:"open_total"`
+	OpenCriticalHighCount  int           `json:"open_critical_high_count"`
+	BySeverity             []NamedCount  `json:"by_severity"`
+	ByGroup                []NamedCount  `json:"by_group"`
+	TopOpen                []AlertSignal `json:"top_open"`
+	LatestRun              *RunInfo      `json:"latest_run,omitempty"`
 }
 
 type RecommendationsContext struct {

@@ -43,11 +43,11 @@ function fmtDateTime(value: string | null): string {
 
 function badgeLabel(badge: string): string {
   const key = badge.toLowerCase();
-  if (key.includes("revenue_down")) return "sales down";
-  if (key.includes("sales_ops_down")) return "ops down";
-  if (key.includes("out_of_stock")) return "out of stock";
-  if (key.includes("low_stock")) return "low stock";
-  if (key.includes("high_importance")) return "high importance";
+  if (key.includes("revenue_down")) return "падение выручки";
+  if (key.includes("sales_ops_down")) return "падение операций";
+  if (key.includes("out_of_stock")) return "нет в наличии";
+  if (key.includes("low_stock")) return "мало на складе";
+  if (key.includes("high_importance")) return "высокая важность";
   return badge.replaceAll("_", " ").toLowerCase();
 }
 
@@ -76,7 +76,7 @@ function rowHasLowStock(row: CriticalSKUItem): boolean {
 function rowHasSalesDrop(row: CriticalSKUItem): boolean {
   if (row.revenue_delta_day < 0 || row.orders_delta_day < 0) return true;
   const hay = [...(row.badges ?? []), ...(row.signals ?? [])].join(" ").toLowerCase();
-  return hay.includes("revenue_down") || hay.includes("sales_ops_down") || hay.includes("sales down");
+  return hay.includes("revenue_down") || hay.includes("sales_ops_down") || hay.includes("падение");
 }
 
 function collectBadgeAndSignalOptions(rows: CriticalSKUItem[]): string[] {
@@ -131,7 +131,7 @@ export default function CriticalSKUsScreen({ initialAsOfDate }: CriticalSKUsScre
         setResponse(data);
         setAllRows(data.items ?? []);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load critical SKUs");
+        setError(err instanceof Error ? err.message : "Не удалось загрузить критические SKU");
         setResponse(null);
         setAllRows([]);
       } finally {
@@ -161,10 +161,10 @@ export default function CriticalSKUsScreen({ initialAsOfDate }: CriticalSKUsScre
     return (
       <main className="space-y-6 p-6">
         <PageHeader
-          title="Critical SKU"
-          subtitle="Operational ranking of problematic SKUs sorted by problem score."
+          title="Критические SKU"
+          subtitle="Оперативный рейтинг проблемных SKU по индексу проблемы."
         />
-        <LoadingState message="Loading critical SKUs…" />
+        <LoadingState message="Загрузка критических SKU…" />
       </main>
     );
   }
@@ -173,15 +173,15 @@ export default function CriticalSKUsScreen({ initialAsOfDate }: CriticalSKUsScre
     return (
       <main className="space-y-6 p-6">
         <PageHeader
-          title="Critical SKU"
-          subtitle="Operational ranking of problematic SKUs sorted by problem score."
+          title="Критические SKU"
+          subtitle="Оперативный рейтинг проблемных SKU по индексу проблемы."
         />
         <ErrorState
-          title="Could not load Critical SKU"
-          message={error || "Unknown error"}
+          title="Не удалось загрузить «Критические SKU»"
+          message={error || "Неизвестная ошибка"}
           action={
             <Link href="/app/dashboard" className={buttonClassNames("secondary")}>
-              Back to Dashboard
+              На дашборд
             </Link>
           }
         />
@@ -192,62 +192,74 @@ export default function CriticalSKUsScreen({ initialAsOfDate }: CriticalSKUsScre
   return (
     <main className="space-y-6 p-6">
       <PageHeader
-        title="Critical SKU"
-        subtitle="Operational ranking of problematic SKUs sorted by problem score. Filter and search within the loaded window."
+        title="Критические SKU"
+        subtitle="Оперативный рейтинг проблемных SKU по индексу проблемы. Поиск и фильтры в загруженном окне."
         className="border-0 pb-0"
       >
         <Link href="/app/dashboard" className={buttonClassNames("secondary")}>
-          Dashboard
+          Дашборд
         </Link>
         <Link href="/app/sync-status" className={buttonClassNames("secondary")}>
-          Sync status
+          Статус синхронизации
         </Link>
       </PageHeader>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard title="Rows in view" value={fmtNumber(summary.total)} hint="After search & badge filter" />
         <MetricCard
-          title="High problem score"
-          value={fmtNumber(summary.highProblem)}
-          hint={`Problem score ≥ ${HIGH_PROBLEM_SCORE}`}
+          title="Строк в выборке"
+          value={fmtNumber(summary.total)}
+          hint="После поиска и фильтра по метке"
         />
-        <MetricCard title="Low stock signals" value={fmtNumber(summary.lowStock)} hint="Stock, cover, or badges" />
-        <MetricCard title="Sales pressure" value={fmtNumber(summary.salesDrop)} hint="Negative deltas or badges" />
+        <MetricCard
+          title="Высокий индекс проблемы"
+          value={fmtNumber(summary.highProblem)}
+          hint={`Индекс проблемы ≥ ${HIGH_PROBLEM_SCORE}`}
+        />
+        <MetricCard
+          title="Признаки малого запаса"
+          value={fmtNumber(summary.lowStock)}
+          hint="Остаток, покрытие или метки"
+        />
+        <MetricCard
+          title="Давление по продажам"
+          value={fmtNumber(summary.salesDrop)}
+          hint="Отрицательные дельты или метки"
+        />
       </section>
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Data window</CardTitle>
-          <CardDescription>Server meta for the current request.</CardDescription>
+          <CardTitle className="text-base">Окно данных</CardTitle>
+          <CardDescription>Мета-сведения сервера для текущего запроса.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-1 text-sm text-gray-800">
           <p>
-            <span className="font-medium text-gray-600">As of date:</span> {response.meta.as_of_date}
+            <span className="font-medium text-gray-600">Дата отчёта:</span> {response.meta.as_of_date}
           </p>
           <p>
-            <span className="font-medium text-gray-600">Latest data timestamp:</span>{" "}
+            <span className="font-medium text-gray-600">Метка времени данных:</span>{" "}
             {fmtDateTime(response.meta.latest_data_timestamp)}
           </p>
           <p>
-            <span className="font-medium text-gray-600">Sort:</span> {response.meta.sort_by} ({response.meta.sort_order}
-            ) · <span className="font-medium text-gray-600">Report total:</span> {fmtNumber(response.meta.total)} ·{" "}
-            <span className="font-medium text-gray-600">Loaded:</span> {fmtNumber(allRows.length)} (max {FETCH_LIMIT})
+            <span className="font-medium text-gray-600">Сортировка:</span> {response.meta.sort_by} ({response.meta.sort_order}
+            ) · <span className="font-medium text-gray-600">Всего в отчёте:</span> {fmtNumber(response.meta.total)} ·{" "}
+            <span className="font-medium text-gray-600">Загружено:</span> {fmtNumber(allRows.length)} (макс. {FETCH_LIMIT})
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Search & filters</CardTitle>
-          <CardDescription>Client-side on loaded rows. Clear fields to reset.</CardDescription>
+          <CardTitle className="text-base">Поиск и фильтры</CardTitle>
+          <CardDescription>На стороне клиента для загруженных строк. Очистите поля для сброса.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
           <label className="min-w-[200px] flex-1 text-sm">
-            <span className="mb-1 block font-medium text-gray-700">Search</span>
+            <span className="mb-1 block font-medium text-gray-700">Поиск</span>
             <input
               type="search"
               className="w-full rounded-lg border border-gray-300 px-3 py-2"
-              placeholder="Product name, offer id, or SKU"
+              placeholder="Название товара, ID предложения или SKU"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               autoComplete="off"
@@ -255,13 +267,13 @@ export default function CriticalSKUsScreen({ initialAsOfDate }: CriticalSKUsScre
           </label>
           {filterOptions.length > 0 ? (
             <label className="min-w-[200px] text-sm">
-              <span className="mb-1 block font-medium text-gray-700">Badge / signal</span>
+              <span className="mb-1 block font-medium text-gray-700">Метка / сигнал</span>
               <select
                 className="w-full rounded-lg border border-gray-300 px-3 py-2"
                 value={signalFilter}
                 onChange={(e) => setSignalFilter(e.target.value)}
               >
-                <option value="">All</option>
+                <option value="">Все</option>
                 {filterOptions.map((opt) => (
                   <option key={opt} value={opt}>
                     {opt}
@@ -275,21 +287,21 @@ export default function CriticalSKUsScreen({ initialAsOfDate }: CriticalSKUsScre
 
       <Card>
         <CardHeader>
-          <CardTitle>Problematic SKUs</CardTitle>
+          <CardTitle>Проблемные SKU</CardTitle>
           <CardDescription>
             {filteredRows.length === allRows.length
-              ? `Showing all ${fmtNumber(filteredRows.length)} loaded rows.`
-              : `Showing ${fmtNumber(filteredRows.length)} of ${fmtNumber(allRows.length)} loaded rows.`}
+              ? `Показаны все ${fmtNumber(filteredRows.length)} загруженных строк.`
+              : `Показано ${fmtNumber(filteredRows.length)} из ${fmtNumber(allRows.length)} загруженных строк.`}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {filteredRows.length === 0 ? (
             <EmptyState
-              title={allRows.length === 0 ? "No critical SKUs" : "No matching rows"}
+              title={allRows.length === 0 ? "Нет критических SKU" : "Нет подходящих строк"}
               message={
                 allRows.length === 0
-                  ? "No critical SKUs for the selected period."
-                  : "Try clearing search or the badge filter."
+                  ? "Нет критических SKU за выбранный период."
+                  : "Попробуйте сбросить поиск или фильтр по метке."
               }
               action={
                 allRows.length > 0 ? (
@@ -301,11 +313,11 @@ export default function CriticalSKUsScreen({ initialAsOfDate }: CriticalSKUsScre
                       setSignalFilter("");
                     }}
                   >
-                    Clear filters
+                    Сбросить фильтры
                   </button>
                 ) : (
                   <Link href="/app/sync-status" className={buttonClassNames("secondary")}>
-                    Sync status
+                    Статус синхронизации
                   </Link>
                 )
               }
@@ -315,17 +327,17 @@ export default function CriticalSKUsScreen({ initialAsOfDate }: CriticalSKUsScre
               <table className="min-w-full border-collapse text-sm">
                 <thead>
                   <tr className="border-b text-left">
-                    <th className="px-2 py-2">SKU / Product</th>
-                    <th className="px-2 py-2">Problem score</th>
-                    <th className="px-2 py-2">Revenue</th>
-                    <th className="px-2 py-2">Sales ops</th>
-                    <th className="px-2 py-2">Revenue delta</th>
-                    <th className="px-2 py-2">Ops delta</th>
-                    <th className="px-2 py-2">Stock</th>
-                    <th className="px-2 py-2">Days cover</th>
-                    <th className="px-2 py-2">Risk</th>
-                    <th className="px-2 py-2">Importance</th>
-                    <th className="px-2 py-2">Badges / signals</th>
+                    <th className="px-2 py-2">SKU / товар</th>
+                    <th className="px-2 py-2">Индекс проблемы</th>
+                    <th className="px-2 py-2">Выручка</th>
+                    <th className="px-2 py-2">Операции продаж</th>
+                    <th className="px-2 py-2">Δ выручки</th>
+                    <th className="px-2 py-2">Δ операций</th>
+                    <th className="px-2 py-2">Остаток</th>
+                    <th className="px-2 py-2">Дней покрытия</th>
+                    <th className="px-2 py-2">Риск</th>
+                    <th className="px-2 py-2">Важность</th>
+                    <th className="px-2 py-2">Метки / сигналы</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -334,7 +346,7 @@ export default function CriticalSKUsScreen({ initialAsOfDate }: CriticalSKUsScre
                       <td className="px-2 py-2">
                         <div className="font-medium">{row.product_name || "—"}</div>
                         <div className="text-xs text-gray-500">
-                          product_id={row.ozon_product_id} | offer={row.offer_id || "—"} | sku=
+                          product_id={row.ozon_product_id} | предложение={row.offer_id || "—"} | SKU=
                           {row.sku ?? "—"}
                         </div>
                       </td>
@@ -362,7 +374,7 @@ export default function CriticalSKUsScreen({ initialAsOfDate }: CriticalSKUsScre
                         </div>
                         {(row.signals ?? []).length > 0 ? (
                           <p className="mt-1 text-xs text-gray-500">
-                            signals: {(row.signals ?? []).join(", ")}
+                            сигналы: {(row.signals ?? []).join(", ")}
                           </p>
                         ) : null}
                       </td>

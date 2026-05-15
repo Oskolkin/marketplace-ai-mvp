@@ -138,7 +138,7 @@ export default function OzonOnboarding() {
         setSyncStatus(syncRes);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load Ozon data");
+      setError(err instanceof Error ? err.message : "Не удалось загрузить данные Ozon");
     } finally {
       setLoading(false);
     }
@@ -154,7 +154,7 @@ export default function OzonOnboarding() {
     setSuccessMessage("");
 
     if (!clientId.trim() || !apiKey.trim()) {
-      setError("Client ID and API key are required");
+      setError("Укажите Client ID и ключ API");
       return;
     }
 
@@ -179,7 +179,7 @@ export default function OzonOnboarding() {
       if (!hasConnection && performanceToken.trim()) {
         setPerformanceToken("");
       }
-      setSuccessMessage(hasConnection ? "Connection updated" : "Connection saved");
+      setSuccessMessage(hasConnection ? "Подключение обновлено" : "Подключение сохранено");
       setCredentialsJustSaved(true);
 
       const syncRes = await getOzonIngestionStatus().catch(() => null);
@@ -187,7 +187,7 @@ export default function OzonOnboarding() {
         setSyncStatus(syncRes);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save Ozon connection");
+      setError(err instanceof Error ? err.message : "Не удалось сохранить подключение Ozon");
     } finally {
       setSaving(false);
     }
@@ -209,10 +209,10 @@ export default function OzonOnboarding() {
 
       setConnection(connectionRes.connection);
       setSyncStatus(syncRes);
-      setSuccessMessage("Connection check completed");
+      setSuccessMessage("Проверка подключения выполнена");
       setCredentialsJustSaved(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to check Ozon connection");
+      setError(err instanceof Error ? err.message : "Не удалось проверить подключение Ozon");
     } finally {
       setChecking(false);
     }
@@ -224,11 +224,11 @@ export default function OzonOnboarding() {
     setSuccessMessage("");
 
     if (!hasConnection) {
-      setError("Save Ozon Seller API credentials first");
+      setError("Сначала сохраните учётные данные Ozon Seller API");
       return;
     }
     if (!performanceToken.trim()) {
-      setError("Paste a Performance API token or use Remove token");
+      setError("Вставьте токен Performance API или нажмите «Удалить токен»");
       return;
     }
 
@@ -239,14 +239,14 @@ export default function OzonOnboarding() {
       });
       setConnection(response.connection);
       setPerformanceToken("");
-      setSuccessMessage("Performance token saved");
+      setSuccessMessage("Токен Performance сохранён");
 
       const syncRes = await getOzonIngestionStatus().catch(() => null);
       if (syncRes) {
         setSyncStatus(syncRes);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save performance token");
+      setError(err instanceof Error ? err.message : "Не удалось сохранить токен Performance");
     } finally {
       setSavingPerf(false);
     }
@@ -267,14 +267,14 @@ export default function OzonOnboarding() {
       });
       setConnection(response.connection);
       setPerformanceToken("");
-      setSuccessMessage("Performance token removed");
+      setSuccessMessage("Токен Performance удалён");
 
       const syncRes = await getOzonIngestionStatus().catch(() => null);
       if (syncRes) {
         setSyncStatus(syncRes);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove performance token");
+      setError(err instanceof Error ? err.message : "Не удалось удалить токен Performance");
     } finally {
       setSavingPerf(false);
     }
@@ -285,7 +285,7 @@ export default function OzonOnboarding() {
     setSuccessMessage("");
 
     if (!hasConnection) {
-      setError("Save Ozon Seller API credentials first");
+      setError("Сначала сохраните учётные данные Ozon Seller API");
       return;
     }
 
@@ -298,10 +298,10 @@ export default function OzonOnboarding() {
       ]);
       setConnection(connectionRes.connection);
       setSyncStatus(syncRes);
-      setSuccessMessage("Performance connection check completed");
+      setSuccessMessage("Проверка Performance API выполнена");
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to check performance connection"
+        err instanceof Error ? err.message : "Не удалось проверить подключение Performance"
       );
     } finally {
       setCheckingPerf(false);
@@ -324,9 +324,9 @@ export default function OzonOnboarding() {
 
       setConnection(connectionRes.connection);
       setSyncStatus(syncRes);
-      setSuccessMessage("Initial sync started — open Sync Status to watch import jobs.");
+      setSuccessMessage("Первоначальная синхронизация запущена — откройте «Статус синхронизации», чтобы следить за импортом.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start initial sync");
+      setError(err instanceof Error ? err.message : "Не удалось запустить первоначальную синхронизацию");
     } finally {
       setStartingSync(false);
     }
@@ -344,14 +344,14 @@ export default function OzonOnboarding() {
       setConnection(connectionRes.connection);
       setSyncStatus(syncRes);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to refresh status");
+      setError(err instanceof Error ? err.message : "Не удалось обновить статус");
     }
   }
 
   if (loading) {
     return (
       <div className="py-4">
-        <LoadingState message="Loading Ozon onboarding…" />
+        <LoadingState message="Загрузка подключения Ozon…" />
       </div>
     );
   }
@@ -361,21 +361,21 @@ export default function OzonOnboarding() {
   const perfBadgeStatus =
     performanceReady === "set" ? "valid" : performanceReady === "error" ? "invalid" : "missing";
   const perfBadgeLabel =
-    performanceReady === "set" ? "Token set" : performanceReady === "error" ? "Error" : "Token missing";
+    performanceReady === "set" ? "Токен задан" : performanceReady === "error" ? "Ошибка" : "Токен не задан";
 
   return (
     <div className="space-y-8">
-      {error ? <ErrorState title="Something went wrong" message={error} /> : null}
+      {error ? <ErrorState title="Что-то пошло не так" message={error} /> : null}
       {successMessage ? (
         <p className="text-sm font-medium text-emerald-800">{successMessage}</p>
       ) : null}
 
       <Card>
         <CardHeader>
-          <CardTitle>Connection readiness</CardTitle>
+          <CardTitle>Готовность подключения</CardTitle>
           <CardDescription>
-            Seller API is required for catalog and orders sync. Performance API is optional and
-            only used for advertising analytics — you can run initial sync without it.
+            Seller API нужен для синхронизации каталога и заказов. Performance API необязателен и используется только для
+            аналитики рекламы — первую синхронизацию можно запускать без него.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -384,7 +384,7 @@ export default function OzonOnboarding() {
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <StatusBadge
                 status={sellerBadgeStatus}
-                label={sellerReady === "connected" ? "Connected" : sellerReady === "error" ? "Error" : "Missing"}
+                label={sellerReady === "connected" ? "Подключено" : sellerReady === "error" ? "Ошибка" : "Не задано"}
               />
             </div>
             <p className="mt-2 text-sm text-gray-600">{connectionStatusLabel}</p>
@@ -398,8 +398,7 @@ export default function OzonOnboarding() {
             </div>
             <p className="mt-2 text-sm text-gray-600">{performanceStatusLabel}</p>
             <p className="mt-2 text-xs text-gray-500">
-              Needed only for ad analytics import. Does not block Seller API sync or dashboard
-              metrics from catalog/orders/stocks.
+              Нужен только для импорта данных рекламы. Не блокирует синхронизацию Seller API и основные показатели дашборда по каталогу, заказам и остаткам.
             </p>
           </div>
         </CardContent>
@@ -409,10 +408,9 @@ export default function OzonOnboarding() {
         <Card className="border-amber-200 bg-amber-50/60">
           <CardContent className="py-4">
             <div className="flex flex-wrap items-start gap-2">
-              <Badge tone="warning">Performance token</Badge>
+              <Badge tone="warning">Токен Performance</Badge>
               <p className="text-sm text-amber-950">
-                No Performance API token — advertising import may be skipped. Seller sync and core
-                metrics still work. Add a token below when you want ad analytics.
+                Нет токена Performance API — импорт рекламы может быть пропущен. Seller-синхронизация и основные метрики продолжают работать. Добавьте токен ниже, когда нужна аналитика рекламы.
               </p>
             </div>
           </CardContent>
@@ -422,14 +420,14 @@ export default function OzonOnboarding() {
       {showCheckSellerCallout ? (
         <Card className="border-sky-200 bg-sky-50/50">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Next step: verify Seller API</CardTitle>
+            <CardTitle className="text-base">Дальше: проверить Seller API</CardTitle>
             <CardDescription>
-              Credentials are saved. Run a check so we can confirm access before starting sync.
+              Учётные данные сохранены. Запустите проверку доступа перед началом синхронизации.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button type="button" variant="primary" disabled={checking} onClick={() => void handleCheck()}>
-              {checking ? "Checking…" : "Check Seller API"}
+              {checking ? "Проверка…" : "Проверить Seller API"}
             </Button>
           </CardContent>
         </Card>
@@ -438,11 +436,11 @@ export default function OzonOnboarding() {
       {isConnectionValid ? (
         <Card className="border-emerald-200 bg-emerald-50/40">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Seller API is valid</CardTitle>
+            <CardTitle className="text-base">Seller API в порядке</CardTitle>
             <CardDescription>
               {syncInProgress
-                ? "A sync job is already running or queued — use Sync Status to monitor progress."
-                : "Start the initial import of products, orders, stocks, and ads."}
+                ? "Задача синхронизации уже выполняется или стоит в очереди — статус смотрите на странице «Статус синхронизации»."
+                : "Запустите первичный импорт товаров, заказов, остатков и рекламы."}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
@@ -452,14 +450,14 @@ export default function OzonOnboarding() {
               disabled={!showStartInitialSyncCta || startingSync}
               onClick={() => void handleInitialSync()}
             >
-              {startingSync ? "Starting…" : "Start initial sync"}
+              {startingSync ? "Запуск…" : "Запустить первую синхронизацию"}
             </Button>
             <Link href="/app/sync-status" className={buttonClassNames("secondary")}>
-              Open Sync Status
+              Открыть статус синхронизации
             </Link>
             {syncStatus?.last_successful_sync_at ? (
               <Link href="/app/dashboard" className={buttonClassNames("secondary")}>
-                Open Dashboard
+                Открыть дашборд
               </Link>
             ) : null}
           </CardContent>
@@ -469,55 +467,54 @@ export default function OzonOnboarding() {
       <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <h2 className="mb-2 text-xl font-semibold text-gray-900">Ozon Seller API</h2>
         <p className="mb-4 text-sm text-gray-600">
-          Enter your Ozon Seller API credentials (Client-Id and API key). The API key is never shown
-          again after save.
+          Укажите учётные данные Ozon Seller API (Client-Id и ключ API). Ключ после сохранения больше не показывается.
         </p>
 
         <div className="mb-4 space-y-1 text-sm text-gray-700">
           <p>
-            <span className="font-medium text-gray-900">Seller API status:</span> {connectionStatusLabel}
+            <span className="font-medium text-gray-900">Статус Seller API:</span> {connectionStatusLabel}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Performance API status:</span>{" "}
+            <span className="font-medium text-gray-900">Статус Performance API:</span>{" "}
             {performanceStatusLabel}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Performance token:</span>{" "}
-            {connection?.performance_token_set ? "Set (hidden)" : "Not set"}
+            <span className="font-medium text-gray-900">Токен Performance:</span>{" "}
+            {connection?.performance_token_set ? "Задан (скрыт)" : "Не задан"}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Saved credentials:</span>{" "}
-            {connection?.has_credentials ? "Yes" : "No"}
+            <span className="font-medium text-gray-900">Учётные данные сохранены:</span>{" "}
+            {connection?.has_credentials ? "Да" : "Нет"}
           </p>
           <p>
             <span className="font-medium text-gray-900">Client ID:</span>{" "}
             {connection?.client_id_masked || "—"}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Seller last check:</span>{" "}
+            <span className="font-medium text-gray-900">Последняя проверка Seller:</span>{" "}
             {syncStatus?.last_check_result ?? connection?.last_check_result ?? "—"}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Seller last error:</span>{" "}
+            <span className="font-medium text-gray-900">Последняя ошибка Seller:</span>{" "}
             {syncStatus?.last_error ?? connection?.last_error ?? "—"}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Performance last check:</span>{" "}
+            <span className="font-medium text-gray-900">Последняя проверка Performance:</span>{" "}
             {syncStatus?.performance_last_check_result ??
               connection?.performance_last_check_result ??
               "—"}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Performance last error:</span>{" "}
+            <span className="font-medium text-gray-900">Последняя ошибка Performance:</span>{" "}
             {syncStatus?.performance_last_error ?? connection?.performance_last_error ?? "—"}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Last successful update:</span>{" "}
+            <span className="font-medium text-gray-900">Последнее успешное обновление:</span>{" "}
             {syncStatus?.last_successful_sync_at ?? "—"}
           </p>
           {latestAdsImportError ? (
             <p className="text-amber-800">
-              <span className="font-medium">Latest ads import error:</span> {latestAdsImportError}
+              <span className="font-medium">Ошибка последнего импорта рекламы:</span> {latestAdsImportError}
             </p>
           ) : null}
         </div>
@@ -529,24 +526,24 @@ export default function OzonOnboarding() {
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm"
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
-              placeholder={hasConnection ? "Enter new Client ID" : "Enter Client ID"}
+              placeholder={hasConnection ? "Введите новый Client ID" : "Введите Client ID"}
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">API key</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Ключ API</label>
             <input
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm"
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder={hasConnection ? "Enter new API key" : "Enter API key"}
+              placeholder={hasConnection ? "Введите новый ключ API" : "Введите ключ API"}
             />
           </div>
 
           <div className="flex flex-wrap gap-3">
             <Button type="submit" variant="primary" disabled={saving}>
-              {saving ? "Saving…" : hasConnection ? "Update connection" : "Save connection"}
+              {saving ? "Сохранение…" : hasConnection ? "Обновить подключение" : "Сохранить подключение"}
             </Button>
 
             <Button
@@ -555,7 +552,7 @@ export default function OzonOnboarding() {
               disabled={!connection || checking}
               onClick={() => void handleCheck()}
             >
-              {checking ? "Checking…" : "Check Seller API"}
+              {checking ? "Проверка…" : "Проверить Seller API"}
             </Button>
           </div>
         </form>
@@ -564,14 +561,13 @@ export default function OzonOnboarding() {
       <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <h2 className="mb-2 text-xl font-semibold text-gray-900">Ozon Performance API</h2>
         <p className="mb-4 text-sm text-gray-600">
-          Bearer token for Ozon Performance API — used only for advertising analytics sync. It is
-          separate from the Seller API key, stored encrypted, and never shown after save.
+          Bearer-токен Ozon Performance API — только для синхронизации аналитики рекламы. Он отделён от ключа Seller API, хранится в зашифрованном виде и после сохранения не показывается.
         </p>
 
         <form onSubmit={handleSavePerformance} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
-              Performance API bearer token
+              Bearer-токен Performance API
             </label>
             <input
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm"
@@ -581,15 +577,15 @@ export default function OzonOnboarding() {
               onChange={(e) => setPerformanceToken(e.target.value)}
               placeholder={
                 connection?.performance_token_set
-                  ? "Enter a new token to replace the saved one"
-                  : "Paste Performance API bearer token"
+                  ? "Введите новый токен, чтобы заменить сохранённый"
+                  : "Вставьте bearer-токен Performance API"
               }
             />
           </div>
 
           <div className="flex flex-wrap gap-3">
             <Button type="submit" variant="primary" disabled={!hasConnection || savingPerf}>
-              {savingPerf ? "Saving…" : "Save performance token"}
+              {savingPerf ? "Сохранение…" : "Сохранить токен Performance"}
             </Button>
             <Button
               type="button"
@@ -597,7 +593,7 @@ export default function OzonOnboarding() {
               disabled={!hasConnection || savingPerf || !connection?.performance_token_set}
               onClick={() => void handleClearPerformance()}
             >
-              Remove token
+              Удалить токен
             </Button>
             <Button
               type="button"
@@ -605,37 +601,36 @@ export default function OzonOnboarding() {
               disabled={!hasConnection || checkingPerf}
               onClick={() => void handleCheckPerformance()}
             >
-              {checkingPerf ? "Checking…" : "Check Performance API"}
+              {checkingPerf ? "Проверка…" : "Проверить Performance API"}
             </Button>
           </div>
         </form>
       </section>
 
       <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-2 text-xl font-semibold text-gray-900">Initial onboarding sync</h2>
+        <h2 className="mb-2 text-xl font-semibold text-gray-900">Первичная синхронизация (онбординг)</h2>
         <p className="mb-4 text-sm text-gray-600">
-          After a successful Seller API check, start the initial synchronization. You can monitor
-          import jobs on Sync Status.
+          После успешной проверки Seller API запустите первичную синхронизацию. Ход импорта смотрите на странице «Статус синхронизации».
         </p>
 
         <div className="mb-4 space-y-1 text-sm text-gray-700">
           <p>
-            <span className="font-medium text-gray-900">Initial sync status:</span> {initialSyncLabel}
+            <span className="font-medium text-gray-900">Статус первой синхронизации:</span> {initialSyncLabel}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Last sync error:</span>{" "}
+            <span className="font-medium text-gray-900">Последняя ошибка синхронизации:</span>{" "}
             {syncStatus?.current_sync?.error_message ?? "—"}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Current sync type:</span>{" "}
+            <span className="font-medium text-gray-900">Тип текущей синхронизации:</span>{" "}
             {syncStatus?.current_sync?.type ?? "—"}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Current sync started at:</span>{" "}
+            <span className="font-medium text-gray-900">Текущая синхронизация началась:</span>{" "}
             {syncStatus?.current_sync?.started_at ?? "—"}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Current sync finished at:</span>{" "}
+            <span className="font-medium text-gray-900">Текущая синхронизация завершилась:</span>{" "}
             {syncStatus?.current_sync?.finished_at ?? "—"}
           </p>
         </div>
@@ -647,20 +642,20 @@ export default function OzonOnboarding() {
             disabled={!isConnectionValid || syncInProgress || startingSync}
             onClick={() => void handleInitialSync()}
           >
-            {startingSync ? "Starting…" : "Start initial sync"}
+            {startingSync ? "Запуск…" : "Запустить первую синхронизацию"}
           </Button>
 
           <Button type="button" variant="secondary" onClick={() => void handleRefreshStatus()}>
-            Refresh status
+            Обновить статус
           </Button>
           <Link href="/app/sync-status" className={buttonClassNames("secondary")}>
-            Open Sync Status
+            Открыть статус синхронизации
           </Link>
         </div>
 
         {!isConnectionValid ? (
           <p className="mt-3 text-sm text-gray-600">
-            Initial sync is available only after a successful Seller API check.
+            Первая синхронизация доступна только после успешной проверки Seller API.
           </p>
         ) : null}
       </section>

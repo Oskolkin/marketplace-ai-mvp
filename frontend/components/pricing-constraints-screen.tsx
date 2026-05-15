@@ -121,7 +121,7 @@ export default function PricingConstraintsScreen() {
           setEffectiveList(null);
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load screen");
+        setError(e instanceof Error ? e.message : "Не удалось загрузить экран");
       } finally {
         setLoading(false);
       }
@@ -149,7 +149,7 @@ export default function PricingConstraintsScreen() {
         setEffectiveList(null);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load screen");
+      setError(e instanceof Error ? e.message : "Не удалось загрузить экран");
     } finally {
       setLoading(false);
     }
@@ -172,10 +172,10 @@ export default function PricingConstraintsScreen() {
       setWorking(true);
       setError("");
       await putGlobalDefault(rulePayload(globalForm));
-      setSuccess("Global default saved.");
+      setSuccess("Глобальные значения по умолчанию сохранены.");
       await reloadAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save global default");
+      setError(err instanceof Error ? err.message : "Не удалось сохранить глобальные значения");
     } finally {
       setWorking(false);
     }
@@ -187,16 +187,16 @@ export default function PricingConstraintsScreen() {
       setWorking(true);
       setError("");
       const categoryId = int(categoryForm.categoryId);
-      if (!categoryId || categoryId <= 0) throw new Error("description_category_id must be > 0");
+      if (!categoryId || categoryId <= 0) throw new Error("description_category_id должен быть > 0");
       await postCategoryRule({
         description_category_id: categoryId,
         category_code: categoryForm.categoryCode.trim() || undefined,
         ...rulePayload(categoryForm),
       });
-      setSuccess("Category rule saved.");
+      setSuccess("Правило категории сохранено.");
       await reloadAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save category rule");
+      setError(err instanceof Error ? err.message : "Не удалось сохранить правило категории");
     } finally {
       setWorking(false);
     }
@@ -207,10 +207,10 @@ export default function PricingConstraintsScreen() {
       setWorking(true);
       setError("");
       await deactivateCategoryRule(ruleID);
-      setSuccess("Category rule deactivated.");
+      setSuccess("Правило категории отключено.");
       await reloadAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to deactivate category rule");
+      setError(err instanceof Error ? err.message : "Не удалось отключить правило категории");
     } finally {
       setWorking(false);
     }
@@ -224,17 +224,17 @@ export default function PricingConstraintsScreen() {
       const sku = int(skuForm.sku);
       const productId = int(skuForm.productId);
       const offerId = skuForm.offerId.trim() || undefined;
-      if (!sku && !productId && !offerId) throw new Error("Provide sku or product_id or offer_id");
+      if (!sku && !productId && !offerId) throw new Error("Укажите sku, product_id или offer_id");
       await postSKUOverride({
         sku: sku || undefined,
         product_id: productId || undefined,
         offer_id: offerId,
         ...rulePayload(skuForm),
       });
-      setSuccess("SKU override saved.");
+      setSuccess("Переопределение SKU сохранено.");
       await reloadAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save SKU override");
+      setError(err instanceof Error ? err.message : "Не удалось сохранить переопределение SKU");
     } finally {
       setWorking(false);
     }
@@ -245,10 +245,10 @@ export default function PricingConstraintsScreen() {
       setWorking(true);
       setError("");
       await deactivateSKUOverride(ruleID);
-      setSuccess("SKU override deactivated.");
+      setSuccess("Переопределение SKU отключено.");
       await reloadAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to deactivate SKU override");
+      setError(err instanceof Error ? err.message : "Не удалось отключить переопределение SKU");
     } finally {
       setWorking(false);
     }
@@ -261,7 +261,7 @@ export default function PricingConstraintsScreen() {
       setError("");
       const refPrice = num(previewForm.refPrice);
       const margin = num(previewForm.margin);
-      if (refPrice == null || margin == null) throw new Error("reference_price and reference_margin_percent are required");
+      if (refPrice == null || margin == null) throw new Error("Требуются reference_price и reference_margin_percent");
       const result = await postPreview({
         reference_price: refPrice,
         reference_margin_percent: margin,
@@ -270,9 +270,9 @@ export default function PricingConstraintsScreen() {
         input_price: num(previewForm.input),
       });
       setPreview(result);
-      setSuccess("Preview calculated.");
+      setSuccess("Предпросчёт выполнен.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed preview");
+      setError(err instanceof Error ? err.message : "Не удалось выполнить предпросчёт");
     } finally {
       setWorking(false);
     }
@@ -296,7 +296,7 @@ export default function PricingConstraintsScreen() {
         setEffectiveList(null);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load effective constraints");
+      setError(err instanceof Error ? err.message : "Не удалось загрузить эффективные ограничения");
     } finally {
       setWorking(false);
     }
@@ -343,16 +343,16 @@ export default function PricingConstraintsScreen() {
       refPrice: referencePrice == null ? "" : String(referencePrice),
       margin: referenceMargin == null ? "" : String(referenceMargin),
     }));
-    setSuccess("Preview form prefilled from selected row.");
+    setSuccess("Форма предпросчёта заполнена из выбранной строки.");
     window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
   }
 
-  if (loading) return <main className="p-6">Loading pricing constraints...</main>;
+  if (loading) return <main className="p-6">Загрузка ограничений ценообразования...</main>;
 
   if (!data) {
     return (
       <main className="p-6">
-        <p className="text-red-600">{error || "Failed to load pricing constraints"}</p>
+        <p className="text-red-600">{error || "Не удалось загрузить ограничения ценообразования"}</p>
       </main>
     );
   }
@@ -360,64 +360,64 @@ export default function PricingConstraintsScreen() {
   return (
     <main className="space-y-6 p-6">
       <div>
-        <h1 className="text-2xl font-semibold">Pricing Constraints</h1>
-        <p className="text-sm text-gray-600">Rules, effective constraints and explainable preview.</p>
+        <h1 className="text-2xl font-semibold">Ограничения ценообразования</h1>
+        <p className="text-sm text-gray-600">Правила, эффективные ограничения и объяснимый предпросчёт.</p>
       </div>
 
       {error ? <p className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700">{error}</p> : null}
       {success ? <p className="rounded border border-green-300 bg-green-50 p-2 text-sm text-green-700">{success}</p> : null}
 
       <section className="rounded border p-4 text-sm">
-        <h2 className="mb-2 text-lg font-semibold">Meta</h2>
-        <p>Total rules: {data.meta.total_rules}</p>
-        <p>Active rules: {data.meta.active_rules}</p>
-        <p>Last rule update: {fmtDate(data.meta.last_rule_update_at)}</p>
-        <p>Last recompute: {fmtDate(data.meta.last_recompute_at)}</p>
+        <h2 className="mb-2 text-lg font-semibold">Метаданные</h2>
+        <p>Всего правил: {data.meta.total_rules}</p>
+        <p>Активных правил: {data.meta.active_rules}</p>
+        <p>Последнее изменение правил: {fmtDate(data.meta.last_rule_update_at)}</p>
+        <p>Последний пересчёт: {fmtDate(data.meta.last_recompute_at)}</p>
       </section>
 
       <section className="rounded border p-4">
-        <h2 className="mb-3 text-lg font-semibold">Global Defaults</h2>
+        <h2 className="mb-3 text-lg font-semibold">Глобально по умолчанию</h2>
         <p className="mb-3 text-sm text-gray-600">
-          Main seller inputs: min price, max price, margin at current price.
+          Основные поля продавца: мин. цена, макс. цена, маржа при текущей цене.
         </p>
         <form onSubmit={submitGlobal} className="grid gap-2 md:grid-cols-3">
-          <LabeledInput label="Min price" value={globalForm.min} onChange={(v) => setGlobalForm((s) => ({ ...s, min: v }))} />
-          <LabeledInput label="Max price" value={globalForm.max} onChange={(v) => setGlobalForm((s) => ({ ...s, max: v }))} />
-          <LabeledInput label="Margin at current price" value={globalForm.margin} onChange={(v) => setGlobalForm((s) => ({ ...s, margin: v }))} />
+          <LabeledInput label="Мин. цена" value={globalForm.min} onChange={(v) => setGlobalForm((s) => ({ ...s, min: v }))} />
+          <LabeledInput label="Макс. цена" value={globalForm.max} onChange={(v) => setGlobalForm((s) => ({ ...s, max: v }))} />
+          <LabeledInput label="Маржа при текущей цене" value={globalForm.margin} onChange={(v) => setGlobalForm((s) => ({ ...s, margin: v }))} />
           <details className="md:col-span-3 rounded border p-2 text-sm">
-            <summary className="cursor-pointer font-medium">Advanced fields</summary>
+            <summary className="cursor-pointer font-medium">Дополнительные поля</summary>
             <div className="mt-2 grid gap-2 md:grid-cols-3">
-              <LabeledInput label="Current price (optional)" value={globalForm.refPriceAdvanced} onChange={(v) => setGlobalForm((s) => ({ ...s, refPriceAdvanced: v }))} />
-              <LabeledInput label="Implied cost (optional)" value={globalForm.costAdvanced} onChange={(v) => setGlobalForm((s) => ({ ...s, costAdvanced: v }))} />
+              <LabeledInput label="Текущая цена (необяз.)" value={globalForm.refPriceAdvanced} onChange={(v) => setGlobalForm((s) => ({ ...s, refPriceAdvanced: v }))} />
+              <LabeledInput label="Расчётная себестоимость (необяз.)" value={globalForm.costAdvanced} onChange={(v) => setGlobalForm((s) => ({ ...s, costAdvanced: v }))} />
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={globalForm.isActive} onChange={(e) => setGlobalForm((s) => ({ ...s, isActive: e.target.checked }))} />
-                Active
+                Активно
               </label>
             </div>
           </details>
           <div className="md:col-span-3">
             <button type="submit" disabled={working} className="rounded border px-3 py-2 hover:bg-gray-50">
-              {working ? "Saving..." : "Save global default"}
+              {working ? "Сохранение..." : "Сохранить глобально по умолчанию"}
             </button>
           </div>
         </form>
       </section>
 
       <section className="space-y-3 rounded border p-4">
-        <h2 className="text-lg font-semibold">Category Rules</h2>
+        <h2 className="text-lg font-semibold">Правила по категориям</h2>
         {data.category_rules.length === 0 ? (
-          <p className="text-sm text-gray-600">No category rules yet.</p>
+          <p className="text-sm text-gray-600">Правил для категорий пока нет.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b text-left">
                   <th className="px-2 py-2">description_category_id</th>
-                  <th className="px-2 py-2">products in category</th>
+                  <th className="px-2 py-2">Товаров в категории</th>
                   <th className="px-2 py-2">min</th>
                   <th className="px-2 py-2">max</th>
                   <th className="px-2 py-2">margin</th>
-                  <th className="px-2 py-2">action</th>
+                  <th className="px-2 py-2">Действие</th>
                 </tr>
               </thead>
               <tbody>
@@ -439,7 +439,7 @@ export default function PricingConstraintsScreen() {
                           onClick={() => onDeactivateCategoryRule(row.id)}
                           disabled={working}
                         >
-                          Deactivate
+                          Отключить
                         </button>
                       </td>
                     </tr>
@@ -457,53 +457,53 @@ export default function PricingConstraintsScreen() {
               value={categoryForm.categoryId}
               onChange={(e) => setCategoryForm((s) => ({ ...s, categoryId: e.target.value }))}
             >
-              <option value="">Select from products…</option>
+              <option value="">Выберите из каталога…</option>
               {data.category_options.map((option) => (
                 <option key={option.description_category_id} value={String(option.description_category_id)}>
-                  {option.description_category_id} ({option.products_count} products)
+                  {option.description_category_id} ({option.products_count} товаров)
                 </option>
               ))}
             </select>
           </label>
-          <LabeledInput label="category_code (optional)" value={categoryForm.categoryCode} onChange={(v) => setCategoryForm((s) => ({ ...s, categoryCode: v }))} />
-          <LabeledInput label="Min price" value={categoryForm.min} onChange={(v) => setCategoryForm((s) => ({ ...s, min: v }))} />
-          <LabeledInput label="Max price" value={categoryForm.max} onChange={(v) => setCategoryForm((s) => ({ ...s, max: v }))} />
-          <LabeledInput label="Margin at current price" value={categoryForm.margin} onChange={(v) => setCategoryForm((s) => ({ ...s, margin: v }))} />
+          <LabeledInput label="category_code (необяз.)" value={categoryForm.categoryCode} onChange={(v) => setCategoryForm((s) => ({ ...s, categoryCode: v }))} />
+          <LabeledInput label="Мин. цена" value={categoryForm.min} onChange={(v) => setCategoryForm((s) => ({ ...s, min: v }))} />
+          <LabeledInput label="Макс. цена" value={categoryForm.max} onChange={(v) => setCategoryForm((s) => ({ ...s, max: v }))} />
+          <LabeledInput label="Маржа при текущей цене" value={categoryForm.margin} onChange={(v) => setCategoryForm((s) => ({ ...s, margin: v }))} />
           <details className="md:col-span-3 rounded border p-2 text-sm">
-            <summary className="cursor-pointer font-medium">Advanced fields</summary>
+            <summary className="cursor-pointer font-medium">Дополнительные поля</summary>
             <div className="mt-2 grid gap-2 md:grid-cols-3">
-              <LabeledInput label="Current price (optional)" value={categoryForm.refPriceAdvanced} onChange={(v) => setCategoryForm((s) => ({ ...s, refPriceAdvanced: v }))} />
-              <LabeledInput label="Implied cost (optional)" value={categoryForm.costAdvanced} onChange={(v) => setCategoryForm((s) => ({ ...s, costAdvanced: v }))} />
+              <LabeledInput label="Текущая цена (необяз.)" value={categoryForm.refPriceAdvanced} onChange={(v) => setCategoryForm((s) => ({ ...s, refPriceAdvanced: v }))} />
+              <LabeledInput label="Расчётная себестоимость (необяз.)" value={categoryForm.costAdvanced} onChange={(v) => setCategoryForm((s) => ({ ...s, costAdvanced: v }))} />
             </div>
           </details>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={categoryForm.isActive} onChange={(e) => setCategoryForm((s) => ({ ...s, isActive: e.target.checked }))} />
-            Active
+            Активно
           </label>
           <div className="md:col-span-3">
             <button type="submit" disabled={working} className="rounded border px-3 py-2 hover:bg-gray-50">
-              {working ? "Saving..." : "Save category rule"}
+              {working ? "Сохранение..." : "Сохранить правило категории"}
             </button>
           </div>
         </form>
       </section>
 
       <section className="space-y-3 rounded border p-4">
-        <h2 className="text-lg font-semibold">SKU Overrides</h2>
+        <h2 className="text-lg font-semibold">Переопределения SKU</h2>
         {data.sku_overrides.length === 0 ? (
-          <p className="text-sm text-gray-600">No SKU overrides yet.</p>
+          <p className="text-sm text-gray-600">Переопределений SKU пока нет.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b text-left">
                   <th className="px-2 py-2">offer_id</th>
-                  <th className="px-2 py-2">product name</th>
-                  <th className="px-2 py-2">current price</th>
-                  <th className="px-2 py-2">override min / max / margin</th>
-                  <th className="px-2 py-2">resolved source</th>
-                  <th className="px-2 py-2">action</th>
-                  <th className="px-2 py-2">preview</th>
+                  <th className="px-2 py-2">Название товара</th>
+                  <th className="px-2 py-2">Текущая цена</th>
+                  <th className="px-2 py-2">Переопр. min / max / маржа</th>
+                  <th className="px-2 py-2">Источник правила</th>
+                  <th className="px-2 py-2">Действие</th>
+                  <th className="px-2 py-2">Предпросчёт</th>
                 </tr>
               </thead>
               <tbody>
@@ -515,7 +515,7 @@ export default function PricingConstraintsScreen() {
                       <td className="px-2 py-2">{view.productName}</td>
                       <td className="px-2 py-2">{fmtMoney(view.currentPrice)}</td>
                       <td className="px-2 py-2">
-                        min {fmtMoney(row.min_price)} / max {fmtMoney(row.max_price)} / margin{" "}
+                        min {fmtMoney(row.min_price)} / max {fmtMoney(row.max_price)} / маржа{" "}
                         {fmtNum(row.reference_margin_percent)}
                       </td>
                       <td className="px-2 py-2">{view.resolvedSource}</td>
@@ -526,7 +526,7 @@ export default function PricingConstraintsScreen() {
                           type="button"
                           disabled={working}
                         >
-                          Deactivate
+                          Отключить
                         </button>
                       </td>
                       <td className="px-2 py-2">
@@ -537,7 +537,7 @@ export default function PricingConstraintsScreen() {
                           }
                           type="button"
                         >
-                          Preview
+                          Предпросчёт
                         </button>
                       </td>
                     </tr>
@@ -548,56 +548,56 @@ export default function PricingConstraintsScreen() {
           </div>
         )}
         <form onSubmit={submitSkuOverride} className="grid gap-2 md:grid-cols-3">
-          <LabeledInput label="sku (optional)" value={skuForm.sku} onChange={(v) => setSkuForm((s) => ({ ...s, sku: v }))} />
-          <LabeledInput label="product_id (optional)" value={skuForm.productId} onChange={(v) => setSkuForm((s) => ({ ...s, productId: v }))} />
-          <LabeledInput label="offer_id (optional)" value={skuForm.offerId} onChange={(v) => setSkuForm((s) => ({ ...s, offerId: v }))} />
-          <LabeledInput label="Min price" value={skuForm.min} onChange={(v) => setSkuForm((s) => ({ ...s, min: v }))} />
-          <LabeledInput label="Max price" value={skuForm.max} onChange={(v) => setSkuForm((s) => ({ ...s, max: v }))} />
-          <LabeledInput label="Margin at current price" value={skuForm.margin} onChange={(v) => setSkuForm((s) => ({ ...s, margin: v }))} />
+          <LabeledInput label="sku (необяз.)" value={skuForm.sku} onChange={(v) => setSkuForm((s) => ({ ...s, sku: v }))} />
+          <LabeledInput label="product_id (необяз.)" value={skuForm.productId} onChange={(v) => setSkuForm((s) => ({ ...s, productId: v }))} />
+          <LabeledInput label="offer_id (необяз.)" value={skuForm.offerId} onChange={(v) => setSkuForm((s) => ({ ...s, offerId: v }))} />
+          <LabeledInput label="Мин. цена" value={skuForm.min} onChange={(v) => setSkuForm((s) => ({ ...s, min: v }))} />
+          <LabeledInput label="Макс. цена" value={skuForm.max} onChange={(v) => setSkuForm((s) => ({ ...s, max: v }))} />
+          <LabeledInput label="Маржа при текущей цене" value={skuForm.margin} onChange={(v) => setSkuForm((s) => ({ ...s, margin: v }))} />
           <details className="md:col-span-3 rounded border p-2 text-sm">
-            <summary className="cursor-pointer font-medium">Advanced fields</summary>
+            <summary className="cursor-pointer font-medium">Дополнительные поля</summary>
             <div className="mt-2 grid gap-2 md:grid-cols-3">
-              <LabeledInput label="Current price (optional)" value={skuForm.refPriceAdvanced} onChange={(v) => setSkuForm((s) => ({ ...s, refPriceAdvanced: v }))} />
-              <LabeledInput label="Implied cost (optional)" value={skuForm.costAdvanced} onChange={(v) => setSkuForm((s) => ({ ...s, costAdvanced: v }))} />
+              <LabeledInput label="Текущая цена (необяз.)" value={skuForm.refPriceAdvanced} onChange={(v) => setSkuForm((s) => ({ ...s, refPriceAdvanced: v }))} />
+              <LabeledInput label="Расчётная себестоимость (необяз.)" value={skuForm.costAdvanced} onChange={(v) => setSkuForm((s) => ({ ...s, costAdvanced: v }))} />
             </div>
           </details>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={skuForm.isActive} onChange={(e) => setSkuForm((s) => ({ ...s, isActive: e.target.checked }))} />
-            Active
+            Активно
           </label>
           <div className="md:col-span-3">
             <button type="submit" disabled={working} className="rounded border px-3 py-2 hover:bg-gray-50">
-              {working ? "Saving..." : "Save SKU override"}
+              {working ? "Сохранение..." : "Сохранить переопределение SKU"}
             </button>
           </div>
         </form>
       </section>
 
       <section className="space-y-3 rounded border p-4">
-        <h2 className="text-lg font-semibold">Effective Constraints</h2>
+        <h2 className="text-lg font-semibold">Эффективные ограничения</h2>
         <div className="grid gap-2 md:grid-cols-4">
-          <LabeledInput label="Filter SKU" value={filterSku} onChange={setFilterSku} />
-          <LabeledInput label="Filter product_id" value={filterProduct} onChange={setFilterProduct} />
-          <LabeledInput label="Limit" value={String(limit)} onChange={(v) => setLimit(int(v) || 20)} />
-          <LabeledInput label="Offset" value={String(offset)} onChange={(v) => setOffset(int(v) || 0)} />
+          <LabeledInput label="Фильтр SKU" value={filterSku} onChange={setFilterSku} />
+          <LabeledInput label="Фильтр product_id" value={filterProduct} onChange={setFilterProduct} />
+          <LabeledInput label="Лимит" value={String(limit)} onChange={(v) => setLimit(int(v) || 20)} />
+          <LabeledInput label="Смещение" value={String(offset)} onChange={(v) => setOffset(int(v) || 0)} />
         </div>
         <button onClick={loadEffective} disabled={working} className="rounded border px-3 py-2 hover:bg-gray-50">
-          {working ? "Loading..." : "Load effective constraints"}
+          {working ? "Загрузка..." : "Загрузить эффективные ограничения"}
         </button>
         {effectiveRows.length === 0 ? (
-          <p className="text-sm text-gray-600">No effective constraints found.</p>
+          <p className="text-sm text-gray-600">Эффективные ограничения не найдены.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b text-left">
-                  <th className="px-2 py-2">product / sku</th>
-                  <th className="px-2 py-2">Current price</th>
-                  <th className="px-2 py-2">Effective min / max</th>
-                  <th className="px-2 py-2">Implied cost</th>
-                  <th className="px-2 py-2">Source of constraint</th>
+                  <th className="px-2 py-2">Товар / SKU</th>
+                  <th className="px-2 py-2">Текущая цена</th>
+                  <th className="px-2 py-2">Эффективные min / max</th>
+                  <th className="px-2 py-2">Расчётная себестоимость</th>
+                  <th className="px-2 py-2">Источник ограничения</th>
                   <th className="px-2 py-2">computed_at</th>
-                  <th className="px-2 py-2">preview</th>
+                  <th className="px-2 py-2">Предпросчёт</th>
                 </tr>
               </thead>
               <tbody>
@@ -628,7 +628,7 @@ export default function PricingConstraintsScreen() {
                         }
                         type="button"
                       >
-                        Preview
+                        Предпросчёт
                       </button>
                     </td>
                   </tr>
@@ -639,22 +639,22 @@ export default function PricingConstraintsScreen() {
         )}
         {effectiveList ? (
           <p className="text-xs text-gray-500">
-            total={effectiveList.total}, limit={effectiveList.limit}, offset={effectiveList.offset}
+            всего={effectiveList.total}, лимит={effectiveList.limit}, смещение={effectiveList.offset}
           </p>
         ) : null}
       </section>
 
       <section className="space-y-3 rounded border p-4">
-        <h2 className="text-lg font-semibold">Preview</h2>
+        <h2 className="text-lg font-semibold">Предпросчёт</h2>
         <form onSubmit={submitPreview} className="grid gap-2 md:grid-cols-3">
           <LabeledInput label="reference_price" value={previewForm.refPrice} onChange={(v) => setPreviewForm((s) => ({ ...s, refPrice: v }))} />
           <LabeledInput label="reference_margin_percent" value={previewForm.margin} onChange={(v) => setPreviewForm((s) => ({ ...s, margin: v }))} />
-          <LabeledInput label="min_price (optional)" value={previewForm.min} onChange={(v) => setPreviewForm((s) => ({ ...s, min: v }))} />
-          <LabeledInput label="max_price (optional)" value={previewForm.max} onChange={(v) => setPreviewForm((s) => ({ ...s, max: v }))} />
-          <LabeledInput label="input_price (optional)" value={previewForm.input} onChange={(v) => setPreviewForm((s) => ({ ...s, input: v }))} />
+          <LabeledInput label="min_price (необяз.)" value={previewForm.min} onChange={(v) => setPreviewForm((s) => ({ ...s, min: v }))} />
+          <LabeledInput label="max_price (необяз.)" value={previewForm.max} onChange={(v) => setPreviewForm((s) => ({ ...s, max: v }))} />
+          <LabeledInput label="input_price (необяз.)" value={previewForm.input} onChange={(v) => setPreviewForm((s) => ({ ...s, input: v }))} />
           <div className="md:col-span-3">
             <button type="submit" disabled={working} className="rounded border px-3 py-2 hover:bg-gray-50">
-              {working ? "Calculating..." : "Calculate preview"}
+              {working ? "Вычисление..." : "Выполнить предпросчёт"}
             </button>
           </div>
         </form>
@@ -668,7 +668,7 @@ export default function PricingConstraintsScreen() {
             <p>expected_margin_at_input_price: {fmtNum(preview.expected_margin_at_input_price)}</p>
           </div>
         ) : (
-          <p className="text-sm text-gray-600">Submit preview inputs to see calculated explainability values.</p>
+          <p className="text-sm text-gray-600">Укажите поля предпросчёта и нажмите «Выполнить предпросчёт», чтобы увидеть рассчитанные объяснимые показатели.</p>
         )}
       </section>
     </main>

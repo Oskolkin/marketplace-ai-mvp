@@ -45,9 +45,9 @@ function fmtDate(iso: string | null | undefined): string {
 }
 
 function roleLabel(role: ChatMessage["role"]): string {
-  if (role === "user") return "You";
-  if (role === "assistant") return "Assistant";
-  return "System";
+  if (role === "user") return "Вы";
+  if (role === "assistant") return "Ассистент";
+  return "Система";
 }
 
 function looksLikeStackTraceOrNoise(text: string): boolean {
@@ -75,10 +75,10 @@ function friendlyChatAskError(raw: string): string {
     s.includes("rate limit") ||
     s.includes("timeout")
   ) {
-    return "AI temporarily unavailable. Check OpenAI config or try later.";
+    return "ИИ временно недоступен. Проверьте настройки OpenAI или попробуйте позже.";
   }
   if (looksLikeStackTraceOrNoise(raw)) {
-    return "Something went wrong. Try again later.";
+    return "Что-то пошло не так. Попробуйте позже.";
   }
   return raw;
 }
@@ -86,10 +86,10 @@ function friendlyChatAskError(raw: string): string {
 function messageTypeBadge(type: ChatMessageType): { label: string; className: string } | null {
   if (type === "question" || type === "answer") return null;
   if (type === "error") {
-    return { label: "error", className: "border-red-300 bg-red-50 text-red-900" };
+    return { label: "ошибка", className: "border-red-300 bg-red-50 text-red-900" };
   }
   if (type === "meta") {
-    return { label: "meta", className: "border-violet-300 bg-violet-50 text-violet-900" };
+    return { label: "мета", className: "border-violet-300 bg-violet-50 text-violet-900" };
   }
   return { label: type, className: "border-gray-300 bg-gray-100 text-gray-800" };
 }
@@ -100,6 +100,23 @@ function alertsDeepLink(alertId: number): string {
 
 function recommendationsDeepLink(recId: number): string {
   return `/app/recommendations?focusRecommendationId=${encodeURIComponent(String(recId))}`;
+}
+
+function translateChatSessionStatus(st: string): string {
+  const m: Record<string, string> = {
+    active: "Активен",
+    archived: "В архиве",
+  };
+  return m[st] ?? st;
+}
+
+function translateMetaConfidence(level: string): string {
+  const m: Record<string, string> = {
+    low: "низкая",
+    medium: "средняя",
+    high: "высокая",
+  };
+  return m[level] ?? level;
 }
 
 export default function ChatScreen() {
@@ -151,7 +168,7 @@ export default function ChatScreen() {
       }
     } catch (e: unknown) {
       setSessions([]);
-      setSessionsError(e instanceof Error ? e.message : "Failed to load chat sessions");
+      setSessionsError(e instanceof Error ? e.message : "Не удалось загрузить сеансы чата");
     } finally {
       setLoadingSessions(false);
     }
@@ -165,7 +182,7 @@ export default function ChatScreen() {
       setMessages(data.items ?? []);
     } catch (e: unknown) {
       setMessages([]);
-      setMessagesError(e instanceof Error ? e.message : "Failed to load chat messages");
+      setMessagesError(e instanceof Error ? e.message : "Не удалось загрузить сообщения");
     } finally {
       setLoadingMessages(false);
     }
@@ -230,7 +247,7 @@ export default function ChatScreen() {
         setInputValue("");
         await loadSessions();
       } catch (e: unknown) {
-        const raw = e instanceof Error ? e.message : "Failed to send chat question";
+        const raw = e instanceof Error ? e.message : "Не удалось отправить вопрос";
         setAskError(friendlyChatAskError(raw));
       } finally {
         setSending(false);
@@ -266,7 +283,7 @@ export default function ChatScreen() {
         setMessages([]);
       }
     } catch (e: unknown) {
-      setSessionsError(e instanceof Error ? e.message : "Failed to archive session");
+      setSessionsError(e instanceof Error ? e.message : "Не удалось архивировать сеанс");
     } finally {
       setArchivingSessionId(null);
     }
@@ -282,10 +299,10 @@ export default function ChatScreen() {
         rating,
       });
       setFeedbackRatingByMessageId((prev) => ({ ...prev, [message.id]: rating }));
-      setFeedbackMessage("Thanks — feedback saved.");
+      setFeedbackMessage("Спасибо — отзыв сохранён.");
     } catch (e: unknown) {
-      const raw = e instanceof Error ? e.message : "Failed to save feedback";
-      setFeedbackError(looksLikeStackTraceOrNoise(raw) ? "Could not save feedback. Try again." : raw);
+      const raw = e instanceof Error ? e.message : "Не удалось сохранить отзыв";
+      setFeedbackError(looksLikeStackTraceOrNoise(raw) ? "Не удалось сохранить отзыв. Попробуйте снова." : raw);
     } finally {
       setFeedbackLoadingByMessage((prev) => ({ ...prev, [message.id]: false }));
     }
@@ -315,28 +332,28 @@ export default function ChatScreen() {
   return (
     <main className="space-y-4 p-6">
       <header>
-        <h1 className="text-2xl font-semibold">AI Chat</h1>
+        <h1 className="text-2xl font-semibold">ИИ-чат</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Natural language access to your store data, alerts, and AI recommendations.
+          Доступ на естественном языке к данным магазина, оповещениям и ИИ-рекомендациям.
         </p>
       </header>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1fr]">
         <aside className="rounded border p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Chats</h2>
+            <h2 className="text-lg font-semibold">Чаты</h2>
             <button
               type="button"
               className="rounded border px-2 py-1 text-sm hover:bg-gray-50"
               onClick={handleNewChat}
             >
-              New chat
+              Новый чат
             </button>
           </div>
-          {loadingSessions ? <p className="text-sm">Loading sessions...</p> : null}
+          {loadingSessions ? <p className="text-sm">Загрузка сеансов…</p> : null}
           {sessionsError ? <p className="mb-2 text-sm text-red-700">{sessionsError}</p> : null}
           {!loadingSessions && sessions.length === 0 ? (
-            <p className="text-sm text-gray-600">No chats yet.</p>
+            <p className="text-sm text-gray-600">Чатов пока нет.</p>
           ) : (
             <ul className="space-y-2">
               {sessions.map((s) => (
@@ -348,8 +365,8 @@ export default function ChatScreen() {
                   >
                     <div className="truncate">{s.title}</div>
                     <div className="mt-1 text-xs text-gray-600">
-                      <span className="rounded border px-1 py-0.5">{s.status}</span>
-                      <span className="ml-2">updated {fmtDate(s.updated_at)}</span>
+                      <span className="rounded border px-1 py-0.5">{translateChatSessionStatus(s.status)}</span>
+                      <span className="ml-2">обновлено {fmtDate(s.updated_at)}</span>
                     </div>
                   </button>
                   {s.status !== "archived" ? (
@@ -359,7 +376,7 @@ export default function ChatScreen() {
                       className="mt-2 rounded border px-2 py-0.5 text-xs hover:bg-gray-50 disabled:opacity-50"
                       onClick={() => void handleArchiveSession(s.id)}
                     >
-                      {archivingSessionId === s.id ? "Archiving..." : "Archive"}
+                      {archivingSessionId === s.id ? "Архивация…" : "В архив"}
                     </button>
                   ) : null}
                 </li>
@@ -370,14 +387,14 @@ export default function ChatScreen() {
 
         <section className="flex min-h-0 flex-col rounded border">
           <div className="flex shrink-0 items-center justify-between border-b bg-white px-4 py-3">
-            <h2 className="text-lg font-semibold">Conversation</h2>
+            <h2 className="text-lg font-semibold">Переписка</h2>
             {selectedSession ? (
               <span className="text-xs text-gray-600">
-                Session #{selectedSession.id}{" "}
-                <span className="rounded border px-1 py-0.5">{selectedSession.status}</span>
+                Сеанс №{selectedSession.id}{" "}
+                <span className="rounded border px-1 py-0.5">{translateChatSessionStatus(selectedSession.status)}</span>
               </span>
             ) : (
-              <span className="text-xs text-gray-600">New session will be created on first ask</span>
+              <span className="text-xs text-gray-600">Новый сеанс будет создан при первом вопросе</span>
             )}
           </div>
 
@@ -397,10 +414,10 @@ export default function ChatScreen() {
             className="min-h-[min(520px,70vh)] flex-1 space-y-3 overflow-y-auto bg-gray-100 p-4"
           >
             {loadingMessages ? (
-              <p className="text-sm text-gray-600">Loading messages...</p>
+              <p className="text-sm text-gray-600">Загрузка сообщений…</p>
             ) : messages.length === 0 ? (
               <div className="rounded-lg border border-dashed border-gray-300 bg-white/80 p-4 text-center text-sm text-gray-600">
-                Ask a question about your store. Use suggested prompts below or type your own.
+                Задайте вопрос о магазине. Используйте подсказки ниже или введите свой текст.
               </div>
             ) : (
               messages.map((m) => {
@@ -461,26 +478,26 @@ export default function ChatScreen() {
                       {!isUser && meta ? (
                         <details className="mt-3 rounded-lg border border-gray-200 bg-gray-50/90 p-2 text-xs text-gray-800">
                           <summary className="cursor-pointer select-none font-medium text-gray-700">
-                            Response details
+                            Детали ответа
                           </summary>
                           <div className="mt-2 space-y-2 border-t border-gray-200 pt-2">
                             <div className="flex flex-wrap gap-2">
-                              <span className="rounded border bg-white px-2 py-0.5">intent: {meta.intent}</span>
+                              <span className="rounded border bg-white px-2 py-0.5">намерение: {meta.intent}</span>
                               <span className="rounded border bg-white px-2 py-0.5">
-                                confidence: {meta.confidence_level}
+                                уверенность: {translateMetaConfidence(meta.confidence_level)}
                               </span>
-                              <span className="rounded border bg-white px-2 py-0.5">trace #{meta.trace_id}</span>
+                              <span className="rounded border bg-white px-2 py-0.5">трассировка №{meta.trace_id}</span>
                             </div>
                             {meta.summary ? (
                               <p>
-                                <span className="font-medium text-gray-700">Summary:</span> {meta.summary}
+                                <span className="font-medium text-gray-700">Кратко:</span> {meta.summary}
                               </p>
                             ) : null}
 
                             {meta.related_alert_ids.length > 0 ? (
                               <details>
                                 <summary className="cursor-pointer font-medium text-gray-700">
-                                  Related alerts ({meta.related_alert_ids.length})
+                                  Связанные оповещения ({meta.related_alert_ids.length})
                                 </summary>
                                 <ul className="mt-1 list-none space-y-1 pl-0">
                                   {meta.related_alert_ids.map((id) => (
@@ -489,7 +506,7 @@ export default function ChatScreen() {
                                         href={alertsDeepLink(id)}
                                         className="text-blue-700 underline hover:text-blue-900"
                                       >
-                                        Alert #{id}
+                                        Оповещение №{id}
                                       </Link>
                                     </li>
                                   ))}
@@ -500,7 +517,7 @@ export default function ChatScreen() {
                             {meta.related_recommendation_ids.length > 0 ? (
                               <details>
                                 <summary className="cursor-pointer font-medium text-gray-700">
-                                  Related recommendations ({meta.related_recommendation_ids.length})
+                                  Связанные рекомендации ({meta.related_recommendation_ids.length})
                                 </summary>
                                 <ul className="mt-1 list-none space-y-1 pl-0">
                                   {meta.related_recommendation_ids.map((id) => (
@@ -509,7 +526,7 @@ export default function ChatScreen() {
                                         href={recommendationsDeepLink(id)}
                                         className="text-blue-700 underline hover:text-blue-900"
                                       >
-                                        Recommendation #{id}
+                                        Рекомендация №{id}
                                       </Link>
                                     </li>
                                   ))}
@@ -520,7 +537,7 @@ export default function ChatScreen() {
                             {meta.supporting_facts.length > 0 ? (
                               <details>
                                 <summary className="cursor-pointer font-medium text-gray-700">
-                                  Supporting facts ({meta.supporting_facts.length})
+                                  Опорные факты ({meta.supporting_facts.length})
                                 </summary>
                                 <ul className="mt-1 list-disc space-y-1 pl-4">
                                   {meta.supporting_facts.map((f, idx) => (
@@ -536,7 +553,7 @@ export default function ChatScreen() {
                             {meta.limitations.length > 0 ? (
                               <details>
                                 <summary className="cursor-pointer font-medium text-amber-900">
-                                  Limitations ({meta.limitations.length})
+                                  Ограничения ({meta.limitations.length})
                                 </summary>
                                 <ul className="mt-1 list-disc space-y-1 border-l-2 border-amber-300 pl-4 text-amber-950">
                                   {meta.limitations.map((l, idx) => (
@@ -551,15 +568,15 @@ export default function ChatScreen() {
 
                       {isAssistant && m.message_type === "answer" ? (
                         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
-                          <span className="text-xs text-gray-500">Was this helpful?</span>
+                          <span className="text-xs text-gray-500">Это было полезно?</span>
                           {(["positive", "negative", "neutral"] as const).map((rating) => {
                             const active = savedRating === rating;
                             const label =
                               rating === "positive"
-                                ? "👍 Helpful"
+                                ? "👍 Полезно"
                                 : rating === "negative"
-                                  ? "👎 Not helpful"
-                                  : "😐 Neutral";
+                                  ? "👎 Не помогло"
+                                  : "😐 Нейтрально";
                             return (
                               <button
                                 key={rating}
@@ -575,7 +592,7 @@ export default function ChatScreen() {
                                 onClick={() => void handleFeedback(m, rating)}
                               >
                                 {label}
-                                {active ? " · saved" : ""}
+                                {active ? " · сохранено" : ""}
                               </button>
                             );
                           })}
@@ -590,13 +607,13 @@ export default function ChatScreen() {
             {sending ? (
               <div className="flex justify-start">
                 <div className="max-w-[min(100%,42rem)] rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 shadow-sm">
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Assistant</div>
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Ассистент</div>
                   <div className="flex items-center gap-2">
                     <span
                       className="inline-flex h-2 w-2 animate-pulse rounded-full bg-blue-500"
                       aria-hidden
                     />
-                    <span>AI is preparing an answer...</span>
+                    <span>ИИ готовит ответ…</span>
                   </div>
                 </div>
               </div>
@@ -605,10 +622,10 @@ export default function ChatScreen() {
 
           <div className="shrink-0 space-y-3 border-t bg-white p-4">
             <div>
-              <p className="mb-2 text-xs font-medium text-gray-600">Suggested prompts</p>
+              <p className="mb-2 text-xs font-medium text-gray-600">Подсказки</p>
               <p className="mb-2 text-[11px] text-gray-500">
-                Click to fill the box (or send immediately if the box is empty). Use Send on a row to send that text
-                directly.
+                Нажмите, чтобы подставить текст в поле (или отправить сразу, если поле пустое). Кнопка «Отправить» в
+                строке отправляет этот текст напрямую.
               </p>
               <div className="flex flex-col gap-2">
                 {SUGGESTED_PROMPTS.map((prompt) => (
@@ -630,7 +647,7 @@ export default function ChatScreen() {
                       className={`shrink-0 self-center ${buttonClassNames("primary")}`}
                       onClick={() => handleSuggestedPromptSend(prompt)}
                     >
-                      Send
+                      Отправить
                     </button>
                   </div>
                 ))}
@@ -640,7 +657,7 @@ export default function ChatScreen() {
             <div className="space-y-2 rounded-lg border border-gray-200 p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <label className="text-xs text-gray-700" htmlFor="chat-as-of-date">
-                  As of date
+                  Дата отчёта
                 </label>
                 <input
                   id="chat-as-of-date"
@@ -653,7 +670,7 @@ export default function ChatScreen() {
               </div>
               {selectedIsArchived ? (
                 <p className="text-sm text-gray-600">
-                  This chat is archived. Start a new chat to ask another question.
+                  Этот чат в архиве. Начните новый чат, чтобы задать ещё вопрос.
                 </p>
               ) : null}
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -661,7 +678,7 @@ export default function ChatScreen() {
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={handleComposerKeyDown}
-                  placeholder="Ask a question… (Enter to send, Shift+Enter for new line)"
+                  placeholder="Задайте вопрос… (Enter — отправить, Shift+Enter — новая строка)"
                   className="min-h-[96px] flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-inner disabled:bg-gray-100 disabled:text-gray-500"
                   disabled={sending || selectedIsArchived}
                   aria-busy={sending}
@@ -672,7 +689,7 @@ export default function ChatScreen() {
                   className={`h-11 shrink-0 sm:h-auto sm:min-h-[96px] sm:px-6 ${buttonClassNames("primary")}`}
                   onClick={() => void handleAskSubmit()}
                 >
-                  {sending ? "Sending…" : "Send"}
+                  {sending ? "Отправка…" : "Отправить"}
                 </button>
               </div>
             </div>

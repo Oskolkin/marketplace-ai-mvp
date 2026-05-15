@@ -31,7 +31,27 @@ function fmtDateTime(value: string | null): string {
 }
 
 function riskLabel(risk: string): string {
-  return risk.replaceAll("_", " ");
+  const normalized = risk.replaceAll("_", " ").toLowerCase();
+  const map: Record<string, string> = {
+    "out of stock": "нет в наличии",
+    "low stock": "мало на складе",
+    critical: "критический",
+    high: "высокий",
+    medium: "средний",
+    low: "низкий",
+  };
+  return map[normalized] ?? risk.replaceAll("_", " ");
+}
+
+function translateReplenishmentPriority(priority: string): string {
+  const p = priority.toLowerCase();
+  const m: Record<string, string> = {
+    critical: "Критический",
+    high: "Высокий",
+    medium: "Средний",
+    low: "Низкий",
+  };
+  return m[p] ?? priority;
 }
 
 function priorityClass(priority: string): string {
@@ -82,7 +102,7 @@ export default function StocksReplenishmentScreen({
         setResponse(data);
         setAllRows(data.items ?? []);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load stocks replenishment");
+        setError(err instanceof Error ? err.message : "Не удалось загрузить данные пополнения складов");
         setResponse(null);
         setAllRows([]);
       } finally {
@@ -119,10 +139,10 @@ export default function StocksReplenishmentScreen({
     return (
       <main className="space-y-6 p-6">
         <PageHeader
-          title="Stocks & replenishment"
-          subtitle="Operational stock snapshot with depletion risk and replenishment priority."
+          title="Склады и пополнение"
+          subtitle="Оперативный снимок остатков с риском истощения и приоритетом пополнения."
         />
-        <LoadingState message="Loading stocks & replenishment…" />
+        <LoadingState message="Загрузка складов и пополнения…" />
       </main>
     );
   }
@@ -131,15 +151,15 @@ export default function StocksReplenishmentScreen({
     return (
       <main className="space-y-6 p-6">
         <PageHeader
-          title="Stocks & replenishment"
-          subtitle="Operational stock snapshot with depletion risk and replenishment priority."
+          title="Склады и пополнение"
+          subtitle="Оперативный снимок остатков с риском истощения и приоритетом пополнения."
         />
         <ErrorState
-          title="Could not load stocks"
-          message={error || "Unknown error"}
+          title="Не удалось загрузить данные складов"
+          message={error || "Неизвестная ошибка"}
           action={
             <Link href="/app/dashboard" className={buttonClassNames("secondary")}>
-              Back to Dashboard
+              На дашборд
             </Link>
           }
         />
@@ -150,85 +170,85 @@ export default function StocksReplenishmentScreen({
   return (
     <main className="space-y-6 p-6">
       <PageHeader
-        title="Stocks & replenishment"
-        subtitle="Warehouse-aware stock view with replenishment priority and depletion risk."
+        title="Склады и пополнение"
+        subtitle="Представление складских остатков с приоритетом пополнения и риском истощения."
         className="border-0 pb-0"
       >
         <Link href="/app/dashboard" className={buttonClassNames("secondary")}>
-          Dashboard
+          Дашборд
         </Link>
         <Link href="/app/critical-skus" className={buttonClassNames("secondary")}>
-          Critical SKU
+          Критические SKU
         </Link>
       </PageHeader>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard title="Rows in view" value={fmtNumber(summary.total)} hint="After filters" />
+        <MetricCard title="Строк в выборке" value={fmtNumber(summary.total)} hint="После фильтров" />
         <MetricCard
-          title="High / critical priority"
+          title="Высокий / критический приоритет"
           value={fmtNumber(summary.highPriority)}
-          hint="Replenishment priority"
+          hint="Приоритет пополнения"
         />
         <MetricCard
-          title="Critical depletion"
+          title="Критическое истощение"
           value={fmtNumber(summary.outOrCritical)}
-          hint="Out of stock or critical risk label"
+          hint="Нет в наличии или критический риск"
         />
         <MetricCard
-          title="Avg. days of cover"
+          title="Средние дни покрытия"
           value={summary.avgCover == null ? "—" : summary.avgCover.toFixed(1)}
-          hint={summary.avgCover == null ? "No cover values in view" : "Mean over rows with data"}
+          hint={summary.avgCover == null ? "Нет значений покрытия в выборке" : "Среднее по строкам с данными"}
         />
       </section>
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Data window</CardTitle>
-          <CardDescription>Server meta for the current request.</CardDescription>
+          <CardTitle className="text-base">Окно данных</CardTitle>
+          <CardDescription>Мета-сведения сервера для текущего запроса.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-1 text-sm text-gray-800">
           <p>
-            <span className="font-medium text-gray-600">As of date:</span> {response.meta.as_of_date}
+            <span className="font-medium text-gray-600">Дата отчёта:</span> {response.meta.as_of_date}
           </p>
           <p>
-            <span className="font-medium text-gray-600">Last stock update:</span>{" "}
+            <span className="font-medium text-gray-600">Последнее обновление остатков:</span>{" "}
             {fmtDateTime(response.meta.last_stock_update)}
           </p>
           <p>
-            <span className="font-medium text-gray-600">Stock semantics:</span> {response.meta.stock_semantics}
+            <span className="font-medium text-gray-600">Семантика остатков:</span> {response.meta.stock_semantics}
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Filters</CardTitle>
-          <CardDescription>Client-side on loaded rows.</CardDescription>
+          <CardTitle className="text-base">Фильтры</CardTitle>
+          <CardDescription>На стороне клиента для загруженных строк.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
           <label className="min-w-[180px] text-sm">
-            <span className="mb-1 block font-medium text-gray-700">Replenishment priority</span>
+            <span className="mb-1 block font-medium text-gray-700">Приоритет пополнения</span>
             <select
               className="w-full rounded-lg border border-gray-300 px-3 py-2"
               value={priorityFilter}
               onChange={(e) => setPriorityFilter(e.target.value)}
             >
-              <option value="">All priorities</option>
+              <option value="">Все приоритеты</option>
               {priorityOptions.map((p) => (
                 <option key={p} value={p}>
-                  {p}
+                  {translateReplenishmentPriority(p)}
                 </option>
               ))}
             </select>
           </label>
           <label className="min-w-[180px] text-sm">
-            <span className="mb-1 block font-medium text-gray-700">Depletion risk</span>
+            <span className="mb-1 block font-medium text-gray-700">Риск истощения</span>
             <select
               className="w-full rounded-lg border border-gray-300 px-3 py-2"
               value={riskFilter}
               onChange={(e) => setRiskFilter(e.target.value)}
             >
-              <option value="">All risks</option>
+              <option value="">Все риски</option>
               {riskOptions.map((r) => (
                 <option key={r} value={r}>
                   {riskLabel(r)}
@@ -245,7 +265,7 @@ export default function StocksReplenishmentScreen({
                 setRiskFilter("");
               }}
             >
-              Clear filters
+              Сбросить фильтры
             </button>
           )}
         </CardContent>
@@ -253,21 +273,21 @@ export default function StocksReplenishmentScreen({
 
       <Card>
         <CardHeader>
-          <CardTitle>Replenishment list</CardTitle>
+          <CardTitle>Список пополнения</CardTitle>
           <CardDescription>
             {filteredRows.length === allRows.length
-              ? `Showing all ${fmtNumber(filteredRows.length)} rows from the API.`
-              : `Showing ${fmtNumber(filteredRows.length)} of ${fmtNumber(allRows.length)} rows.`}
+              ? `Показаны все ${fmtNumber(filteredRows.length)} строк из API.`
+              : `Показано ${fmtNumber(filteredRows.length)} из ${fmtNumber(allRows.length)} строк.`}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {filteredRows.length === 0 ? (
             <EmptyState
-              title={allRows.length === 0 ? "No stock rows" : "No matching rows"}
+              title={allRows.length === 0 ? "Нет строк по остаткам" : "Нет подходящих строк"}
               message={
                 allRows.length === 0
-                  ? "No rows for the selected period."
-                  : "Try clearing filters to see the full list."
+                  ? "Нет строк за выбранный период."
+                  : "Попробуйте сбросить фильтры, чтобы увидеть полный список."
               }
               action={
                 allRows.length > 0 ? (
@@ -279,11 +299,11 @@ export default function StocksReplenishmentScreen({
                       setRiskFilter("");
                     }}
                   >
-                    Clear filters
+                    Сбросить фильтры
                   </button>
                 ) : (
                   <Link href="/app/sync-status" className={buttonClassNames("secondary")}>
-                    Sync status
+                    Статус синхронизации
                   </Link>
                 )
               }
@@ -293,14 +313,14 @@ export default function StocksReplenishmentScreen({
               <table className="min-w-full border-collapse text-sm">
                 <thead>
                   <tr className="border-b text-left">
-                    <th className="px-2 py-2">SKU / Product</th>
-                    <th className="px-2 py-2">Available stock</th>
-                    <th className="px-2 py-2">Reserved</th>
-                    <th className="px-2 py-2">Total</th>
-                    <th className="px-2 py-2">Days of cover</th>
-                    <th className="px-2 py-2">Out of stock risk</th>
-                    <th className="px-2 py-2">Replenishment priority</th>
-                    <th className="px-2 py-2">Warehouse count</th>
+                    <th className="px-2 py-2">SKU / товар</th>
+                    <th className="px-2 py-2">Доступно</th>
+                    <th className="px-2 py-2">Зарезервировано</th>
+                    <th className="px-2 py-2">Всего</th>
+                    <th className="px-2 py-2">Дней покрытия</th>
+                    <th className="px-2 py-2">Риск отсутствия</th>
+                    <th className="px-2 py-2">Приоритет пополнения</th>
+                    <th className="px-2 py-2">Число складов</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -309,7 +329,7 @@ export default function StocksReplenishmentScreen({
                       <td className="px-2 py-2">
                         <div className="font-medium">{row.product_name || "—"}</div>
                         <div className="text-xs text-gray-500">
-                          product_id={row.ozon_product_id} | offer={row.offer_id || "—"} | sku=
+                          product_id={row.ozon_product_id} | предложение={row.offer_id || "—"} | SKU=
                           {row.sku ?? "—"}
                         </div>
                       </td>
@@ -324,7 +344,7 @@ export default function StocksReplenishmentScreen({
                         <span
                           className={`rounded px-2 py-0.5 text-xs font-medium ${priorityClass(row.replenishment_priority)}`}
                         >
-                          {row.replenishment_priority}
+                          {translateReplenishmentPriority(row.replenishment_priority)}
                         </span>
                       </td>
                       <td className="px-2 py-2">{fmtNumber(row.warehouse_count)}</td>

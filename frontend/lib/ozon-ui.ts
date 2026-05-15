@@ -1,21 +1,21 @@
 export function mapConnectionStatus(status: string | null | undefined): string {
   switch (status) {
     case "draft":
-      return "Not connected";
+      return "Не подключено";
     case "checking":
-      return "Checking";
+      return "Проверка";
     case "valid":
-      return "Connected";
+      return "Подключено";
     case "invalid":
-      return "Invalid credentials";
+      return "Неверные учётные данные";
     case "sync_pending":
-      return "Sync pending";
+      return "Ожидает синхронизации";
     case "sync_in_progress":
-      return "Sync running";
+      return "Синхронизация";
     case "sync_failed":
-      return "Sync failed";
+      return "Сбой синхронизации";
     default:
-      return "Unknown";
+      return "Неизвестно";
   }
 }
 
@@ -24,31 +24,31 @@ export function mapPerformanceConnectionStatus(
 ): string {
   switch (status) {
     case "not_configured":
-      return "Performance token not set";
+      return "Токен Performance не задан";
     case "unknown":
-      return "Performance API not checked yet";
+      return "Performance API ещё не проверялся";
     case "valid":
-      return "Performance API OK";
+      return "Performance API: ОК";
     case "invalid":
-      return "Performance API error";
+      return "Ошибка Performance API";
     case "not_connected":
-      return "No Ozon connection";
+      return "Нет подключения Ozon";
     default:
-      return "Unknown";
+      return "Неизвестно";
   }
 }
 
 export function mapSyncStatus(status: string | null | undefined): string {
   switch (status) {
     case "pending":
-      return "Sync pending";
+      return "Ожидает синхронизации";
     case "running":
-      return "Sync running";
+      return "Синхронизация";
     case "completed":
-      return "Sync completed";
+      return "Синхронизация завершена";
     case "failed":
-      return "Sync failed";
+      return "Сбой синхронизации";
     default:
-      return "Not started";
+      return "Не запускалось";
   }
 }

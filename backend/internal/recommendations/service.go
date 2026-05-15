@@ -42,6 +42,7 @@ type serviceRepository interface {
 	CountOpenRecommendationsByConfidence(ctx context.Context, sellerAccountID int64) ([]NamedCount, error)
 	GetLatestRecommendationRun(ctx context.Context, sellerAccountID int64) (*RunInfo, error)
 	CreateFeedback(ctx context.Context, input AddRecommendationFeedbackInput) (*RecommendationFeedback, error)
+	CreateRunDiagnostic(ctx context.Context, input CreateRunDiagnosticInput) error
 }
 
 type Service struct {
@@ -210,6 +211,12 @@ func NewService(repo serviceRepository, builder serviceContextBuilder, aiClient 
 	if cfg.PromptVersion == "" {
 		cfg.PromptVersion = "stage8.prompt.v1"
 	}
+	if strings.TrimSpace(cfg.SystemPrompt) == "" {
+		cfg.SystemPrompt = DefaultSystemPrompt()
+	}
+	if strings.TrimSpace(cfg.UserPrompt) == "" {
+		cfg.UserPrompt = DefaultUserPrompt()
+	}
 	return &Service{
 		repo:           repo,
 		contextBuilder: builder,
@@ -239,8 +246,30 @@ func (s *Service) GenerateForAccountWithType(ctx context.Context, sellerAccountI
 		return nil, fmt.Errorf("create recommendation run: %w", err)
 	}
 
-	failAndWrap := func(sourceErr error, stage string) error {
-		if failErr := s.repo.FailRun(ctx, sellerAccountID, runID, sourceErr.Error()); failErr != nil {
+	persistDiagnostic := func(
+		contextPayload *AIRecommendationContext,
+		aiOutput *GenerateRecommendationsOutput,
+		validation *ValidationResult,
+		outcome runOutcome,
+		savedCount int,
+		estCost float64,
+	) error {
+		diag := buildRunDiagnosticInput(runID, sellerAccountID, contextPayload, aiOutput, validation, outcome, savedCount, estCost)
+		return persistRunDiagnostic(s.repo, ctx, diag, s.cfg.PromptVersion)
+	}
+
+	failAndWrap := func(sourceErr error, stage string, contextPayload *AIRecommendationContext, aiOutput *GenerateRecommendationsOutput, validation *ValidationResult, outcome runOutcome, savedCount int, estCost float64) error {
+		outcome.FailRun = true
+		if outcome.ErrorMessage == "" {
+			outcome.ErrorMessage = sourceErr.Error()
+		}
+		if outcome.ErrorStage == "" {
+			outcome.ErrorStage = stage
+		}
+		if diagErr := persistDiagnostic(contextPayload, aiOutput, validation, outcome, savedCount, estCost); diagErr != nil {
+			return fmt.Errorf("%s: %w (diagnostics: %v)", stage, sourceErr, diagErr)
+		}
+		if failErr := s.repo.FailRun(ctx, sellerAccountID, runID, outcome.ErrorMessage); failErr != nil {
 			return fmt.Errorf("%s: %w (also failed to mark run as failed: %v)", stage, sourceErr, failErr)
 		}
 		return fmt.Errorf("%s: %w", stage, sourceErr)
@@ -248,7 +277,8 @@ func (s *Service) GenerateForAccountWithType(ctx context.Context, sellerAccountI
 
 	contextPayload, err := s.contextBuilder.BuildForAccount(ctx, sellerAccountID, asOf)
 	if err != nil {
-		return nil, failAndWrap(err, "build recommendation context")
+		out := runOutcome{ErrorStage: errStageContext, ErrorMessage: err.Error(), FailRun: true}
+		return nil, failAndWrap(err, "build recommendation context", nil, nil, nil, out, 0, 0)
 	}
 
 	aiOutput, err := s.aiClient.GenerateRecommendations(ctx, GenerateRecommendationsInput{
@@ -258,23 +288,37 @@ func (s *Service) GenerateForAccountWithType(ctx context.Context, sellerAccountI
 	})
 	if err != nil {
 		wrapped := err
+		stage := "openai"
 		switch {
 		case openaix.IsTemporarilyUnavailable(err):
 			wrapped = fmt.Errorf("[error_code=openai_unavailable] %w", err)
 		case errors.Is(err, ErrOpenAIRequestTooLarge):
 			wrapped = fmt.Errorf("[error_code=context_budget_exceeded] %w", err)
+			stage = "context_budget"
 		}
-		return nil, failAndWrap(wrapped, "generate recommendations with ai client")
+		return nil, failAndWrap(wrapped, "generate recommendations with ai client", contextPayload, nil, nil, runOutcome{ErrorStage: stage, ErrorMessage: wrapped.Error(), FailRun: true}, 0, 0)
 	}
 
 	validation, err := s.validator.Validate(aiOutput, contextPayload)
 	if err != nil {
-		return nil, failAndWrap(err, "validate ai output")
+		return nil, failAndWrap(err, "validate ai output", contextPayload, aiOutput, nil, runOutcome{ErrorStage: errStageContextParse, ErrorMessage: err.Error(), FailRun: true}, 0, 0)
+	}
+
+	est := aicost.EstimateUSD(aiOutput.Model, aiOutput.InputTokens, aiOutput.OutputTokens)
+	estCost := est.CostUSD
+	if !est.Known {
+		estCost = 0
+	}
+
+	openAlerts := countOpenAlertsInContext(contextPayload)
+	outcome := evaluateRunOutcome(contextPayload, validation)
+	if outcome.FailRun {
+		return nil, failAndWrap(errors.New(outcome.ErrorMessage), "recommendation validation outcome", contextPayload, aiOutput, validation, outcome, 0, estCost)
 	}
 
 	upserted := 0
 	linkedAlerts := 0
-	warningsTotal := 0
+	warningsTotal := len(outcome.Warnings)
 	for _, item := range validation.ValidRecommendations {
 		rec := item.Recommendation
 		warningsTotal += len(item.Warnings)
@@ -305,25 +349,28 @@ func (s *Service) GenerateForAccountWithType(ctx context.Context, sellerAccountI
 			Fingerprint:        fingerprint,
 		})
 		if upsertErr != nil {
-			return nil, failAndWrap(upsertErr, "upsert recommendation")
+			return nil, failAndWrap(upsertErr, "upsert recommendation", contextPayload, aiOutput, validation, outcome, upserted, estCost)
 		}
 		upserted++
 		if delErr := s.repo.DeleteRecommendationAlertLinks(ctx, sellerAccountID, recID); delErr != nil {
-			return nil, failAndWrap(delErr, "delete previous recommendation alert links")
+			return nil, failAndWrap(delErr, "delete previous recommendation alert links", contextPayload, aiOutput, validation, outcome, upserted, estCost)
 		}
 
 		for _, alertID := range rec.SupportingAlertIDs {
 			if linkErr := s.repo.LinkRecommendationAlert(ctx, sellerAccountID, recID, alertID); linkErr != nil {
-				return nil, failAndWrap(linkErr, "link recommendation to alert")
+				return nil, failAndWrap(linkErr, "link recommendation to alert", contextPayload, aiOutput, validation, outcome, upserted, estCost)
 			}
 			linkedAlerts++
 		}
 	}
 
-	est := aicost.EstimateUSD(aiOutput.Model, aiOutput.InputTokens, aiOutput.OutputTokens)
-	estCost := est.CostUSD
-	if !est.Known {
-		estCost = 0
+	outcome = evaluateAfterSave(openAlerts, upserted, validation, outcome)
+	if outcome.FailRun {
+		return nil, failAndWrap(errors.New(outcome.ErrorMessage), "recommendation save outcome", contextPayload, aiOutput, validation, outcome, upserted, estCost)
+	}
+
+	if diagErr := persistDiagnostic(contextPayload, aiOutput, validation, outcome, upserted, estCost); diagErr != nil {
+		return nil, fmt.Errorf("persist recommendation run diagnostic: %w", diagErr)
 	}
 
 	if err := s.repo.CompleteRun(ctx, CompleteRecommendationRunInput{
@@ -332,7 +379,7 @@ func (s *Service) GenerateForAccountWithType(ctx context.Context, sellerAccountI
 		InputTokens:                   aiOutput.InputTokens,
 		OutputTokens:                  aiOutput.OutputTokens,
 		EstimatedCost:                 estCost,
-		GeneratedRecommendationsCount: len(validation.ValidRecommendations),
+		GeneratedRecommendationsCount: upserted,
 		AcceptedRecommendationsCount:  0,
 	}); err != nil {
 		return nil, fmt.Errorf("complete recommendation run id=%d: %w", runID, err)

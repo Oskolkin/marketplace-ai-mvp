@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
 
+import type { AuthResponse } from "@/lib/auth-types";
 import { PUBLIC_API_BASE_URL } from "@/lib/env/api-base-url";
 
-export async function getCurrentUserServer() {
+export async function getCurrentUserServer(): Promise<AuthResponse | null> {
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.toString();
 
@@ -19,5 +20,5 @@ export async function getCurrentUserServer() {
     return null;
   }
 
-  return res.json();
+  return res.json() as Promise<AuthResponse>;
 }

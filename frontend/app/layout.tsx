@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 import { SentryInit } from "@/components/sentry-init";
 
 export const metadata: Metadata = {
-  title: "Marketplace AI MVP",
-  description: "Frontend skeleton for marketplace AI assistant",
+  title: "Marketplace AI — MVP",
+  description: "Ассистент для продавцов маркетплейсов",
 };
 
 export default function RootLayout({
@@ -13,7 +13,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="ru">
       <body>
         <SentryInit />
         {children}

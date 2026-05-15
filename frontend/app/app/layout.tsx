@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
+import AppAuthRedirect from "@/components/app-auth-redirect";
 import AppShell from "@/components/app-shell";
+import { isAdminOnlyUser } from "@/lib/auth-redirect";
 import { getCurrentUserServer } from "@/lib/server-auth";
 
 export default async function AppSectionLayout({
@@ -12,9 +14,19 @@ export default async function AppSectionLayout({
     redirect("/login");
   }
 
+  const adminOnly = isAdminOnlyUser(auth);
+
   return (
-    <AppShell userEmail={auth.user.email} sellerAccountName={auth.seller_account.name}>
-      {children}
-    </AppShell>
+    <>
+      <AppAuthRedirect isAdminOnly={adminOnly} />
+      <AppShell
+        userEmail={auth.user.email}
+        sellerAccountName={auth.seller_account?.name ?? null}
+        isAdminOnly={adminOnly}
+        isAdmin={auth.is_admin}
+      >
+        {children}
+      </AppShell>
+    </>
   );
 }

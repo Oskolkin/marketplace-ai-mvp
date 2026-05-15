@@ -84,7 +84,7 @@ async function safeLoad<T>(fn: () => Promise<T>): Promise<LoadState<T>> {
   } catch (e) {
     return {
       data: null,
-      error: e instanceof Error ? e.message : "Request failed",
+      error: e instanceof Error ? e.message : "Запрос не выполнен",
     };
   }
 }
@@ -165,52 +165,52 @@ export default function MvpTestHomeScreen() {
   }, [conn, ing, ozon.error, ingestion.error]);
 
   const syncReadiness = useMemo(() => {
-    if (ingestion.error && !ing) return { tone: "error" as const, label: "Error", detail: ingestion.error };
-    if (!ing) return { tone: "not_started" as const, label: "No sync", detail: "No status loaded yet." };
+    if (ingestion.error && !ing) return { tone: "error" as const, label: "Ошибка", detail: ingestion.error };
+    if (!ing) return { tone: "not_started" as const, label: "Нет синхронизации", detail: "Статус ещё не загружен." };
     const cur = ing.current_sync;
     if (cur?.status === "running" || cur?.status === "pending") {
-      return { tone: "warning" as const, label: "Running", detail: mapSyncStatus(cur.status) };
+      return { tone: "warning" as const, label: "Выполняется", detail: mapSyncStatus(cur.status) };
     }
     if (cur?.status === "failed") {
-      return { tone: "error" as const, label: "Failed", detail: cur.error_message || "Last job failed." };
+      return { tone: "error" as const, label: "Сбой", detail: cur.error_message || "Последняя задача завершилась с ошибкой." };
     }
     if (ing.last_successful_sync_at || cur?.status === "completed") {
       return {
         tone: "done" as const,
-        label: "Completed",
+        label: "Завершено",
         detail: ing.last_successful_sync_at
-          ? `Last success: ${new Date(ing.last_successful_sync_at).toLocaleString()}`
-          : "Latest job completed.",
+          ? `Последний успех: ${new Date(ing.last_successful_sync_at).toLocaleString()}`
+          : "Последняя задача выполнена.",
       };
     }
-    return { tone: "not_started" as const, label: "No sync", detail: "Start an initial sync from Sync Status." };
+    return { tone: "not_started" as const, label: "Нет синхронизации", detail: "Запустите начальную синхронизацию на странице «Статус синхронизации»." };
   }, [ing, ingestion.error]);
 
   const dashboardReadiness = useMemo(() => {
     if (dashboard.error) {
-      return { tone: "error" as const, label: "Unavailable", detail: dashboard.error };
+      return { tone: "error" as const, label: "Недоступно", detail: dashboard.error };
     }
     const d = dashboard.data;
-    if (!d) return { tone: "not_started" as const, label: "Missing", detail: "No dashboard payload." };
+    if (!d) return { tone: "not_started" as const, label: "Нет данных", detail: "Сводка дашборда не получена." };
     const hasRows = d.top_skus && d.top_skus.length > 0;
     const hasFresh = Boolean(d.summary?.last_successful_update || d.summary?.as_of_date);
     if (hasRows || hasFresh) {
       return {
         tone: "done" as const,
-        label: "Available",
+        label: "Доступно",
         detail: d.summary?.as_of_date
-          ? `As of ${d.summary.as_of_date}${d.summary.last_successful_update ? ` · updated ${new Date(d.summary.last_successful_update).toLocaleString()}` : ""}`
-          : "Summary loaded.",
+          ? `На дату ${d.summary.as_of_date}${d.summary.last_successful_update ? ` · обновлено ${new Date(d.summary.last_successful_update).toLocaleString()}` : ""}`
+          : "Сводка загружена.",
       };
     }
-    return { tone: "not_started" as const, label: "Missing", detail: "No KPI / SKU rows yet." };
+    return { tone: "not_started" as const, label: "Нет данных", detail: "Пока нет строк KPI и SKU." };
   }, [dashboard]);
 
   const alertsReadiness = useMemo(() => {
     if (alerts.error) {
       return {
         tone: "warning" as const,
-        label: "Unavailable",
+        label: "Недоступно",
         detail: alerts.error,
       };
     }
@@ -218,8 +218,8 @@ export default function MvpTestHomeScreen() {
     if (!a) {
       return {
         tone: "not_started" as const,
-        label: "Unknown",
-        detail: "No summary.",
+        label: "Неизвестно",
+        detail: "Нет сводки.",
       };
     }
     const run = a.latest_run;
@@ -228,17 +228,17 @@ export default function MvpTestHomeScreen() {
     if (noRun && a.open_total === 0) {
       return {
         tone: "not_started" as const,
-        label: `${a.open_total} open`,
-        detail: "No alert runs yet.",
+        label: `${a.open_total} открыто`,
+        detail: "Запусков алертов ещё не было.",
       };
     }
     const tone = runFailed ? ("warning" as const) : ("done" as const);
     return {
       tone,
-      label: `${a.open_total} open`,
+      label: `${a.open_total} открыто`,
       detail: run
-        ? `Latest run: ${run.status}${run.finished_at ? ` · ${new Date(run.finished_at).toLocaleString()}` : ""}${run.error_message ? ` — ${run.error_message}` : ""}`
-        : "No alert runs yet.",
+        ? `Последний запуск: ${run.status}${run.finished_at ? ` · ${new Date(run.finished_at).toLocaleString()}` : ""}${run.error_message ? ` — ${run.error_message}` : ""}`
+        : "Запусков алертов ещё не было.",
     };
   }, [alerts]);
 
@@ -246,7 +246,7 @@ export default function MvpTestHomeScreen() {
     if (recommendations.error) {
       return {
         tone: "warning" as const,
-        label: "Unavailable",
+        label: "Недоступно",
         detail: recommendations.error,
       };
     }
@@ -254,8 +254,8 @@ export default function MvpTestHomeScreen() {
     if (!r) {
       return {
         tone: "not_started" as const,
-        label: "Unknown",
-        detail: "No summary.",
+        label: "Неизвестно",
+        detail: "Нет сводки.",
       };
     }
     const run = r.latest_run;
@@ -264,17 +264,17 @@ export default function MvpTestHomeScreen() {
     if (noRun && r.open_total === 0) {
       return {
         tone: "not_started" as const,
-        label: `${r.open_total} open`,
-        detail: "No recommendation runs yet.",
+        label: `${r.open_total} открыто`,
+        detail: "Запусков рекомендаций ещё не было.",
       };
     }
     const tone = runFailed ? ("warning" as const) : ("done" as const);
     return {
       tone,
-      label: `${r.open_total} open`,
+      label: `${r.open_total} открыто`,
       detail: run
-        ? `Latest run: ${run.status}${run.finished_at ? ` · ${new Date(run.finished_at).toLocaleString()}` : ""}${run.error_message ? ` — ${run.error_message}` : ""}`
-        : "No recommendation runs yet.",
+        ? `Последний запуск: ${run.status}${run.finished_at ? ` · ${new Date(run.finished_at).toLocaleString()}` : ""}${run.error_message ? ` — ${run.error_message}` : ""}`
+        : "Запусков рекомендаций ещё не было.",
     };
   }, [recommendations]);
 
@@ -313,99 +313,99 @@ export default function MvpTestHomeScreen() {
     return [
       step(
         1,
-        "Connect Ozon",
-        "Save seller API credentials and pass the connection check.",
+        "Подключить Ozon",
+        "Сохраните API-ключи продавца и пройдите проверку подключения.",
         ozonDone ? "done" : sellerConnected.kind === "warn" ? "warning" : "not_started",
         "/app/integrations/ozon",
-        "Open Ozon"
+        "Открыть Ozon"
       ),
       step(
         2,
-        "Run initial sync",
-        "Import products, orders, stocks, and ads from Ozon.",
+        "Запустить начальную синхронизацию",
+        "Импортируйте товары, заказы, остатки и рекламу из Ozon.",
         syncDone ? "done" : syncWarn ? "warning" : "not_started",
         "/app/sync-status",
-        "Sync status"
+        "Статус синхронизации"
       ),
       step(
         3,
-        "Wait for post-sync recalculation",
-        "Metrics and aggregates update after a successful sync.",
+        "Дождаться пересчёта после синхронизации",
+        "Метрики и агрегаты обновляются после успешной синхронизации.",
         dashDone && syncDone ? "done" : syncDone && !dashDone ? "warning" : "not_started",
         "/app/sync-status",
-        "View sync"
+        "Смотреть синхронизацию"
       ),
       step(
         4,
-        "Open dashboard",
-        "Confirm KPIs and top SKUs look reasonable.",
+        "Открыть дашборд",
+        "Проверьте KPI и топ SKU.",
         dashDone ? "done" : dashWarn ? "warning" : "not_started",
         "/app/dashboard",
-        "Dashboard"
+        "Дашборд"
       ),
       step(
         5,
-        "Check Critical SKU",
-        "Review risk-ranked SKUs after metrics exist.",
+        "Проверить критичные SKU",
+        "Просмотрите SKU с рисками после появления метрик.",
         dashDone ? "done" : "not_started",
         "/app/critical-skus",
-        "Critical SKU"
+        "Критичные SKU"
       ),
       step(
         6,
-        "Check Stocks",
-        "Validate replenishment signals and cover days.",
+        "Проверить остатки",
+        "Оцените сигналы пополнения и дни покрытия.",
         dashDone ? "done" : "not_started",
         "/app/stocks-replenishment",
-        "Stocks"
+        "Остатки"
       ),
       step(
         7,
-        "Open Advertising",
-        "Review spend, ROAS, and risky campaigns after ads data is synced.",
+        "Открыть рекламу",
+        "Проверьте расход, ROAS и рисковые кампании после синка рекламы.",
         adsDone ? "done" : adsWarn ? "warning" : "not_started",
         "/app/advertising",
-        "Advertising"
+        "Реклама"
       ),
       step(
         8,
-        "Configure Pricing Constraints",
-        "Set guardrails before price-related alerts and recs.",
+        "Настроить ограничения цен",
+        "Задайте ограничения до алертов и рекомендаций по ценам.",
         "not_started",
         "/app/pricing-constraints",
-        "Pricing"
+        "Цены"
       ),
       step(
         9,
-        "Run Alerts",
-        "Generate sales, stock, ads, and price alerts for the as-of date.",
+        "Запустить алерты",
+        "Сформируйте алерты по продажам, остаткам, рекламе и ценам на дату отчёта.",
         alertsDone ? "done" : alertsWarn ? "warning" : "not_started",
         "/app/alerts",
-        "Alerts"
+        "Алерты"
       ),
       step(
         10,
-        "Generate Recommendations",
-        "Produce AI recommendations from alerts and metrics.",
+        "Сгенерировать рекомендации",
+        "Создайте ИИ-рекомендации на основе алертов и метрик.",
         recDone ? "done" : recWarn ? "warning" : "not_started",
         "/app/recommendations",
-        "Recommendations"
+        "Рекомендации"
       ),
       step(
         11,
-        "Ask AI Chat",
-        "Try natural-language questions on your account context.",
+        "Чат с ИИ",
+        "Задавайте вопросы на естественном языке по контексту аккаунта.",
         ozonDone && syncDone && dashDone ? "done" : "not_started",
         "/app/chat",
-        "Open chat"
+        "Открыть чат"
       ),
       step(
         12,
-        "Check Admin logs",
-        "Internal support: clients, sync, AI traces (admin only).",
+        "Журналы администратора",
+        "Внутренняя поддержка: клиенты, синхронизация, трейсы ИИ (только для админов).",
         admin?.is_admin ? "done" : "not_started",
         "/app/admin",
-        "Admin"
+        "Админка"
       ),
     ];
   }, [
@@ -422,20 +422,20 @@ export default function MvpTestHomeScreen() {
 
   const primaryCta = useMemo(() => {
     if (sellerConnected.kind !== "ok" || !conn) {
-      return { href: "/app/integrations/ozon", label: "Connect Ozon" };
+      return { href: "/app/integrations/ozon", label: "Подключить Ozon" };
     }
     if (syncReadiness.tone === "not_started" || syncReadiness.tone === "error") {
-      return { href: "/app/sync-status", label: "Open sync & run import" };
+      return { href: "/app/sync-status", label: "Синхронизация и импорт" };
     }
     if (dashboardReadiness.tone !== "done") {
-      return { href: "/app/dashboard", label: "Open dashboard" };
+      return { href: "/app/dashboard", label: "Открыть дашборд" };
     }
     const lr = recommendations.data?.latest_run;
     const recCompleted = Boolean(lr && isRunSuccessful(lr.status) && lr.finished_at);
     if (!recommendations.error && !recCompleted) {
-      return { href: "/app/recommendations", label: "Generate recommendations" };
+      return { href: "/app/recommendations", label: "Сгенерировать рекомендации" };
     }
-    return { href: "/app/chat", label: "Try AI chat" };
+    return { href: "/app/chat", label: "Попробовать ИИ-чат" };
   }, [sellerConnected, conn, syncReadiness, dashboardReadiness, recommendations]);
 
   const sellerCard = cardBadgeLabel(
@@ -446,10 +446,10 @@ export default function MvpTestHomeScreen() {
         : sellerConnected.kind === "warn"
           ? "warn"
           : "neutral",
-    "Connected",
-    "In progress",
-    "Error",
-    "Missing"
+    "Подключено",
+    "В процессе",
+    "Ошибка",
+    "Нет данных"
   );
 
   const perfCard = cardBadgeLabel(
@@ -460,16 +460,16 @@ export default function MvpTestHomeScreen() {
         : performanceToken.kind === "warn"
           ? "warn"
           : "neutral",
-    "Set",
-    "Set (verify)",
-    "Error",
-    "Missing"
+    "Задан",
+    "Задан (проверьте)",
+    "Ошибка",
+    "Нет данных"
   );
 
   if (loading) {
     return (
       <main className="p-6">
-        <LoadingState message="Loading MVP readiness…" />
+        <LoadingState message="Загрузка готовности MVP…" />
       </main>
     );
   }
@@ -501,11 +501,11 @@ export default function MvpTestHomeScreen() {
   return (
     <main className="space-y-8 p-6">
       <PageHeader
-        title="MVP Test Home"
-        subtitle="Checklist for pre-billing MVP validation. Connection, sync, analytics, alerts, AI recommendations, and chat — in one place."
+        title="Главная MVP-теста"
+        subtitle="Чеклист проверки MVP перед биллингом: подключение, синхронизация, аналитика, алерты, ИИ-рекомендации и чат — в одном месте."
       >
         <Button type="button" variant="secondary" onClick={() => void load()}>
-          Refresh
+          Обновить
         </Button>
         <Link href={primaryCta.href} className={buttonClassNames("primary")}>
           {primaryCta.label}
@@ -514,12 +514,12 @@ export default function MvpTestHomeScreen() {
 
       <section aria-labelledby="readiness-heading">
         <h2 id="readiness-heading" className="mb-3 text-lg font-semibold text-gray-900">
-          Readiness
+          Готовность
         </h2>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">Ozon seller connection</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-500">Подключение продавца Ozon</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 pt-0">
               <Badge tone={readinessBadgeTone(sellerCard.tone)}>{sellerCard.label}</Badge>
@@ -528,14 +528,14 @@ export default function MvpTestHomeScreen() {
                   ? ozon.error
                   : conn
                     ? `${mapConnectionStatus(conn.status)} · client ${conn.client_id_masked}`
-                    : "No connection record. Add credentials in Ozon Integration."}
+                    : "Нет записи о подключении. Добавьте ключи в интеграции Ozon."}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">Ozon Performance API token</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-500">Токен Ozon Performance API</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 pt-0">
               <Badge tone={readinessBadgeTone(perfCard.tone)}>{perfCard.label}</Badge>
@@ -548,7 +548,7 @@ export default function MvpTestHomeScreen() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">Latest sync</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-500">Последняя синхронизация</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 pt-0">
               <StatusBadge status={syncStatusKey} label={syncReadiness.label} />
@@ -558,7 +558,7 @@ export default function MvpTestHomeScreen() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">Dashboard data</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-500">Данные дашборда</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 pt-0">
               <StatusBadge status={dashboardStatusKey} label={dashboardReadiness.label} />
@@ -568,39 +568,39 @@ export default function MvpTestHomeScreen() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">Alerts</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-500">Алерты</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 pt-0">
               <StatusBadge status={alertsStatusKey} label={alertsReadiness.label} />
               <p className="text-sm text-gray-600">{alertsReadiness.detail}</p>
               {alerts.error ? (
-                <p className="text-xs text-amber-800">Alerts API unavailable — continue with other checks.</p>
+                <p className="text-xs text-amber-800">API алертов недоступен — продолжите другие проверки.</p>
               ) : null}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">Recommendations</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-500">Рекомендации</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 pt-0">
               <StatusBadge status={recStatusKey} label={recReadiness.label} />
               <p className="text-sm text-gray-600">{recReadiness.detail}</p>
               {recommendations.error ? (
-                <p className="text-xs text-amber-800">Recommendations API unavailable.</p>
+                <p className="text-xs text-amber-800">API рекомендаций недоступен.</p>
               ) : null}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">AI Chat</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-500">ИИ-чат</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 pt-0">
-              <Badge tone="success">Available</Badge>
-              <p className="text-sm text-gray-600">Opens the chat workspace against your seller context.</p>
+              <Badge tone="success">Доступен</Badge>
+              <p className="text-sm text-gray-600">Чат в контексте вашего магазина продавца.</p>
               <Link href="/app/chat" className="text-sm font-medium text-blue-700 hover:underline">
-                Open AI Chat →
+                Открыть ИИ-чат →
               </Link>
             </CardContent>
           </Card>
@@ -608,14 +608,14 @@ export default function MvpTestHomeScreen() {
           {admin?.is_admin ? (
             <Card className="border-indigo-200 bg-indigo-50/60 sm:col-span-2 xl:col-span-1">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-indigo-900">Admin / Support</CardTitle>
+                <CardTitle className="text-sm font-medium text-indigo-900">Админка / поддержка</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 pt-0">
                 <p className="text-sm text-indigo-950/80">
-                  You have admin access — use internal tools for client diagnostics and AI logs.
+                  У вас есть права администратора — используйте внутренние инструменты для диагностики клиентов и логов ИИ.
                 </p>
                 <Link href="/app/admin" className="text-sm font-medium text-indigo-800 hover:underline">
-                  Open Admin →
+                  Открыть админку →
                 </Link>
               </CardContent>
             </Card>
@@ -625,7 +625,7 @@ export default function MvpTestHomeScreen() {
 
       <section aria-labelledby="checklist-heading">
         <h2 id="checklist-heading" className="mb-3 text-lg font-semibold text-gray-900">
-          Test checklist
+          Тестовый чеклист
         </h2>
         <ol className="space-y-3">
           {checklist.map((row) => (
@@ -638,7 +638,7 @@ export default function MvpTestHomeScreen() {
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium text-gray-900">{row.title}</span>
                         <Badge tone={stepStatusBadgeTone(row.status)}>
-                          {row.status === "done" ? "Done" : row.status === "warning" ? "Warning" : "Not started"}
+                          {row.status === "done" ? "Готово" : row.status === "warning" ? "Внимание" : "Не начато"}
                         </Badge>
                       </div>
                       <p className="mt-1 text-sm text-gray-600">{row.hint}</p>
@@ -659,26 +659,26 @@ export default function MvpTestHomeScreen() {
 
       <section aria-labelledby="quick-heading">
         <h2 id="quick-heading" className="mb-3 text-lg font-semibold text-gray-900">
-          Quick actions
+          Быстрые действия
         </h2>
         <div className="flex flex-wrap gap-2">
           <Link href="/app/integrations/ozon" className={buttonClassNames("secondary")}>
-            Ozon Integration
+            Интеграция Ozon
           </Link>
           <Link href="/app/sync-status" className={buttonClassNames("secondary")}>
-            Sync Status
+            Статус синхронизации
           </Link>
           <Link href="/app/dashboard" className={buttonClassNames("secondary")}>
-            Dashboard
+            Дашборд
           </Link>
           <Link href="/app/alerts" className={buttonClassNames("secondary")}>
-            Run Alerts
+            Запустить алерты
           </Link>
           <Link href="/app/recommendations" className={buttonClassNames("secondary")}>
-            Generate Recommendations
+            Сгенерировать рекомендации
           </Link>
           <Link href="/app/chat" className={buttonClassNames("secondary")}>
-            Open Chat
+            Открыть чат
           </Link>
           {admin?.is_admin ? (
             <Link
@@ -688,7 +688,7 @@ export default function MvpTestHomeScreen() {
                 "border-indigo-300 bg-indigo-50 text-indigo-900 hover:bg-indigo-100",
               )}
             >
-              Admin
+              Админка
             </Link>
           ) : null}
         </div>

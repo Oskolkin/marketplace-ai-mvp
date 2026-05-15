@@ -21,6 +21,7 @@ CLI and **Make targets** for loading **deterministic, seller-scoped source data*
 3. **Backend environment** (`backend/.env` or env vars loaded by `internal/config`):
 
    - `DATABASE_URL` — same Postgres as migrations.
+   - **`ADMIN_EMAILS=admin@example.com`** — required for admin login (`admin@example.com` has no `seller_account`; access is allowlist-based).
    - **`ENCRYPTION_KEY`** — exactly **32 bytes**; must match the API/worker so `dev-seed-mvp` can encrypt Ozon credentials the same way the app decrypts them.
    - S3/MinIO variables if you exercise raw payload flows (seed does not require raw payloads).
 
@@ -132,10 +133,12 @@ Details: [Validate derived](#validate-derived-details).
 
 ### 3. Login (default seed users)
 
-| Role | Email | Password |
-|------|-------|----------|
-| Demo seller | `demo@example.com` | `password123` |
-| Admin | `admin@example.com` | `password123` |
+| Role | Email | Password | After login |
+|------|-------|----------|-------------|
+| Seller | `demo@example.com` | `password123` | `/app` (seller UI) |
+| Admin | `admin@example.com` | `password123` | `/app/admin` (admin/support UI; no `seller_account`) |
+
+Set **`ADMIN_EMAILS=admin@example.com`** in the backend API environment so admin login is recognized.
 
 (Override via `SEED_*` variables when running Make. Use `SEED_RESET_PASSWORD=false` if you must preserve passwords for existing accounts.)
 

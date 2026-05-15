@@ -32,6 +32,20 @@ func Middleware(service *Service, cookieName string) func(http.Handler) http.Han
 	}
 }
 
+func RequireSellerAccount() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, ok := SellerAccountFromContext(r.Context()); !ok {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(`{"error":"seller account required"}`))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func IsAdminUser(user *dbgen.User, adminEmails []string) bool {
 	if user == nil || user.Email == "" || len(adminEmails) == 0 {
 		return false

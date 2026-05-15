@@ -11,12 +11,14 @@ import (
 type AuthHandler struct {
 	authService *auth.Service
 	cookieName  string
+	adminEmails []string
 }
 
-func NewAuthHandler(authService *auth.Service, cookieName string) *AuthHandler {
+func NewAuthHandler(authService *auth.Service, cookieName string, adminEmails []string) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
 		cookieName:  cookieName,
+		adminEmails: adminEmails,
 	}
 }
 
@@ -31,17 +33,20 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
+type sellerAccountResponse struct {
+	ID     int64  `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
+
 type authResponse struct {
 	User struct {
 		ID     int64  `json:"id"`
 		Email  string `json:"email"`
 		Status string `json:"status"`
 	} `json:"user"`
-	SellerAccount struct {
-		ID     int64  `json:"id"`
-		Name   string `json:"name"`
-		Status string `json:"status"`
-	} `json:"seller_account"`
+	SellerAccount *sellerAccountResponse `json:"seller_account"`
+	IsAdmin       bool                   `json:"is_admin"`
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +73,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	setAuthCookie(w, h.cookieName, result.SessionToken)
 
-	writeJSON(w, http.StatusCreated, buildAuthResponse(result))
+	writeJSON(w, http.StatusCreated, buildAuthResponse(result, h.adminEmails))
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -88,6 +93,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
 		case errors.Is(err, auth.ErrUnauthorized):
 			writeJSONError(w, http.StatusForbidden, "user is not active")
+		case errors.Is(err, auth.ErrSellerAccountRequired):
+			writeJSONError(w, http.StatusForbidden, "seller account required")
 		default:
 			writeJSONError(w, http.StatusBadRequest, err.Error())
 		}
@@ -96,7 +103,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	setAuthCookie(w, h.cookieName, result.SessionToken)
 
-	writeJSON(w, http.StatusOK, buildAuthResponse(result))
+	writeJSON(w, http.StatusOK, buildAuthResponse(result, h.adminEmails))
 }
 
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
@@ -106,21 +113,12 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sellerAccount, ok := auth.SellerAccountFromContext(r.Context())
-	if !ok {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
-		return
+	result := &auth.AuthResult{User: user}
+	if sellerAccount, ok := auth.SellerAccountFromContext(r.Context()); ok {
+		result.SellerAccount = &sellerAccount
 	}
 
-	resp := authResponse{}
-	resp.User.ID = user.ID
-	resp.User.Email = user.Email
-	resp.User.Status = user.Status
-	resp.SellerAccount.ID = sellerAccount.ID
-	resp.SellerAccount.Name = sellerAccount.Name
-	resp.SellerAccount.Status = sellerAccount.Status
-
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, buildAuthResponse(result, h.adminEmails))
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
@@ -146,14 +144,22 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func buildAuthResponse(result *auth.AuthResult) authResponse {
-	resp := authResponse{}
+func buildAuthResponse(result *auth.AuthResult, adminEmails []string) authResponse {
+	resp := authResponse{
+		IsAdmin: auth.IsAdminUser(&result.User, adminEmails),
+	}
 	resp.User.ID = result.User.ID
 	resp.User.Email = result.User.Email
 	resp.User.Status = result.User.Status
-	resp.SellerAccount.ID = result.SellerAccount.ID
-	resp.SellerAccount.Name = result.SellerAccount.Name
-	resp.SellerAccount.Status = result.SellerAccount.Status
+
+	if result.SellerAccount != nil {
+		resp.SellerAccount = &sellerAccountResponse{
+			ID:     result.SellerAccount.ID,
+			Name:   result.SellerAccount.Name,
+			Status: result.SellerAccount.Status,
+		}
+	}
+
 	return resp
 }
 

@@ -72,6 +72,49 @@ func TestOutputValidatorValidate_InvalidRecommendationTypeRejected(t *testing.T)
 	if len(res.RejectedRecommendations) != 1 {
 		t.Fatalf("expected rejection")
 	}
+	if !strings.Contains(res.RejectedRecommendations[0].Reason, "not_allowed_type") {
+		t.Fatalf("expected actual type in reason, got %q", res.RejectedRecommendations[0].Reason)
+	}
+}
+
+func TestOutputValidatorValidate_AliasStockReplenishmentAccepted(t *testing.T) {
+	v := NewOutputValidator()
+	content := `{
+		"recommendations": [{
+			"recommendation_type":"stock_replenishment",
+			"horizon":"short_term",
+			"entity_type":"sku",
+			"entity_sku":1001,
+			"title":"Пополнить SKU",
+			"what_happened":"Снижается остаток",
+			"why_it_matters":"Риск OOS",
+			"recommended_action":"Увеличить поставку",
+			"priority_score":88.5,
+			"priority_level":"high",
+			"urgency":"immediate",
+			"confidence_level":"high",
+			"supporting_metrics":{"stock_available":0},
+			"constraints_checked":{"stock_checked":true},
+			"supporting_alert_ids":[101],
+			"related_alert_types":["stock_oos_risk"]
+		}]
+	}`
+	res, err := v.Validate(&GenerateRecommendationsOutput{Content: content}, sampleContext())
+	if err != nil {
+		t.Fatalf("Validate returned error: %v", err)
+	}
+	if len(res.ValidRecommendations) != 1 {
+		t.Fatalf("expected 1 valid, got valid=%d rejected=%d", len(res.ValidRecommendations), len(res.RejectedRecommendations))
+	}
+	if res.ValidRecommendations[0].Recommendation.RecommendationType != "replenish_sku" {
+		t.Fatalf("expected canonical replenish_sku, got %q", res.ValidRecommendations[0].Recommendation.RecommendationType)
+	}
+	if res.NormalizedTypesCount != 1 || len(res.NormalizedTypes) != 1 {
+		t.Fatalf("expected normalization entry, got count=%d entries=%d", res.NormalizedTypesCount, len(res.NormalizedTypes))
+	}
+	if res.NormalizedTypes[0].Original != "stock_replenishment" || res.NormalizedTypes[0].Canonical != "replenish_sku" {
+		t.Fatalf("unexpected normalization: %+v", res.NormalizedTypes[0])
+	}
 }
 
 func TestOutputValidatorValidate_EmptySupportingMetricsRejected(t *testing.T) {
@@ -119,7 +162,7 @@ func TestOutputValidatorValidate_UnknownSKURejected(t *testing.T) {
 func TestOutputValidatorValidate_PriceBelowMinRejected(t *testing.T) {
 	v := NewOutputValidator()
 	out := &GenerateRecommendationsOutput{
-		Content: `{"recommendations":[{"recommendation_type":"review_price_below_min","horizon":"short_term","entity_type":"sku","entity_sku":1001,"title":"Снизить цену","what_happened":"w","why_it_matters":"y","recommended_action":"снизить цену до 50","priority_score":50,"priority_level":"high","urgency":"high","confidence_level":"high","supporting_metrics":{"expected_margin":0.2},"constraints_checked":{"pricing_checked":true,"margin_checked":true}}]}`,
+		Content: `{"recommendations":[{"recommendation_type":"review_price_below_min","horizon":"short_term","entity_type":"sku","entity_sku":1001,"title":"Снизить цену","what_happened":"w","why_it_matters":"y","recommended_action":"снизить цену до 50","priority_score":50,"priority_level":"high","urgency":"high","confidence_level":"high","supporting_metrics":{"expected_margin":0.2},"constraints_checked":{"pricing_checked":true,"margin_checked":true},"supporting_alert_ids":[102]}]}`,
 	}
 	res, err := v.Validate(out, sampleContext())
 	if err != nil {
@@ -133,7 +176,7 @@ func TestOutputValidatorValidate_PriceBelowMinRejected(t *testing.T) {
 func TestOutputValidatorValidate_PriceAboveMaxRejected(t *testing.T) {
 	v := NewOutputValidator()
 	out := &GenerateRecommendationsOutput{
-		Content: `{"recommendations":[{"recommendation_type":"review_price_above_max","horizon":"short_term","entity_type":"sku","entity_sku":1001,"title":"Поднять цену","what_happened":"w","why_it_matters":"y","recommended_action":"повысить цену до 300","priority_score":50,"priority_level":"high","urgency":"high","confidence_level":"high","supporting_metrics":{"expected_margin":0.2},"constraints_checked":{"pricing_checked":true,"margin_checked":true}}]}`,
+		Content: `{"recommendations":[{"recommendation_type":"review_price_above_max","horizon":"short_term","entity_type":"sku","entity_sku":1001,"title":"Поднять цену","what_happened":"w","why_it_matters":"y","recommended_action":"повысить цену до 300","priority_score":50,"priority_level":"high","urgency":"high","confidence_level":"high","supporting_metrics":{"expected_margin":0.2},"constraints_checked":{"pricing_checked":true,"margin_checked":true},"supporting_alert_ids":[102]}]}`,
 	}
 	res, err := v.Validate(out, sampleContext())
 	if err != nil {
@@ -147,7 +190,7 @@ func TestOutputValidatorValidate_PriceAboveMaxRejected(t *testing.T) {
 func TestOutputValidatorValidate_IncreaseAdsLowStockRejected(t *testing.T) {
 	v := NewOutputValidator()
 	out := &GenerateRecommendationsOutput{
-		Content: `{"recommendations":[{"recommendation_type":"redirect_ad_budget_from_low_stock_sku","horizon":"short_term","entity_type":"sku","entity_sku":1001,"title":"Ads","what_happened":"w","why_it_matters":"y","recommended_action":"увеличить рекламу и увеличить бюджет","priority_score":70,"priority_level":"high","urgency":"high","confidence_level":"high","supporting_metrics":{"ctr":0.1},"constraints_checked":{"ads_checked":true,"stock_checked":true},"related_alert_types":["stock_oos_risk"]}]}`,
+		Content: `{"recommendations":[{"recommendation_type":"redirect_ad_budget_from_low_stock_sku","horizon":"short_term","entity_type":"sku","entity_sku":1001,"title":"Ads","what_happened":"w","why_it_matters":"y","recommended_action":"увеличить рекламу и увеличить бюджет","priority_score":70,"priority_level":"high","urgency":"high","confidence_level":"high","supporting_metrics":{"ctr":0.1},"constraints_checked":{"ads_checked":true,"stock_checked":true},"supporting_alert_ids":[101],"related_alert_types":["stock_oos_risk"]}]}`,
 	}
 	res, err := v.Validate(out, sampleContext())
 	if err != nil {
@@ -161,7 +204,7 @@ func TestOutputValidatorValidate_IncreaseAdsLowStockRejected(t *testing.T) {
 func TestOutputValidatorValidate_MarginRiskWithoutCheckRejected(t *testing.T) {
 	v := NewOutputValidator()
 	out := &GenerateRecommendationsOutput{
-		Content: `{"recommendations":[{"recommendation_type":"review_margin_risk","horizon":"short_term","entity_type":"sku","entity_sku":1001,"title":"Price","what_happened":"w","why_it_matters":"y","recommended_action":"reduce price to 120","priority_score":60,"priority_level":"high","urgency":"high","confidence_level":"high","supporting_metrics":{"expected_margin":0.09},"constraints_checked":{"pricing_checked":true},"related_alert_types":["margin_risk_at_current_price"]}]}`,
+		Content: `{"recommendations":[{"recommendation_type":"review_margin_risk","horizon":"short_term","entity_type":"sku","entity_sku":1001,"title":"Price","what_happened":"w","why_it_matters":"y","recommended_action":"reduce price to 120","priority_score":60,"priority_level":"high","urgency":"high","confidence_level":"high","supporting_metrics":{"expected_margin":0.09},"constraints_checked":{"pricing_checked":true},"supporting_alert_ids":[102],"related_alert_types":["margin_risk_at_current_price"]}]}`,
 	}
 	res, err := v.Validate(out, sampleContext())
 	if err != nil {
@@ -175,7 +218,7 @@ func TestOutputValidatorValidate_MarginRiskWithoutCheckRejected(t *testing.T) {
 func TestOutputValidatorValidate_MarginRiskVeryLowRejected(t *testing.T) {
 	v := NewOutputValidator()
 	out := &GenerateRecommendationsOutput{
-		Content: `{"recommendations":[{"recommendation_type":"review_margin_risk","horizon":"short_term","entity_type":"sku","entity_sku":1001,"title":"Price","what_happened":"w","why_it_matters":"y","recommended_action":"reduce price to 120","priority_score":60,"priority_level":"high","urgency":"high","confidence_level":"high","supporting_metrics":{"expected_margin":0.04},"constraints_checked":{"pricing_checked":true,"margin_checked":true},"related_alert_types":["margin_risk_at_current_price"]}]}`,
+		Content: `{"recommendations":[{"recommendation_type":"review_margin_risk","horizon":"short_term","entity_type":"sku","entity_sku":1001,"title":"Price","what_happened":"w","why_it_matters":"y","recommended_action":"reduce price to 120","priority_score":60,"priority_level":"high","urgency":"high","confidence_level":"high","supporting_metrics":{"expected_margin":0.04},"constraints_checked":{"pricing_checked":true,"margin_checked":true},"supporting_alert_ids":[102],"related_alert_types":["margin_risk_at_current_price"]}]}`,
 	}
 	res, err := v.Validate(out, sampleContext())
 	if err != nil {
@@ -203,7 +246,7 @@ func TestOutputValidatorValidate_RelatedAlertTypesMismatchRejected(t *testing.T)
 func TestOutputValidatorValidate_WarningDowngradesConfidence(t *testing.T) {
 	v := NewOutputValidator()
 	out := &GenerateRecommendationsOutput{
-		Content: `{"recommendations":[{"recommendation_type":"review_campaign_without_result","horizon":"short_term","entity_type":"campaign","entity_id":"555","title":"ad","what_happened":"w","why_it_matters":"y","recommended_action":"optimize campaign","priority_score":50,"priority_level":"high","urgency":"high","confidence_level":"high","supporting_metrics":{"roas":0.2},"constraints_checked":{"stock_checked":true}}]}`,
+		Content: `{"recommendations":[{"recommendation_type":"review_campaign_without_result","horizon":"short_term","entity_type":"campaign","entity_id":"555","title":"ad","what_happened":"w","why_it_matters":"y","recommended_action":"optimize campaign","priority_score":50,"priority_level":"high","urgency":"high","confidence_level":"high","supporting_metrics":{"roas":0.2},"constraints_checked":{"stock_checked":true},"supporting_alert_ids":[103],"related_alert_types":["review_campaign_without_result"]}]}`,
 	}
 	res, err := v.Validate(out, sampleContext())
 	if err != nil {
@@ -278,6 +321,35 @@ func sampleContext() *AIRecommendationContext {
 }
 
 func strPtr(s string) *string { return &s }
+
+func TestOutputValidatorValidate_MissingSupportingAlertIDsRejected(t *testing.T) {
+	v := NewOutputValidator()
+	out := &GenerateRecommendationsOutput{
+		Content: `{"recommendations":[{
+			"recommendation_type":"replenish_sku",
+			"horizon":"short_term",
+			"entity_type":"sku",
+			"entity_sku":1001,
+			"title":"Пополнить SKU",
+			"what_happened":"Снижается остаток",
+			"why_it_matters":"Риск OOS",
+			"recommended_action":"Увеличить поставку",
+			"priority_score":88.5,
+			"priority_level":"high",
+			"urgency":"immediate",
+			"confidence_level":"high",
+			"supporting_metrics":{"stock_available":0},
+			"constraints_checked":{"stock_checked":true}
+		}]}`,
+	}
+	res, err := v.Validate(out, sampleContext())
+	if err != nil {
+		t.Fatalf("Validate returned error: %v", err)
+	}
+	if len(res.RejectedRecommendations) != 1 {
+		t.Fatalf("expected rejection for missing supporting_alert_ids, got %+v", res)
+	}
+}
 
 func TestOutputValidatorValidate_ParseError(t *testing.T) {
 	v := NewOutputValidator()

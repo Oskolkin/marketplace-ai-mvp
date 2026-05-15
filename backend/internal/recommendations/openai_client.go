@@ -59,10 +59,19 @@ type GenerateRecommendationsOutput struct {
 }
 
 type openAIResponsesRequest struct {
-	Model             string            `json:"model"`
-	Input             []openAIInputItem `json:"input"`
-	Temperature       float64           `json:"temperature"`
-	MaxOutputTokens   int               `json:"max_output_tokens,omitempty"`
+	Model           string            `json:"model"`
+	Input           []openAIInputItem `json:"input"`
+	Temperature     float64           `json:"temperature"`
+	Text            openAITextConfig  `json:"text"`
+	MaxOutputTokens int               `json:"max_output_tokens,omitempty"`
+}
+
+type openAITextConfig struct {
+	Format openAITextFormat `json:"format"`
+}
+
+type openAITextFormat struct {
+	Type string `json:"type"`
 }
 
 type openAIInputItem struct {
@@ -154,6 +163,7 @@ func (c *OpenAIClient) GenerateRecommendations(ctx context.Context, input Genera
 			},
 		},
 		Temperature: 0.2,
+		Text:        openAITextConfig{Format: openAITextFormat{Type: "json_object"}},
 	}
 	if c.cfg.MaxOutputTokens > 0 {
 		reqBody.MaxOutputTokens = c.cfg.MaxOutputTokens

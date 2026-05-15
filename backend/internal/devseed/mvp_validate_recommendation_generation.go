@@ -13,6 +13,7 @@ import (
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/dbgen"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/httpserver/handlers"
 	"github.com/Oskolkin/marketplace-ai-mvp/backend/internal/recommendations"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -123,6 +124,7 @@ func ValidateMVPRecommendationGeneration(ctx context.Context, pool *pgxpool.Pool
 
 	if genErr != nil {
 		add("GenerateForAccount", "no error", genErr.Error(), false)
+		printRecommendationRunDiagnostics(ctx, q, opts.SellerAccountID, runRow.ID)
 		printMVPRecommendationGenTable(rows)
 		fmt.Println()
 		fmt.Println("Hints: fix the error above (OpenAI quota, context size, validator). If the run status is failed with a clear error_message, the engine path is working.")
@@ -140,12 +142,27 @@ func ValidateMVPRecommendationGeneration(ctx context.Context, pool *pgxpool.Pool
 	}
 	add("run_id matches summary", fmt.Sprintf("%d", genSummary.RunID), fmt.Sprintf("%d", runRow.ID), true)
 
+	diagCount, err := countRecommendationRunDiagnostics(ctx, q, opts.SellerAccountID, runRow.ID)
+	if err != nil {
+		return false, err
+	}
+	add("recommendation_run_diagnostics", ">= 1 row", fmt.Sprintf("%d", diagCount), diagCount >= 1)
+
+	if runRow.Status == "completed" && runRow.GeneratedRecommendationsCount == 0 && openAlerts > 0 {
+		add("run completed with open alerts", "failed or saved > 0", fmt.Sprintf("status=%s generated=%d", runRow.Status, runRow.GeneratedRecommendationsCount), false)
+		printRecommendationRunDiagnostics(ctx, q, opts.SellerAccountID, runRow.ID)
+		printMVPRecommendationGenTable(rows)
+		return false, fmt.Errorf("run completed with zero recommendations despite %d open alerts", openAlerts)
+	}
+
 	if runRow.Status != "completed" {
 		add("run status after success", "completed", runRow.Status, false)
+		printRecommendationRunDiagnostics(ctx, q, opts.SellerAccountID, runRow.ID)
 		printMVPRecommendationGenTable(rows)
 		return false, fmt.Errorf("expected completed run, got %s", runRow.Status)
 	}
 	add("run status after success", "completed", runRow.Status, true)
+	add("generated_recommendations_count", "> 0", fmt.Sprintf("%d", runRow.GeneratedRecommendationsCount), runRow.GeneratedRecommendationsCount > 0)
 
 	totalRec, err := q.CountRecommendationsBySellerAccountID(ctx, opts.SellerAccountID)
 	if err != nil {
@@ -206,10 +223,80 @@ func ValidateMVPRecommendationGeneration(ctx context.Context, pool *pgxpool.Pool
 
 	printMVPRecommendationGenTable(rows)
 	if !allOK {
+		printRecommendationRunDiagnostics(ctx, q, opts.SellerAccountID, runRow.ID)
 		fmt.Println()
 		fmt.Println("Hints: ensure alerts cover all groups; widen MVP seed or relax validator in internal/recommendations.")
 	}
 	return allOK, nil
+}
+
+func countRecommendationRunDiagnostics(ctx context.Context, q *dbgen.Queries, sellerAccountID, runID int64) (int64, error) {
+	rows, err := q.ListRecommendationRunDiagnosticsByRun(ctx, dbgen.ListRecommendationRunDiagnosticsByRunParams{
+		SellerAccountID:     sellerAccountID,
+		RecommendationRunID: pgtype.Int8{Int64: runID, Valid: true},
+		Limit:               10,
+		Offset:              0,
+	})
+	if err != nil {
+		return 0, err
+	}
+	return int64(len(rows)), nil
+}
+
+func printRecommendationRunDiagnostics(ctx context.Context, q *dbgen.Queries, sellerAccountID, runID int64) {
+	rows, err := q.ListRecommendationRunDiagnosticsByRun(ctx, dbgen.ListRecommendationRunDiagnosticsByRunParams{
+		SellerAccountID:     sellerAccountID,
+		RecommendationRunID: pgtype.Int8{Int64: runID, Valid: true},
+		Limit:               3,
+		Offset:              0,
+	})
+	if err != nil || len(rows) == 0 {
+		fmt.Printf("Diagnostics: (none for run_id=%d: %v)\n", runID, err)
+		return
+	}
+	d := rows[0]
+	fmt.Println("Latest recommendation_run diagnostics:")
+	fmt.Printf("  diagnostics_rows=%d\n", len(rows))
+	fmt.Printf("  error_stage=%s error_message=%s\n", textOrDash(d.ErrorStage), textOrDash(d.ErrorMessage))
+	if len(d.ValidationResultPayload) > 0 {
+		fmt.Printf("  validation_result_payload=%s\n", truncateJSON(string(d.ValidationResultPayload), 800))
+	}
+	if len(d.RejectedItemsPayload) > 0 {
+		fmt.Printf("  rejected_items_payload=%s\n", truncateJSON(string(d.RejectedItemsPayload), 500))
+		printRecommendationTypeDiagnosticsHints(string(d.RejectedItemsPayload), string(d.ValidationResultPayload))
+	}
+	if len(d.ContextPayloadSummary) > 0 {
+		fmt.Printf("  context_payload_summary=%s\n", truncateJSON(string(d.ContextPayloadSummary), 500))
+	}
+	if len(d.RawOpenaiResponse) > 0 {
+		fmt.Printf("  raw_openai_response_preview=%s\n", truncateJSON(string(d.RawOpenaiResponse), 600))
+	}
+}
+
+func textOrDash(t pgtype.Text) string {
+	if !t.Valid || strings.TrimSpace(t.String) == "" {
+		return "-"
+	}
+	return strings.TrimSpace(t.String)
+}
+
+func printRecommendationTypeDiagnosticsHints(rejectedJSON, validationJSON string) {
+	combined := rejectedJSON + validationJSON
+	if strings.Contains(combined, "recommendation_type is not allowed") ||
+		strings.Contains(combined, "normalized_types") {
+		fmt.Println("  hint: check recommendation_type aliases / schema / prompt (canonical list in internal/recommendations/recommendation_types.go)")
+	}
+	if strings.Contains(validationJSON, "normalized_types_count") && !strings.Contains(validationJSON, `"normalized_types_count":0`) {
+		fmt.Println("  note: some recommendation_type values were normalized from AI aliases to canonical types")
+	}
+}
+
+func truncateJSON(s string, max int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "…"
 }
 
 func printMVPRecommendationGenTable(rows []mvpRecGenRow) {

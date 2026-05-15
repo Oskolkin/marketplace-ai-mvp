@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { PUBLIC_API_BASE_URL } from "@/lib/env/api-base-url";
+import { statusLabelRu } from "@/lib/status-labels";
 
 type AccountResponse = {
   id: number;
@@ -20,17 +21,17 @@ export default async function AccountPage() {
   });
 
   if (!res.ok) {
-    throw new Error("Failed to load account");
+    throw new Error("Не удалось загрузить аккаунт");
   }
 
   const account = (await res.json()) as AccountResponse;
 
   return (
     <main className="p-6">
-      <h1 className="mb-4 text-2xl font-semibold">Seller account</h1>
+      <h1 className="mb-4 text-2xl font-semibold">Аккаунт продавца</h1>
       <p>ID: {account.id}</p>
-      <p>Name: {account.name}</p>
-      <p>Status: {account.status}</p>
+      <p>Название: {account.name}</p>
+      <p>Статус: {statusLabelRu(account.status)}</p>
     </main>
   );
 }

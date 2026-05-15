@@ -80,7 +80,11 @@ func TestContextBuilderBuildForAccount(t *testing.T) {
 			}, nil
 		},
 		listOpenAlerts: func(_ context.Context, _ int64, _ int, _ int) ([]AlertSignal, error) {
-			return []AlertSignal{{ID: 10, AlertType: "stock_oos_risk"}}, nil
+			evidence := map[string]any{"stock_available": 0}
+			return []AlertSignal{
+				{ID: 11, AlertType: "ad_spend_without_result", Severity: "medium", Evidence: evidence},
+				{ID: 10, AlertType: "stock_oos_risk", Severity: "critical", Evidence: evidence},
+			}, nil
 		},
 		countOpenAlertsBySeverity: func(_ context.Context, _ int64) ([]NamedCount, error) {
 			return []NamedCount{{Name: "high", Count: 2}, {Name: "critical", Count: 1}}, nil
@@ -130,6 +134,15 @@ func TestContextBuilderBuildForAccount(t *testing.T) {
 	}
 	if got.Alerts.OpenTotal != 3 {
 		t.Fatalf("unexpected alerts open total: %d", got.Alerts.OpenTotal)
+	}
+	if got.Alerts.OpenCriticalHighCount < 1 {
+		t.Fatalf("unexpected critical/high count: %d", got.Alerts.OpenCriticalHighCount)
+	}
+	if len(got.Alerts.TopOpen) == 0 || got.Alerts.TopOpen[0].Severity != "critical" {
+		t.Fatalf("expected critical alerts first in top_open: %+v", got.Alerts.TopOpen)
+	}
+	if len(got.Alerts.TopOpen[0].Evidence) == 0 {
+		t.Fatalf("expected evidence_payload on alerts in context")
 	}
 	if got.Recommendations.OpenTotal != 1 {
 		t.Fatalf("unexpected recommendations open total: %d", got.Recommendations.OpenTotal)

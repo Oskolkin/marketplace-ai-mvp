@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -37,6 +38,7 @@ func (b *ContextBuilder) BuildForAccount(ctx context.Context, sellerAccountID in
 	if err != nil {
 		return nil, fmt.Errorf("list open alerts: %w", err)
 	}
+	sortOpenAlertsBySeverity(openAlerts)
 	alertsBySeverity, err := b.repo.CountOpenAlertsBySeverity(ctx, sellerAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("count open alerts by severity: %w", err)
@@ -81,6 +83,11 @@ func (b *ContextBuilder) BuildForAccount(ctx context.Context, sellerAccountID in
 	revenueDelta := percentageDelta(currentMetric, previousMetric, func(m *AccountDailyMetric) float64 { return m.Revenue })
 	ordersDelta := percentageDelta(currentMetric, previousMetric, func(m *AccountDailyMetric) float64 { return float64(m.OrdersCount) })
 
+	openAlertsTotal := sumCounts(alertsBySeverity)
+	if openAlertsTotal == 0 && len(openAlerts) > 0 {
+		openAlertsTotal = int64(len(openAlerts))
+	}
+
 	context := &AIRecommendationContext{
 		ContextVersion: defaultContextVersion,
 		SellerAccountID: sellerAccountID,
@@ -98,11 +105,12 @@ func (b *ContextBuilder) BuildForAccount(ctx context.Context, sellerAccountID in
 			OrdersDeltaPct:  ordersDelta,
 		},
 		Alerts: AlertsContext{
-			OpenTotal:  sumCounts(alertsBySeverity),
-			BySeverity: ensureCounts(alertsBySeverity),
-			ByGroup:    ensureCounts(alertsByGroup),
-			TopOpen:    openAlerts,
-			LatestRun:  alertRun,
+			OpenTotal:             openAlertsTotal,
+			OpenCriticalHighCount: countCriticalHighAlerts(openAlerts),
+			BySeverity:            ensureCounts(alertsBySeverity),
+			ByGroup:               ensureCounts(alertsByGroup),
+			TopOpen:               openAlerts,
+			LatestRun:             alertRun,
 		},
 		Recommendations: RecommendationsContext{
 			OpenTotal:    openRecsTotal,
@@ -132,6 +140,32 @@ func (b *ContextBuilder) BuildForAccount(ctx context.Context, sellerAccountID in
 
 func formatDate(t time.Time) string {
 	return t.UTC().Format("2006-01-02")
+}
+
+func sortOpenAlertsBySeverity(alerts []AlertSignal) {
+	sort.SliceStable(alerts, func(i, j int) bool {
+		ri := alertSeverityRank(alerts[i].Severity)
+		rj := alertSeverityRank(alerts[j].Severity)
+		if ri != rj {
+			return ri > rj
+		}
+		return alerts[i].ID > alerts[j].ID
+	})
+}
+
+func alertSeverityRank(severity string) int {
+	switch strings.ToLower(strings.TrimSpace(severity)) {
+	case "critical":
+		return 4
+	case "high":
+		return 3
+	case "medium":
+		return 2
+	case "low":
+		return 1
+	default:
+		return 0
+	}
 }
 
 func ensureCounts(in []NamedCount) []NamedCount {

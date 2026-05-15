@@ -5,8 +5,8 @@ type HealthResponse = {
 };
 
 export default async function HealthPage() {
-  let liveStatus = "unknown";
-  let readyStatus = "unknown";
+  let liveStatus = "неизвестно";
+  let readyStatus = "неизвестно";
   let errorMessage = "";
 
   try {
@@ -17,24 +17,24 @@ export default async function HealthPage() {
     readyStatus = ready.status;
   } catch (error) {
     errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
+      error instanceof Error ? error.message : "Неизвестная ошибка";
   }
 
   return (
     <main className="min-h-screen p-8">
       <div className="mx-auto max-w-4xl">
-        <h1 className="text-3xl font-bold">System Health</h1>
+        <h1 className="text-3xl font-bold">Состояние системы</h1>
 
         <div className="mt-6 space-y-2">
           <p>
-            <span className="font-semibold">Live:</span> {liveStatus}
+            <span className="font-semibold">Живость (live):</span> {liveStatus}
           </p>
           <p>
-            <span className="font-semibold">Ready:</span> {readyStatus}
+            <span className="font-semibold">Готовность (ready):</span> {readyStatus}
           </p>
           {errorMessage ? (
             <p className="text-red-600">
-              <span className="font-semibold">Error:</span> {errorMessage}
+              <span className="font-semibold">Ошибка:</span> {errorMessage}
             </p>
           ) : null}
         </div>

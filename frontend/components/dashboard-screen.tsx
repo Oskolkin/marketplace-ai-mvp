@@ -94,7 +94,7 @@ function fmtDateTime(value: string | null): string {
 }
 
 function fmtDeltaPct(pct: number | null): string {
-  if (pct == null) return "n/a";
+  if (pct == null) return "н/д";
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
 }
 
@@ -102,7 +102,7 @@ function formatEntityLabel(
   row: Pick<RecommendationItem, "entity_sku" | "entity_offer_id" | "entity_id" | "entity_type">,
 ): string {
   if (row.entity_sku != null) return `SKU: ${row.entity_sku}`;
-  if (row.entity_offer_id) return `Offer: ${row.entity_offer_id}`;
+  if (row.entity_offer_id) return `Артикул: ${row.entity_offer_id}`;
   if (row.entity_id) return `ID: ${row.entity_id}`;
   return row.entity_type;
 }
@@ -110,17 +110,25 @@ function formatEntityLabel(
 function formatRunLine(run: RecommendationsSummary["latest_run"]): string {
   if (!run) return "";
   const parts = [
-    `status ${run.status}`,
-    run.ai_model ? `model ${run.ai_model}` : null,
-    run.ai_prompt_version ? `prompt ${run.ai_prompt_version}` : null,
-    `generated ${run.generated_recommendations_count}`,
-    `started ${fmtDateTime(run.started_at)}`,
-    `finished ${fmtDateTime(run.finished_at)}`,
+    `статус ${run.status}`,
+    run.ai_model ? `модель ${run.ai_model}` : null,
+    run.ai_prompt_version ? `промпт ${run.ai_prompt_version}` : null,
+    `создано ${run.generated_recommendations_count}`,
+    `начато ${fmtDateTime(run.started_at)}`,
+    `завершено ${fmtDateTime(run.finished_at)}`,
   ].filter(Boolean);
   return parts.join(" · ");
 }
 
 function priorityLabel(value: string): string {
+  const key = value.toLowerCase();
+  const map: Record<string, string> = {
+    critical: "Критический",
+    high: "Высокий",
+    medium: "Средний",
+    low: "Низкий",
+  };
+  if (map[key]) return map[key];
   return value.replaceAll("_", " ");
 }
 
@@ -139,37 +147,37 @@ function isLikelyAdsPerformanceTokenIssue(message: string): boolean {
 
 function formatCriticalSkuEntity(item: CriticalSKUItem): string {
   if (item.sku != null) return `SKU: ${item.sku}`;
-  if (item.offer_id) return `Offer: ${item.offer_id}`;
-  if (item.ozon_product_id != null) return `Product: ${item.ozon_product_id}`;
-  return "Entity: not available";
+  if (item.offer_id) return `Артикул: ${item.offer_id}`;
+  if (item.ozon_product_id != null) return `Товар: ${item.ozon_product_id}`;
+  return "Сущность: нет данных";
 }
 
 function buildCriticalSkuReason(item: CriticalSKUItem): string {
   const firstSignal = item.signals?.[0];
   if (firstSignal) return firstSignal;
   if ((item.days_of_cover ?? Number.POSITIVE_INFINITY) <= 3 || item.stock_available <= 3) {
-    return "Low stock / low days of cover";
+    return "Низкий остаток / мало дней покрытия";
   }
-  if (item.problem_score >= 70) return "High problem score";
-  if (item.revenue > 0 || item.sales_ops > 0) return "Material sales impact";
-  return "Requires attention";
+  if (item.problem_score >= 70) return "Высокий индекс проблемы";
+  if (item.revenue > 0 || item.sales_ops > 0) return "Существенное влияние на выручку";
+  return "Требует внимания";
 }
 
 function formatStockRiskEntity(item: StocksReplenishmentItem): string {
   if (item.sku != null) return `SKU: ${item.sku}`;
-  if (item.offer_id) return `Offer: ${item.offer_id}`;
-  if (item.ozon_product_id != null) return `Product: ${item.ozon_product_id}`;
-  return "Entity: not available";
+  if (item.offer_id) return `Артикул: ${item.offer_id}`;
+  if (item.ozon_product_id != null) return `Товар: ${item.ozon_product_id}`;
+  return "Сущность: нет данных";
 }
 
 function formatStockRiskReason(item: StocksReplenishmentItem): string {
-  if (item.current_available_stock <= 0) return "Out of stock";
-  if ((item.days_of_cover ?? Number.POSITIVE_INFINITY) <= 3) return "Critical coverage";
-  if ((item.days_of_cover ?? Number.POSITIVE_INFINITY) <= 7) return "Low coverage";
+  if (item.current_available_stock <= 0) return "Нет в наличии";
+  if ((item.days_of_cover ?? Number.POSITIVE_INFINITY) <= 3) return "Критическое покрытие";
+  if ((item.days_of_cover ?? Number.POSITIVE_INFINITY) <= 7) return "Низкое покрытие";
   if (item.replenishment_priority === "critical" || item.replenishment_priority === "high") {
-    return "High replenishment priority";
+    return "Высокий приоритет пополнения";
   }
-  return "Stock risk";
+  return "Риск по остаткам";
 }
 
 function priorityRank(priority: string): number {
@@ -275,12 +283,12 @@ function formatAdRiskReason(
   roas: number | null,
   lowStockFlag: boolean,
 ): string {
-  if (spend > 0 && revenue <= 0) return "Spend without result";
-  if (spend > 0 && orders <= 0) return "No orders";
-  if (roas != null && roas < 1) return "Weak ROAS";
-  if (lowStockFlag) return "Low-stock advertised SKU";
-  if (spend > 0) return "High spend";
-  return "Advertising risk";
+  if (spend > 0 && revenue <= 0) return "Расход без результата";
+  if (spend > 0 && orders <= 0) return "Нет заказов";
+  if (roas != null && roas < 1) return "Слабый ROAS";
+  if (lowStockFlag) return "Рекламируемый SKU с низким остатком";
+  if (spend > 0) return "Высокий расход";
+  return "Риск по рекламе";
 }
 
 function toAdRiskRow(row: Record<string, unknown>): AdRiskRow {
@@ -295,7 +303,7 @@ function toAdRiskRow(row: Record<string, unknown>): AdRiskRow {
     row.stock_risk === true ||
     (daysOfCover != null && daysOfCover <= 3);
   const title =
-    getStr(row, ["campaign_name", "name", "title", "product_name", "sku_name"]) ?? "Advertising entity";
+    getStr(row, ["campaign_name", "name", "title", "product_name", "sku_name"]) ?? "Рекламная сущность";
   const campaignName = getStr(row, ["campaign_name", "campaign_title", "campaign"]);
   const campaignIdStr = getStr(row, ["campaign_id", "external_campaign_id", "id"]);
   const campaignIdNum = getNum(row, ["campaign_external_id"]);
@@ -306,12 +314,12 @@ function toAdRiskRow(row: Record<string, unknown>): AdRiskRow {
   const campaignLabel = campaignName
     ? `${campaignName}${campaignId ? ` (${campaignId})` : ""}`
     : campaignId
-      ? `Campaign ${campaignId}`
+      ? `Кампания ${campaignId}`
       : sku
         ? `SKU: ${sku}`
         : offerId
-          ? `Offer: ${offerId}`
-          : "Campaign: not available";
+          ? `Артикул: ${offerId}`
+          : "Кампания: нет данных";
 
   return {
     title,
@@ -371,7 +379,7 @@ function summarizeAdRisks(response: AdvertisingAnalyticsResponse, rows: AdRiskRo
 
 function formatAlertEntityLabel(alert: AlertItem): string {
   if (alert.entity_sku != null) return `SKU: ${alert.entity_sku}`;
-  if (alert.entity_offer_id) return `Offer: ${alert.entity_offer_id}`;
+  if (alert.entity_offer_id) return `Артикул: ${alert.entity_offer_id}`;
   if (alert.entity_id) return `ID: ${alert.entity_id}`;
   return alert.entity_type;
 }
@@ -389,16 +397,16 @@ function formatPricingEvidenceSummary(alert: AlertItem): string | null {
   const ordersCount = toNum(record.orders_count);
 
   if (currentPrice != null && minPrice != null) {
-    return `Current price ${fmtMoney(currentPrice)} · Min ${fmtMoney(minPrice)}`;
+    return `Текущая цена ${fmtMoney(currentPrice)} · Мин. ${fmtMoney(minPrice)}`;
   }
   if (currentPrice != null && maxPrice != null) {
-    return `Current price ${fmtMoney(currentPrice)} · Max ${fmtMoney(maxPrice)}`;
+    return `Текущая цена ${fmtMoney(currentPrice)} · Макс. ${fmtMoney(maxPrice)}`;
   }
   if (expectedMargin != null && thresholdMargin != null) {
-    return `Expected margin ${(expectedMargin * 100).toFixed(1)}% · Threshold ${(thresholdMargin * 100).toFixed(1)}%`;
+    return `Ожидаемая маржа ${(expectedMargin * 100).toFixed(1)}% · Порог ${(thresholdMargin * 100).toFixed(1)}%`;
   }
   if (skuRevenue != null || ordersCount != null) {
-    return `Revenue ${fmtMoney(skuRevenue ?? 0)} · Orders ${fmtNum(ordersCount ?? 0)}`;
+    return `Выручка ${fmtMoney(skuRevenue ?? 0)} · Заказы ${fmtNum(ordersCount ?? 0)}`;
   }
   return null;
 }
@@ -415,9 +423,9 @@ type TopChangeRow = {
 
 function formatTopChangeEntity(row: DashboardSkuRow): string {
   if (row.sku != null) return `SKU: ${row.sku}`;
-  if (row.offer_id) return `Offer: ${row.offer_id}`;
-  if (row.ozon_product_id != null) return `Product: ${row.ozon_product_id}`;
-  return "Product";
+  if (row.offer_id) return `Артикул: ${row.offer_id}`;
+  if (row.ozon_product_id != null) return `Товар: ${row.ozon_product_id}`;
+  return "Товар";
 }
 
 function alertPriority(alertType: string): number {
@@ -474,7 +482,7 @@ function selectTopChanges(
     .slice(0, limit)
     .map<TopChangeRow>((row) => ({
       key: `sku-${row.ozon_product_id}-${row.offer_id ?? ""}-${row.sku ?? ""}`,
-      title: row.product_name || "Unnamed product",
+      title: row.product_name || "Товар без названия",
       entityLabel: formatTopChangeEntity(row),
       revenue: row.revenue,
       orders: row.orders_count,
@@ -493,7 +501,7 @@ function selectTopChanges(
     .map<TopChangeRow>((alert) => ({
       key: `account-alert-${alert.id}`,
       title: alert.title,
-      entityLabel: "Account",
+      entityLabel: "Аккаунт",
       revenue: null,
       orders: null,
       contribution: null,
@@ -681,7 +689,7 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
           }));
         } catch (alertsErr) {
           setAlertsError(
-            alertsErr instanceof Error ? `Alerts are unavailable. ${alertsErr.message}` : "Alerts are unavailable.",
+            alertsErr instanceof Error ? `Алерты недоступны. ${alertsErr.message}` : "Алерты недоступны.",
           );
         } finally {
           setAlertsLoading(false);
@@ -695,8 +703,8 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
         } catch (recErr) {
           setRecSummaryError(
             recErr instanceof Error
-              ? `Recommendations are unavailable. ${recErr.message}`
-              : "Recommendations are unavailable.",
+              ? `Рекомендации недоступны. ${recErr.message}`
+              : "Рекомендации недоступны.",
           );
         } finally {
           setRecSummaryLoading(false);
@@ -707,8 +715,8 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
         } catch (recErr) {
           setRecListError(
             recErr instanceof Error
-              ? `Recommendations are unavailable. ${recErr.message}`
-              : "Recommendations are unavailable.",
+              ? `Рекомендации недоступны. ${recErr.message}`
+              : "Рекомендации недоступны.",
           );
         } finally {
           setRecListLoading(false);
@@ -735,8 +743,8 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
         } catch (criticalErr) {
           setCriticalSkusError(
             criticalErr instanceof Error
-              ? `Critical SKU is unavailable. ${criticalErr.message}`
-              : "Critical SKU is unavailable.",
+              ? `Критичные SKU недоступны. ${criticalErr.message}`
+              : "Критичные SKU недоступны.",
           );
         } finally {
           setCriticalSkusLoading(false);
@@ -751,8 +759,8 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
         } catch (stockErr) {
           setStockRisksError(
             stockErr instanceof Error
-              ? `Stock risks are unavailable. ${stockErr.message}`
-              : "Stock risks are unavailable.",
+              ? `Риски по остаткам недоступны. ${stockErr.message}`
+              : "Риски по остаткам недоступны.",
           );
         } finally {
           setStockRisksLoading(false);
@@ -769,7 +777,7 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
           }));
         } catch (adErr) {
           setAdRisksError(
-            adErr instanceof Error ? `Ad risks are unavailable. ${adErr.message}` : "Ad risks are unavailable.",
+            adErr instanceof Error ? `Риски рекламы недоступны. ${adErr.message}` : "Риски рекламы недоступны.",
           );
         } finally {
           setAdRisksLoading(false);
@@ -789,8 +797,8 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
         } catch (pricingErr) {
           setPricingRisksError(
             pricingErr instanceof Error
-              ? `Price & economics risks are unavailable. ${pricingErr.message}`
-              : "Price & economics risks are unavailable.",
+              ? `Риски цен и экономики недоступны. ${pricingErr.message}`
+              : "Риски цен и экономики недоступны.",
           );
         } finally {
           setPricingRisksLoading(false);
@@ -810,35 +818,35 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
         } catch (salesAlertsErr) {
           setTopChangesError(
             salesAlertsErr instanceof Error
-              ? `Top changes alerts are unavailable. ${salesAlertsErr.message}`
-              : "Top changes alerts are unavailable.",
+              ? `Алерты «Топ изменений» недоступны. ${salesAlertsErr.message}`
+              : "Алерты «Топ изменений» недоступны.",
           );
         } finally {
           setTopChangesLoading(false);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load dashboard");
-        setAlertsError("Alerts are unavailable.");
+        setError(err instanceof Error ? err.message : "Не удалось загрузить дашборд");
+        setAlertsError("Алерты недоступны.");
         setRecSummaryError(
-          "Recommendations are unavailable."
+          "Рекомендации недоступны."
         );
         setRecListError(
-          "Recommendations are unavailable."
+          "Рекомендации недоступны."
         );
         setCriticalSkusError(
-          "Critical SKU is unavailable."
+          "Критичные SKU недоступны."
         );
         setStockRisksError(
-          "Stock risks are unavailable."
+          "Риски по остаткам недоступны."
         );
         setAdRisksError(
-          "Ad risks are unavailable."
+          "Риски рекламы недоступны."
         );
         setPricingRisksError(
-          "Price & economics risks are unavailable."
+          "Риски цен и экономики недоступны."
         );
         setTopChangesError(
-          "Top changes alerts are unavailable."
+          "Алерты «Топ изменений» недоступны."
         );
         setRecSummaryLoading(false);
         setRecListLoading(false);
@@ -858,7 +866,7 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
   if (loading) {
     return (
       <main className="p-6">
-        <LoadingState message="Loading dashboard…" />
+        <LoadingState message="Загрузка дашборда…" />
       </main>
     );
   }
@@ -868,21 +876,21 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
       <main className="space-y-4 p-6">
         {error ? (
           <ErrorState
-            title="Dashboard unavailable"
+            title="Дашборд недоступен"
             message={error}
             action={
               <Link href="/app/sync-status" className={buttonClassNames("secondary")}>
-                Open Sync Status
+                Статус синхронизации
               </Link>
             }
           />
         ) : (
           <EmptyState
-            title="No dashboard summary"
-            message="Metrics are not ready yet. Complete a successful Ozon sync, wait for recalculation, then refresh this page."
+            title="Нет сводки дашборда"
+            message="Метрики ещё не готовы. Дождитесь успешной синхронизации Ozon, пересчёта и обновите страницу."
             action={
               <Link href="/app/sync-status" className={buttonClassNames("primary")}>
-                Open Sync Status
+                Статус синхронизации
               </Link>
             }
           />
@@ -931,14 +939,14 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
     <main className="space-y-6 p-6">
       <div className="space-y-3">
         <PageHeader
-          title="Dashboard"
-          subtitle="Daily work center for metrics, risks, and AI recommendations."
+          title="Дашборд"
+          subtitle="Ежедневный центр: метрики, риски и ИИ-рекомендации."
         />
 
         <Card className="border-gray-200 bg-gray-50/60">
           <CardContent className="grid gap-3 py-3 sm:grid-cols-2 lg:grid-cols-5 lg:gap-4">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Data as of</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Данные на дату</p>
               <p className="mt-0.5 text-sm font-medium text-gray-900">
                 {summary.as_of_date
                   ? `${summary.as_of_date}${summary.as_of_date_source ? ` (${summary.as_of_date_source})` : ""}`
@@ -947,7 +955,7 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
             </div>
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-                Last successful sync
+                Последняя успешная синхронизация
               </p>
               <p className="mt-0.5 text-sm font-medium text-gray-900">
                 {summary.last_successful_update ? fmtDateTime(summary.last_successful_update) : "—"}
@@ -955,34 +963,34 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
             </div>
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-                Alerts latest run
+                Алерты: последний запуск
               </p>
               <p className="mt-0.5 text-sm font-medium text-gray-900">
                 {alertsLoading
-                  ? "Loading…"
+                  ? "Загрузка…"
                   : alertsError || !state.alertsSummary
-                    ? "Unavailable"
+                    ? "Недоступно"
                     : state.alertsSummary.latest_run
                       ? `${state.alertsSummary.latest_run.status} · ${fmtDateTime(state.alertsSummary.latest_run.finished_at ?? state.alertsSummary.latest_run.started_at)}`
-                      : "No run yet"}
+                      : "Запусков ещё не было"}
               </p>
             </div>
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-                Recommendations latest run
+                Рекомендации: последний запуск
               </p>
               <p className="mt-0.5 text-sm font-medium text-gray-900">
                 {recSummaryLoading
-                  ? "Loading…"
+                  ? "Загрузка…"
                   : recSummaryError || !state.recSummary
-                    ? "Unavailable"
+                    ? "Недоступно"
                     : state.recSummary.latest_run
                       ? `${state.recSummary.latest_run.status} · ${fmtDateTime(state.recSummary.latest_run.finished_at ?? state.recSummary.latest_run.started_at)}`
-                      : "No run yet"}
+                      : "Запусков ещё не было"}
               </p>
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Data freshness</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Актуальность данных</p>
               <p className="mt-0.5 text-sm font-medium text-gray-900">
                 {summary.data_freshness || "—"}
               </p>
@@ -994,16 +1002,16 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
       {(alertsError || alertsRunFailed) && (
         <Card className="border-amber-300 bg-amber-50/90">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base text-amber-950">Alerts need attention</CardTitle>
+            <CardTitle className="text-base text-amber-950">Проверьте алерты</CardTitle>
             <CardDescription className="text-amber-900/90">
               {alertsError
-                ? "The alerts summary could not be loaded from the API."
-                : "The latest alerts run reported a failure — open Alerts for details and re-run if needed."}
+                ? "Не удалось загрузить сводку алертов из API."
+                : "Последний запуск алертов завершился с ошибкой — откройте раздел «Алерты» за подробностями и при необходимости запустите снова."}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Link href="/app/alerts" className={buttonClassNames("secondary")}>
-              Open Alerts
+              Открыть алерты
             </Link>
           </CardContent>
         </Card>
@@ -1012,18 +1020,18 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
       {(recSummaryError || recRunFailed || recListError) && (
         <Card className="border-amber-300 bg-amber-50/90">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base text-amber-950">Recommendations need attention</CardTitle>
+            <CardTitle className="text-base text-amber-950">Проверьте рекомендации</CardTitle>
             <CardDescription className="text-amber-900/90">
               {recSummaryError
-                ? "The recommendations summary could not be loaded."
+                ? "Не удалось загрузить сводку рекомендаций."
                 : recListError
-                  ? "The recommendations list could not be loaded."
-                  : "The latest recommendation run reported a failure — open Recommendations to inspect."}
+                  ? "Не удалось загрузить список рекомендаций."
+                  : "Последний запуск рекомендаций завершился с ошибкой — откройте раздел для проверки."}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Link href="/app/recommendations" className={buttonClassNames("secondary")}>
-              Open Recommendations
+              Открыть рекомендации
             </Link>
           </CardContent>
         </Card>
@@ -1032,19 +1040,19 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
       {adRisksError ? (
         <Card className="border-amber-300 bg-amber-50/90">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base text-amber-950">Advertising analytics unavailable</CardTitle>
+            <CardTitle className="text-base text-amber-950">Рекламная аналитика недоступна</CardTitle>
             <CardDescription className="text-amber-900/90">
               {isLikelyAdsPerformanceTokenIssue(adRisksError)
-                ? "Ad metrics often require a Performance API token. Add or check the token on Ozon Integration — Seller sync and core dashboard KPIs still work."
+                ? "Для метрик рекламы часто нужен токен Performance API. Добавьте или проверьте токен в интеграции Ozon — синхронизация продавца и основные KPI дашборда при этом работают."
                 : `${adRisksError}`}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             <Link href="/app/integrations/ozon" className={buttonClassNames("secondary")}>
-              Ozon Integration
+              Интеграция Ozon
             </Link>
             <Link href="/app/sync-status" className={buttonClassNames("ghost", "border border-amber-200")}>
-              Sync status
+              Статус синхронизации
             </Link>
           </CardContent>
         </Card>
@@ -1052,38 +1060,38 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          title="Revenue"
+          title="Выручка"
           value={fmtMoney(kpi.revenue_current)}
-          hint={`Day-to-day: ${fmtMoney(kpi.revenue_day_to_day_delta.abs)} (${fmtDeltaPct(kpi.revenue_day_to_day_delta.pct)}) · Week-to-week: ${fmtMoney(kpi.revenue_week_to_week_delta.abs)} (${fmtDeltaPct(kpi.revenue_week_to_week_delta.pct)})`}
+          hint={`День ко дню: ${fmtMoney(kpi.revenue_day_to_day_delta.abs)} (${fmtDeltaPct(kpi.revenue_day_to_day_delta.pct)}) · Неделя к неделе: ${fmtMoney(kpi.revenue_week_to_week_delta.abs)} (${fmtDeltaPct(kpi.revenue_week_to_week_delta.pct)})`}
         />
         <MetricCard
-          title="Orders"
+          title="Заказы"
           value={fmtNum(kpi.orders_current)}
-          hint={`Day-to-day delta: ${fmtNum(kpi.orders_day_to_day_delta)} orders (same KPI window as revenue)`}
+          hint={`Изменение день ко дню: ${fmtNum(kpi.orders_day_to_day_delta)} заказов (то же окно, что у выручки)`}
         />
         <MetricCard
-          title="Returns"
+          title="Возвраты"
           value={fmtNum(kpi.returns_current)}
-          hint="Current reporting day — compare with data as-of above"
+          hint="Текущий день отчёта — сверяйте с датой «данные на» выше"
         />
         <MetricCard
-          title="Cancels"
+          title="Отмены"
           value={fmtNum(kpi.cancels_current)}
-          hint="Current reporting day — compare with data as-of above"
+          hint="Текущий день отчёта — сверяйте с датой «данные на» выше"
         />
       </section>
 
       <Card>
         <CardHeader>
-          <CardTitle>Today&apos;s action list</CardTitle>
+          <CardTitle>Список действий на сегодня</CardTitle>
           <CardDescription>
-            Highest-priority items to validate in the MVP — recommendations first, then alerts, then
-            inventory signals.
+            Самое важное в MVP: сначала рекомендации, затем алерты, затем сигналы по
+            остаткам.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           {recListLoading || alertsLoading || criticalSkusLoading || stockRisksLoading ? (
-            <p className="text-gray-600">Loading actions…</p>
+            <p className="text-gray-600">Загрузка действий…</p>
           ) : actionPanel.mode === "recommendations" ? (
             <div className="space-y-2">
               {actionPanel.items.map((r) => (
@@ -1126,7 +1134,7 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
             <div className="grid gap-3 md:grid-cols-2">
               {actionPanel.critical.length > 0 ? (
                 <div>
-                  <p className="mb-2 text-xs font-semibold uppercase text-gray-500">Critical SKU</p>
+                  <p className="mb-2 text-xs font-semibold uppercase text-gray-500">Критичные SKU</p>
                   <div className="space-y-2">
                     {actionPanel.critical.map((item) => (
                       <Link
@@ -1135,7 +1143,7 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
                         className="block rounded-lg border border-gray-200 bg-white p-2 text-xs hover:bg-gray-50"
                       >
                         <span className="font-medium text-gray-900">
-                          {item.product_name || "Product"}
+                          {item.product_name || "Товар"}
                         </span>
                         <span className="mt-1 block text-gray-600">{buildCriticalSkuReason(item)}</span>
                       </Link>
@@ -1145,7 +1153,7 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
               ) : null}
               {actionPanel.stock.length > 0 ? (
                 <div>
-                  <p className="mb-2 text-xs font-semibold uppercase text-gray-500">Stock risks</p>
+                  <p className="mb-2 text-xs font-semibold uppercase text-gray-500">Риски по остаткам</p>
                   <div className="space-y-2">
                     {actionPanel.stock.map((item) => (
                       <Link
@@ -1154,7 +1162,7 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
                         className="block rounded-lg border border-gray-200 bg-white p-2 text-xs hover:bg-gray-50"
                       >
                         <span className="font-medium text-gray-900">
-                          {item.product_name || "Product"}
+                          {item.product_name || "Товар"}
                         </span>
                         <span className="mt-1 block text-gray-600">{formatStockRiskReason(item)}</span>
                       </Link>
@@ -1165,15 +1173,15 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
             </div>
           ) : (
             <EmptyState
-              title="No prioritized actions yet"
-              message="Run alerts and generate recommendations after sync, or open downstream screens when data appears."
+              title="Пока нет приоритетных действий"
+              message="Запустите алерты и сгенерируйте рекомендации после синхронизации или откройте соответствующие разделы, когда появятся данные."
               action={
                 <div className="flex flex-wrap justify-center gap-2">
                   <Link href="/app/alerts" className={buttonClassNames("secondary")}>
-                    Run Alerts
+                    Запустить алерты
                   </Link>
                   <Link href="/app/recommendations" className={buttonClassNames("primary")}>
-                    Generate recommendations
+                    Сгенерировать рекомендации
                   </Link>
                 </div>
               }
@@ -1181,7 +1189,7 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
           )}
           <p className="border-t border-gray-100 pt-3 text-center text-xs text-gray-600">
             <Link href="/app/recommendations" className="font-medium text-blue-700 underline hover:text-blue-900">
-              All recommendations
+              Все рекомендации
             </Link>
           </p>
         </CardContent>
@@ -1191,13 +1199,13 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
         <details className="group">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 [&::-webkit-details-marker]:hidden">
             <div className="min-w-0 flex-1">
-              <CardTitle className="text-base">Recommendations summary</CardTitle>
+              <CardTitle className="text-base">Сводка по рекомендациям</CardTitle>
               <CardDescription className="mt-0.5">
-                Counts and latest run — expand for details. Actions stay in Today&apos;s list above.
+                Счётчики и последний запуск — разверните для деталей. Действия остаются в списке на сегодня выше.
               </CardDescription>
             </div>
             <span className="flex shrink-0 items-center gap-2 text-sm text-gray-600">
-              <span className="hidden text-gray-500 sm:inline">Expand</span>
+              <span className="hidden text-gray-500 sm:inline">Развернуть</span>
               <span
                 className="inline-block text-gray-400 transition-transform group-open:rotate-90"
                 aria-hidden
@@ -1210,73 +1218,73 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
               >
-                View recommendations
+                Смотреть рекомендации
               </Link>
             </span>
           </summary>
           <CardContent className="space-y-3 border-t border-gray-100 pt-3 text-sm">
             {recSummaryLoading ? (
-              <p className="text-sm text-gray-600">Loading recommendations summary…</p>
+              <p className="text-sm text-gray-600">Загрузка сводки…</p>
             ) : recSummaryError || recListError || recRunFailed ? (
-              <p className="text-sm text-gray-600">See the recommendations notice above.</p>
+              <p className="text-sm text-gray-600">См. уведомление о рекомендациях выше.</p>
             ) : !state.recSummary ? (
-              <p className="text-sm text-gray-600">Recommendations summary is unavailable.</p>
+              <p className="text-sm text-gray-600">Сводка рекомендаций недоступна.</p>
             ) : (
               <>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
                   <MetricCard
-                    title="Open recommendations"
+                    title="Открытые рекомендации"
                     value={fmtNum(state.recSummary.open_total)}
-                    hint="Open items"
+                    hint="Открытые пункты"
                   />
                   <MetricCard
-                    title="Critical"
+                    title="Критический"
                     value={fmtNum(state.recSummary.by_priority.critical)}
-                    hint="By priority"
+                    hint="По приоритету"
                   />
                   <MetricCard
-                    title="High"
+                    title="Высокий"
                     value={fmtNum(state.recSummary.by_priority.high)}
-                    hint="By priority"
+                    hint="По приоритету"
                   />
                   <MetricCard
-                    title="Medium"
+                    title="Средний"
                     value={fmtNum(state.recSummary.by_priority.medium)}
-                    hint="By priority"
+                    hint="По приоритету"
                   />
                   <MetricCard
-                    title="Latest run status"
-                    value={state.recSummary.latest_run?.status ?? "No run"}
-                    hint={state.recSummary.latest_run ? "Recommendation run" : "No recommendation run yet"}
+                    title="Статус последнего запуска"
+                    value={state.recSummary.latest_run?.status ?? "Нет запуска"}
+                    hint={state.recSummary.latest_run ? "Запуск рекомендаций" : "Запусков ещё не было"}
                   />
                 </div>
                 <p className="text-xs text-gray-600">
                   {state.recSummary.latest_run
                     ? formatRunLine(state.recSummary.latest_run)
-                    : "No recommendation run yet"}
+                    : "Запусков рекомендаций ещё не было"}
                 </p>
               </>
             )}
 
             {recListLoading ? (
-              <p className="text-sm text-gray-600">Loading recommendation counts…</p>
+              <p className="text-sm text-gray-600">Загрузка счётчиков…</p>
             ) : recListError || recSummaryError || recRunFailed ? null : state.recSummary?.open_total === 0 ? (
               <EmptyState
-                title="No open recommendations"
-                message="Generate AI recommendations after alerts and metrics are available."
+                title="Нет открытых рекомендаций"
+                message="Сгенерируйте ИИ-рекомендации, когда будут доступны алерты и метрики."
                 action={
                   <Link href="/app/recommendations" className={buttonClassNames("primary")}>
-                    Generate recommendations
+                    Сгенерировать рекомендации
                   </Link>
                 }
               />
             ) : (
               <p className="text-xs text-gray-600">
-                Top open items appear in <strong>Today&apos;s action list</strong>.{" "}
+                Топ открытых пунктов — в <strong>списке действий на сегодня</strong>.{" "}
                 <Link href="/app/recommendations" className="font-medium text-blue-700 underline hover:text-blue-900">
-                  Open Recommendations
+                  Открыть рекомендации
                 </Link>{" "}
-                to filter, accept, or dismiss.
+                для фильтрации, принятия или отклонения.
               </p>
             )}
           </CardContent>
@@ -1286,13 +1294,13 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
       <section className="rounded border p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold">Ask AI about your store</h2>
+            <h2 className="text-lg font-semibold">Спросите ИИ о магазине</h2>
             <p className="text-sm text-gray-600">
-              Ask questions about sales, stock, ads, alerts, and recommendations.
+              Вопросы о продажах, остатках, рекламе, алертах и рекомендациях.
             </p>
           </div>
           <Link href="/app/chat" className="shrink-0 rounded border px-3 py-1 text-sm hover:bg-gray-50">
-            Open AI Chat
+            Открыть ИИ-чат
           </Link>
         </div>
         <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-700">
@@ -1305,59 +1313,59 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
       <section className="rounded border p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
           <div>
-            <h2 className="text-lg font-semibold">Critical alerts</h2>
-            <p className="text-xs text-gray-600">Open alerts that need attention.</p>
+            <h2 className="text-lg font-semibold">Критичные алерты</h2>
+            <p className="text-xs text-gray-600">Алерты, требующие внимания.</p>
           </div>
           <Link href="/app/alerts" className="shrink-0 rounded border px-3 py-1 text-sm hover:bg-gray-50">
-            View alerts
+            Смотреть алерты
           </Link>
         </div>
         {alertsLoading ? (
-          <p className="text-sm">Loading alerts teaser...</p>
+          <p className="text-sm">Загрузка алертов…</p>
         ) : alertsError || alertsRunFailed ? (
-          <p className="text-sm text-gray-600">See the alerts notice at the top of the page.</p>
+          <p className="text-sm text-gray-600">См. уведомление об алертах вверху страницы.</p>
         ) : !state.alertsSummary ? (
-          <p className="text-sm text-gray-600">Alerts summary is unavailable.</p>
+          <p className="text-sm text-gray-600">Сводка алертов недоступна.</p>
         ) : (
           <div className="space-y-3 text-sm">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               <MetricCard
-                title="Open alerts"
+                title="Открытые алерты"
                 value={fmtNum(state.alertsSummary.open_total)}
-                hint="Current seller account"
+                hint="Текущий аккаунт продавца"
               />
               <MetricCard
-                title="Critical"
+                title="Критический"
                 value={fmtNum(state.alertsSummary.critical_count)}
-                hint="Open critical alerts"
+                hint="Открытые критичные"
               />
               <MetricCard
-                title="High"
+                title="Высокий"
                 value={fmtNum(state.alertsSummary.high_count)}
-                hint="Open high alerts"
+                hint="Открытые с высоким приоритетом"
               />
             </div>
 
             {state.alertsSummary.latest_run ? (
               <p className="text-xs text-gray-600">
-                latest_run: status={state.alertsSummary.latest_run.status}, started=
-                {fmtDateTime(state.alertsSummary.latest_run.started_at)}, finished=
-                {fmtDateTime(state.alertsSummary.latest_run.finished_at)}, total=
+                Последний запуск: статус={state.alertsSummary.latest_run.status}, начало=
+                {fmtDateTime(state.alertsSummary.latest_run.started_at)}, завершение=
+                {fmtDateTime(state.alertsSummary.latest_run.finished_at)}, всего=
                 {state.alertsSummary.latest_run.total_alerts_count}
               </p>
             ) : (
-              <p className="text-xs text-gray-600">latest_run: no runs yet</p>
+              <p className="text-xs text-gray-600">Последний запуск: запусков ещё не было</p>
             )}
 
             {state.alertsSummary.open_total === 0 ? (
               <p className="rounded border border-green-300 bg-green-50 p-2 text-green-700">
-                No open alerts.
+                Нет открытых алертов.
               </p>
             ) : state.topAlerts.length === 0 ? (
-              <p className="text-gray-600">No critical/high alerts to highlight.</p>
+              <p className="text-gray-600">Нет критичных/высоких алертов для показа.</p>
             ) : (
               <div>
-                <p className="mb-2 font-medium">Top critical/high alerts</p>
+                <p className="mb-2 font-medium">Топ критичных и высоких алертов</p>
                 <div className="space-y-2">
                   {state.topAlerts.map((a) => (
                     <Link
@@ -1373,7 +1381,7 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
                         {a.entity_sku != null
                           ? `SKU ${a.entity_sku}`
                           : a.entity_offer_id || a.entity_id || a.entity_type}
-                        {" | "}last_seen={fmtDateTime(a.last_seen_at)}
+                        {" | "}последний раз={fmtDateTime(a.last_seen_at)}
                       </p>
                     </Link>
                   ))}
@@ -1386,30 +1394,30 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
 
       <section className="rounded border p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Critical SKU</h2>
+          <h2 className="text-lg font-semibold">Критичные SKU</h2>
           <Link href="/app/critical-skus" className="shrink-0 rounded border px-3 py-1 text-sm hover:bg-gray-50">
-            Open Critical SKU
+            Открыть критичные SKU
           </Link>
         </div>
         {criticalSkusLoading ? (
-          <p className="text-sm">Loading critical SKU...</p>
+          <p className="text-sm">Загрузка критичных SKU…</p>
         ) : criticalSkusError ? (
           <Card className="border-amber-200 bg-amber-50/80">
             <CardContent className="py-3 text-sm text-amber-950">
-              <p className="font-medium">Critical SKU block unavailable</p>
+              <p className="font-medium">Блок «Критичные SKU» недоступен</p>
               <p className="mt-1 text-amber-900/90">{criticalSkusError}</p>
               <Link href="/app/critical-skus" className={`mt-3 inline-flex ${buttonClassNames("secondary")}`}>
-                Open Critical SKU
+                Открыть критичные SKU
               </Link>
             </CardContent>
           </Card>
         ) : state.criticalSkuRows.length === 0 ? (
           <EmptyState
-            title="No critical SKU"
-            message="No critical SKU detected for the selected period."
+            title="Нет критичных SKU"
+            message="За выбранный период критичные SKU не обнаружены."
             action={
               <Link href="/app/critical-skus" className={buttonClassNames("secondary")}>
-                Open Critical SKU
+                Открыть критичные SKU
               </Link>
             }
           />
@@ -1423,17 +1431,17 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-medium">{item.product_name || "Unnamed product"}</p>
+                    <p className="font-medium">{item.product_name || "Товар без названия"}</p>
                     <p className="text-xs text-gray-600">{formatCriticalSkuEntity(item)}</p>
                   </div>
                   <div className="text-right text-xs">
-                    <p className="font-medium text-gray-900">Problem score: {item.problem_score.toFixed(1)}</p>
-                    <p className="text-gray-600">Importance: {item.importance.toFixed(1)}</p>
+                    <p className="font-medium text-gray-900">Индекс проблемы: {item.problem_score.toFixed(1)}</p>
+                    <p className="text-gray-600">Важность: {item.importance.toFixed(1)}</p>
                   </div>
                 </div>
                 <p className="mt-2 text-xs text-gray-700">
-                  Revenue {fmtMoney(item.revenue)} · Orders {fmtNum(item.sales_ops)} · Stock {fmtNum(item.stock_available)} ·
-                  Days of cover {item.days_of_cover == null ? "—" : item.days_of_cover.toFixed(2)}
+                  Выручка {fmtMoney(item.revenue)} · Заказы {fmtNum(item.sales_ops)} · Остаток {fmtNum(item.stock_available)} ·
+                  Дни покрытия {item.days_of_cover == null ? "—" : item.days_of_cover.toFixed(2)}
                 </p>
                 <p className="mt-2 inline-flex rounded border bg-gray-50 px-2 py-0.5 text-xs text-gray-700">
                   {buildCriticalSkuReason(item)}
@@ -1446,30 +1454,30 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
 
       <section className="rounded border p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Stock risks</h2>
+          <h2 className="text-lg font-semibold">Риски по остаткам</h2>
           <Link href="/app/stocks-replenishment" className="shrink-0 rounded border px-3 py-1 text-sm hover:bg-gray-50">
-            Stocks & replenishment
+            Остатки и пополнение
           </Link>
         </div>
         {stockRisksLoading ? (
-          <p className="text-sm">Loading stock risks...</p>
+          <p className="text-sm">Загрузка рисков по остаткам…</p>
         ) : stockRisksError ? (
           <Card className="border-amber-200 bg-amber-50/80">
             <CardContent className="py-3 text-sm text-amber-950">
-              <p className="font-medium">Stock risks unavailable</p>
+              <p className="font-medium">Риски по остаткам недоступны</p>
               <p className="mt-1 text-amber-900/90">{stockRisksError}</p>
               <Link href="/app/stocks-replenishment" className={`mt-3 inline-flex ${buttonClassNames("secondary")}`}>
-                Stocks & replenishment
+                Остатки и пополнение
               </Link>
             </CardContent>
           </Card>
         ) : state.stockRiskRows.length === 0 ? (
           <EmptyState
-            title="No stock risks"
-            message="No urgent replenishment risks for the current view."
+            title="Нет рисков по остаткам"
+            message="Срочных рисков пополнения в текущем представлении нет."
             action={
               <Link href="/app/stocks-replenishment" className={buttonClassNames("secondary")}>
-                Open Stocks & replenishment
+                Открыть остатки и пополнение
               </Link>
             }
           />
@@ -1483,17 +1491,17 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-medium">{item.product_name || "Unnamed product"}</p>
+                    <p className="font-medium">{item.product_name || "Товар без названия"}</p>
                     <p className="text-xs text-gray-600">{formatStockRiskEntity(item)}</p>
                   </div>
                   <div className="text-right text-xs">
                     <p className="font-medium text-gray-900">{priorityLabel(item.depletion_risk)}</p>
-                    <p className="text-gray-600">Priority: {priorityLabel(item.replenishment_priority)}</p>
+                    <p className="text-gray-600">Приоритет: {priorityLabel(item.replenishment_priority)}</p>
                   </div>
                 </div>
                 <p className="mt-2 text-xs text-gray-700">
-                  Current stock {fmtNum(item.current_available_stock)} · Days of cover{" "}
-                  {item.days_of_cover == null ? "—" : item.days_of_cover.toFixed(2)} · Estimated stockout date not available
+                  Текущий остаток {fmtNum(item.current_available_stock)} · Дни покрытия{" "}
+                  {item.days_of_cover == null ? "—" : item.days_of_cover.toFixed(2)} · Оценка даты отсутствия остатка недоступна
                 </p>
                 <p className="mt-2 inline-flex rounded border bg-gray-50 px-2 py-0.5 text-xs text-gray-700">
                   {formatStockRiskReason(item)}
@@ -1506,47 +1514,47 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
 
       <section className="rounded border p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Ad risks</h2>
+          <h2 className="text-lg font-semibold">Риски рекламы</h2>
           <Link href="/app/advertising" className="text-xs text-blue-700 hover:underline">
-            Open Advertising
+            Открыть рекламу
           </Link>
         </div>
         {adRisksLoading ? (
-          <p className="text-sm">Loading ad risks...</p>
+          <p className="text-sm">Загрузка рисков рекламы…</p>
         ) : adRisksError ? (
-          <p className="text-sm text-gray-600">See the advertising notice at the top of the page.</p>
+          <p className="text-sm text-gray-600">См. уведомление о рекламе вверху страницы.</p>
         ) : (
           <div className="space-y-3 text-sm">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
               <MetricCard
-                title="Total spend"
+                title="Расход всего"
                 value={fmtMoney(state.adRiskSummary?.totalSpend ?? 0)}
-                hint="Selected period"
+                hint="Выбранный период"
               />
               <MetricCard
-                title="Weak campaigns"
+                title="Слабые кампании"
                 value={fmtNum(state.adRiskSummary?.weakCampaigns ?? 0)}
-                hint="Low efficiency"
+                hint="Низкая эффективность"
               />
               <MetricCard
-                title="Spend without result"
+                title="Расход без результата"
                 value={fmtNum(state.adRiskSummary?.spendWithoutResult ?? 0)}
-                hint="No orders or revenue"
+                hint="Нет заказов или выручки"
               />
               <MetricCard
-                title="Low-stock advertised SKUs"
+                title="Рекламируемые SKU с низким остатком"
                 value={fmtNum(state.adRiskSummary?.lowStockAdvertisedSkus ?? 0)}
-                hint="Needs stock check"
+                hint="Проверьте остатки"
               />
             </div>
 
             {state.adRiskRows.length === 0 ? (
               <p className="rounded border border-green-300 bg-green-50 p-2 text-green-700">
-                No ad risks detected.
+                Риски рекламы не обнаружены.
               </p>
             ) : (
               <div>
-                <p className="mb-2 font-medium">Top risky campaigns / SKUs</p>
+                <p className="mb-2 font-medium">Топ рисковых кампаний / SKU</p>
                 <div className="space-y-2">
                   {state.adRiskRows.map((row, idx) => (
                     <article key={`${row.campaignLabel}-${row.title}-${idx}`} className="rounded border p-3">
@@ -1560,7 +1568,7 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
                         </span>
                       </div>
                       <p className="mt-2 text-xs text-gray-700">
-                        Spend {fmtMoney(row.spend)} · Revenue {fmtMoney(row.revenue)} · Orders {fmtNum(row.orders)} ·
+                        Расход {fmtMoney(row.spend)} · Выручка {fmtMoney(row.revenue)} · Заказы {fmtNum(row.orders)} ·
                         ROAS {row.roas == null ? "—" : row.roas.toFixed(2)}
                       </p>
                     </article>
@@ -1574,40 +1582,40 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
 
       <section className="rounded border p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Price & economics risks</h2>
+          <h2 className="text-lg font-semibold">Риски цен и экономики</h2>
           <div className="flex gap-2">
             <Link href="/app/alerts" className="shrink-0 rounded border px-3 py-1 text-sm hover:bg-gray-50">
-              View alerts
+              Смотреть алерты
             </Link>
             <Link href="/app/pricing-constraints" className="shrink-0 rounded border px-3 py-1 text-sm hover:bg-gray-50">
-              Pricing constraints
+              Ограничения по ценам
             </Link>
           </div>
         </div>
         {pricingRisksLoading ? (
-          <p className="text-sm">Loading price/economics risks...</p>
+          <p className="text-sm">Загрузка рисков по ценам…</p>
         ) : pricingRisksError ? (
           <Card className="border-amber-200 bg-amber-50/80">
             <CardContent className="py-3 text-sm text-amber-950">
-              <p className="font-medium">Price & economics risks unavailable</p>
+              <p className="font-medium">Риски цен и экономики недоступны</p>
               <p className="mt-1 text-amber-900/90">{pricingRisksError}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link href="/app/alerts" className={buttonClassNames("secondary")}>
-                  View alerts
+                  Смотреть алерты
                 </Link>
                 <Link href="/app/pricing-constraints" className={buttonClassNames("secondary")}>
-                  Pricing constraints
+                  Ограничения по ценам
                 </Link>
               </div>
             </CardContent>
           </Card>
         ) : state.pricingRiskRows.length === 0 ? (
           <EmptyState
-            title="No price risks"
-            message="No price or economics risks matched this dashboard view."
+            title="Нет ценовых рисков"
+            message="В этом представлении дашборда ценовые и экономические риски не найдены."
             action={
               <Link href="/app/alerts" className={buttonClassNames("secondary")}>
-                View alerts
+                Смотреть алерты
               </Link>
             }
           />
@@ -1627,7 +1635,7 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
                 <p className="mt-1 font-medium">{alert.title}</p>
                 <p className="line-clamp-2 text-xs text-gray-700">{alert.message}</p>
                 <p className="mt-1 text-xs text-gray-600">
-                  {formatAlertEntityLabel(alert)} | last_seen={fmtDateTime(alert.last_seen_at)}
+                  {formatAlertEntityLabel(alert)} | последний раз={fmtDateTime(alert.last_seen_at)}
                 </p>
                 {formatPricingEvidenceSummary(alert) ? (
                   <p className="mt-1 text-xs text-gray-600">{formatPricingEvidenceSummary(alert)}</p>
@@ -1640,29 +1648,29 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
 
       <section className="rounded border p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Top changes</h2>
+          <h2 className="text-lg font-semibold">Главные изменения</h2>
           <div className="flex items-center gap-2">
             <Link href="/app/alerts" className="shrink-0 rounded border px-3 py-1 text-sm hover:bg-gray-50">
-              View alerts
+              Смотреть алерты
             </Link>
-            {topChangesError ? <span className="text-xs text-amber-700">Top changes alerts are unavailable.</span> : null}
+            {topChangesError ? <span className="text-xs text-amber-700">Алерты «Главные изменения» недоступны.</span> : null}
           </div>
         </div>
         <div className="mb-3 flex flex-wrap gap-2 text-xs">
           <span className="inline-flex rounded border bg-gray-50 px-2 py-0.5">
-            Revenue DoD {fmtMoney(kpi.revenue_day_to_day_delta.abs)} ({fmtDeltaPct(kpi.revenue_day_to_day_delta.pct)})
+            Выручка день ко дню {fmtMoney(kpi.revenue_day_to_day_delta.abs)} ({fmtDeltaPct(kpi.revenue_day_to_day_delta.pct)})
           </span>
           <span className="inline-flex rounded border bg-gray-50 px-2 py-0.5">
-            Orders DoD {fmtNum(kpi.orders_day_to_day_delta)}
+            Заказы день ко дню {fmtNum(kpi.orders_day_to_day_delta)}
           </span>
           <span className="inline-flex rounded border bg-gray-50 px-2 py-0.5">
-            Revenue WoW {fmtMoney(kpi.revenue_week_to_week_delta.abs)}
+            Выручка неделя к неделе {fmtMoney(kpi.revenue_week_to_week_delta.abs)}
           </span>
         </div>
         <div className="mb-3 flex flex-wrap gap-2 text-xs">
           {Object.keys(salesAlertTypeCounts).length === 0 ? (
             <span className="inline-flex rounded border bg-gray-50 px-2 py-0.5 text-gray-600">
-              No open sales alert badges.
+              Нет открытых бейджей алертов по продажам.
             </span>
           ) : (
             Object.entries(salesAlertTypeCounts).map(([type, count]) => (
@@ -1674,10 +1682,10 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
         </div>
 
         {topChangesLoading ? (
-          <p className="text-sm">Loading top changes...</p>
+          <p className="text-sm">Загрузка главных изменений…</p>
         ) : topChangeRows.length === 0 ? (
           <p className="rounded border border-green-300 bg-green-50 p-2 text-sm text-green-700">
-            No significant changes detected.
+            Значимых изменений не обнаружено.
           </p>
         ) : (
           <div className="space-y-2">
@@ -1695,8 +1703,8 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
                   ) : null}
                 </div>
                 <p className="mt-2 text-xs text-gray-700">
-                  Revenue {row.revenue == null ? "—" : fmtMoney(row.revenue)} · Orders{" "}
-                  {row.orders == null ? "—" : fmtNum(row.orders)} · Contribution{" "}
+                  Выручка {row.revenue == null ? "—" : fmtMoney(row.revenue)} · Заказы{" "}
+                  {row.orders == null ? "—" : fmtNum(row.orders)} · Вклад{" "}
                   {row.contribution == null ? "—" : fmtMoney(row.contribution)}
                 </p>
               </article>
@@ -1707,22 +1715,22 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
 
       <section className="rounded border p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">SKU table (top 20)</h2>
+          <h2 className="text-lg font-semibold">Таблица SKU (топ 20)</h2>
           <Link href="/app/critical-skus" className="shrink-0 rounded border px-3 py-1 text-sm hover:bg-gray-50">
-            Open Critical SKU
+            Открыть критичные SKU
           </Link>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse text-sm">
             <thead>
               <tr className="border-b text-left">
-                <th className="px-2 py-2">Product</th>
-                <th className="px-2 py-2">Revenue</th>
-                <th className="px-2 py-2">Sales ops</th>
-                <th className="px-2 py-2">Share</th>
-                <th className="px-2 py-2">Contribution</th>
-                <th className="px-2 py-2">Stock</th>
-                <th className="px-2 py-2">Days of cover</th>
+                <th className="px-2 py-2">Товар</th>
+                <th className="px-2 py-2">Выручка</th>
+                <th className="px-2 py-2">Продажи (операции)</th>
+                <th className="px-2 py-2">Доля</th>
+                <th className="px-2 py-2">Вклад</th>
+                <th className="px-2 py-2">Остаток</th>
+                <th className="px-2 py-2">Дни покрытия</th>
               </tr>
             </thead>
             <tbody>
@@ -1749,21 +1757,21 @@ export default function DashboardScreen({ initialAsOfDate }: DashboardScreenProp
 
       <section className="rounded border p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Stocks table (top 20 warehouse rows)</h2>
+          <h2 className="text-lg font-semibold">Таблица остатков (топ 20 строк по складам)</h2>
           <Link href="/app/stocks-replenishment" className="shrink-0 rounded border px-3 py-1 text-sm hover:bg-gray-50">
-            Stocks & replenishment
+            Остатки и пополнение
           </Link>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse text-sm">
             <thead>
               <tr className="border-b text-left">
-                <th className="px-2 py-2">Product</th>
-                <th className="px-2 py-2">Warehouse</th>
-                <th className="px-2 py-2">Total</th>
-                <th className="px-2 py-2">Reserved</th>
-                <th className="px-2 py-2">Available</th>
-                <th className="px-2 py-2">Snapshot</th>
+                <th className="px-2 py-2">Товар</th>
+                <th className="px-2 py-2">Склад</th>
+                <th className="px-2 py-2">Всего</th>
+                <th className="px-2 py-2">Зарезервировано</th>
+                <th className="px-2 py-2">Доступно</th>
+                <th className="px-2 py-2">Снимок</th>
               </tr>
             </thead>
             <tbody>

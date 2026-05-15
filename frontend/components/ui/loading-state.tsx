@@ -5,7 +5,7 @@ export type LoadingStateProps = {
   className?: string;
 };
 
-export function LoadingState({ message = "Loading…", className }: LoadingStateProps) {
+export function LoadingState({ message = "Загрузка…", className }: LoadingStateProps) {
   return (
     <div className={cn("space-y-3 p-6", className)} aria-busy="true" aria-live="polite">
       <div className="flex items-center gap-3">

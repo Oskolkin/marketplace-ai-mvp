@@ -1,7 +1,6 @@
 package recommendations
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"regexp"
@@ -18,6 +17,8 @@ type ValidationResult struct {
 	ValidRecommendations    []ValidatedRecommendation `json:"valid_recommendations"`
 	RejectedRecommendations []RejectedRecommendation  `json:"rejected_recommendations"`
 	TotalRecommendations    int                       `json:"total_recommendations"`
+	NormalizedTypesCount    int                       `json:"normalized_types_count,omitempty"`
+	NormalizedTypes         []TypeNormalizationEntry  `json:"normalized_types,omitempty"`
 }
 
 type ValidatedRecommendation struct {
@@ -27,9 +28,10 @@ type ValidatedRecommendation struct {
 }
 
 type RejectedRecommendation struct {
-	Index  int    `json:"index"`
-	Reason string `json:"reason"`
-	Raw    any    `json:"raw,omitempty"`
+	Index              int    `json:"index"`
+	Reason             string `json:"reason"`
+	RecommendationType string `json:"recommendation_type,omitempty"`
+	Raw                any    `json:"raw,omitempty"`
 }
 
 type AIRecommendationCandidate struct {
@@ -60,24 +62,6 @@ type recommendationsEnvelope struct {
 }
 
 var (
-	allowedRecommendationTypes = map[string]struct{}{
-		"investigate_sales_drop":                 {},
-		"investigate_sku_drop":                   {},
-		"focus_on_negative_contributor_sku":      {},
-		"replenish_sku":                          {},
-		"prioritize_key_sku_replenishment":       {},
-		"reduce_ads_until_stock_recovers":        {},
-		"review_campaign_without_result":          {},
-		"reduce_or_pause_inefficient_campaign":   {},
-		"redirect_ad_budget_from_low_stock_sku":  {},
-		"review_price_below_min":                 {},
-		"review_price_above_max":                 {},
-		"review_margin_risk":                     {},
-		"add_pricing_constraints_for_key_sku":    {},
-		"rebalance_ads_and_stock":                {},
-		"review_price_and_ads_for_sku":           {},
-		"prioritize_sku_recovery_plan":           {},
-	}
 	priceActionRegex   = regexp.MustCompile(`(?i)(снизить цену|понизить цену|уменьшить цену|поднять цену|повысить цену|reduce price|lower price|increase price|raise price)`)
 	priceDownRegex     = regexp.MustCompile(`(?i)(снизить цену|понизить цену|уменьшить цену|reduce price|lower price)`)
 	increaseAdsRegex   = regexp.MustCompile(`(?i)(увеличить рекламу|усилить рекламу|увеличить бюджет|повысить бюджет|increase ad|increase ads|increase budget|scale campaign)`)
@@ -122,49 +106,41 @@ func (v *OutputValidator) Validate(output *GenerateRecommendationsOutput, ctx *A
 		TotalRecommendations:    len(candidates),
 	}
 	for i, c := range candidates {
-		norm, warnings, reason := v.validateOne(c, indexes)
+		norm, warnings, reason, typeNorm := v.validateOne(c, indexes)
+		if typeNorm != nil {
+			result.NormalizedTypes = append(result.NormalizedTypes, TypeNormalizationEntry{
+				Index:     i,
+				Original:  typeNorm.Original,
+				Canonical: typeNorm.Canonical,
+			})
+		}
 		if reason != "" {
-			result.RejectedRecommendations = append(result.RejectedRecommendations, RejectedRecommendation{
+			rej := RejectedRecommendation{
 				Index:  i,
 				Reason: reason,
 				Raw:    raws[i],
-			})
+			}
+			if rt := extractRecommendationTypeFromRaw(raws[i]); rt != "" {
+				rej.RecommendationType = rt
+			} else if strings.TrimSpace(c.RecommendationType) != "" {
+				rej.RecommendationType = strings.TrimSpace(c.RecommendationType)
+			}
+			result.RejectedRecommendations = append(result.RejectedRecommendations, rej)
 			continue
 		}
 		result.ValidRecommendations = append(result.ValidRecommendations, ValidatedRecommendation{
-			Recommendation:      norm,
-			Warnings:            warnings,
+			Recommendation:       norm,
+			Warnings:             warnings,
 			FinalConfidenceLevel: downgradeConfidence(norm.ConfidenceLevel, len(warnings)),
 		})
 	}
+	result.NormalizedTypesCount = len(result.NormalizedTypes)
 	return result, nil
 }
 
-func parseCandidates(content string) ([]AIRecommendationCandidate, []map[string]any, error) {
-	var envelope recommendationsEnvelope
-	if err := json.Unmarshal([]byte(content), &envelope); err == nil && envelope.Recommendations != nil {
-		raws := make([]map[string]any, 0, len(envelope.Recommendations))
-		for _, item := range envelope.Recommendations {
-			b, _ := json.Marshal(item)
-			var raw map[string]any
-			_ = json.Unmarshal(b, &raw)
-			raws = append(raws, raw)
-		}
-		return envelope.Recommendations, raws, nil
-	}
-
-	var arr []AIRecommendationCandidate
-	if err := json.Unmarshal([]byte(content), &arr); err == nil {
-		raws := make([]map[string]any, 0, len(arr))
-		for _, item := range arr {
-			b, _ := json.Marshal(item)
-			var raw map[string]any
-			_ = json.Unmarshal(b, &raw)
-			raws = append(raws, raw)
-		}
-		return arr, raws, nil
-	}
-	return nil, nil, fmt.Errorf("expected JSON object with recommendations[] or recommendations array")
+type normalizedTypeChange struct {
+	Original  string
+	Canonical string
 }
 
 type contextIndexes struct {
@@ -184,9 +160,10 @@ type contextIndexes struct {
 	hasMissingConstraintsSignal bool
 }
 
-func (v *OutputValidator) validateOne(in AIRecommendationCandidate, idx contextIndexes) (AIRecommendationCandidate, []string, string) {
+func (v *OutputValidator) validateOne(in AIRecommendationCandidate, idx contextIndexes) (AIRecommendationCandidate, []string, string, *normalizedTypeChange) {
 	out := in
-	out.RecommendationType = strings.TrimSpace(out.RecommendationType)
+	originalType := strings.TrimSpace(out.RecommendationType)
+	out.RecommendationType = originalType
 	out.Horizon = strings.TrimSpace(out.Horizon)
 	out.EntityType = strings.TrimSpace(out.EntityType)
 	out.Title = strings.TrimSpace(out.Title)
@@ -214,41 +191,50 @@ func (v *OutputValidator) validateOne(in AIRecommendationCandidate, idx contextI
 	}
 	warnings := make([]string, 0)
 
+	var typeNorm *normalizedTypeChange
 	if out.RecommendationType == "" {
-		return out, warnings, "recommendation_type is required"
+		return out, warnings, "recommendation_type is required", nil
 	}
-	if _, ok := allowedRecommendationTypes[out.RecommendationType]; !ok {
-		return out, warnings, "recommendation_type is not allowed"
+	canonical, changed, ok := NormalizeRecommendationType(out.RecommendationType)
+	if !ok {
+		return out, warnings, fmt.Sprintf("recommendation_type is not allowed: %s", originalType), nil
 	}
+	if changed {
+		typeNorm = &normalizedTypeChange{Original: originalType, Canonical: canonical}
+	}
+	out.RecommendationType = canonical
 	if !oneOf(out.Horizon, "short_term", "medium_term", "long_term") {
-		return out, warnings, "invalid horizon"
+		return out, warnings, "invalid horizon", typeNorm
 	}
 	if !oneOf(out.EntityType, "account", "sku", "product", "campaign", "pricing_constraint") {
-		return out, warnings, "invalid entity_type"
+		return out, warnings, "invalid entity_type", typeNorm
 	}
 	if out.Title == "" || out.WhatHappened == "" || out.WhyItMatters == "" || out.RecommendedAction == "" {
-		return out, warnings, "title/what_happened/why_it_matters/recommended_action are required"
+		return out, warnings, "title/what_happened/why_it_matters/recommended_action are required", typeNorm
 	}
 	if len(out.Title) > v.MaxTextLength || len(out.WhatHappened) > v.MaxTextLength || len(out.WhyItMatters) > v.MaxTextLength || len(out.RecommendedAction) > v.MaxTextLength {
-		return out, warnings, "one or more text fields exceed max length"
+		return out, warnings, "one or more text fields exceed max length", typeNorm
 	}
 	if !oneOf(out.PriorityLevel, "low", "medium", "high", "critical") {
-		return out, warnings, "invalid priority_level"
+		return out, warnings, "invalid priority_level", typeNorm
 	}
 	if !oneOf(out.Urgency, "low", "medium", "high", "immediate") {
-		return out, warnings, "invalid urgency"
+		return out, warnings, "invalid urgency", typeNorm
 	}
 	if !oneOf(out.ConfidenceLevel, "low", "medium", "high") {
-		return out, warnings, "invalid confidence_level"
+		return out, warnings, "invalid confidence_level", typeNorm
 	}
 	if math.IsNaN(out.PriorityScore) || out.PriorityScore < 0 || out.PriorityScore > 100 {
-		return out, warnings, "priority_score must be in range [0,100]"
+		return out, warnings, "priority_score must be in range [0,100]", typeNorm
 	}
 	if len(out.SupportingMetrics) == 0 {
-		return out, warnings, "supporting_metrics is required and must be non-empty object"
+		return out, warnings, "supporting_metrics is required and must be non-empty object", typeNorm
 	}
 	if len(out.Constraints) == 0 {
-		return out, warnings, "constraints_checked is required and must be non-empty object"
+		return out, warnings, "constraints_checked is required and must be non-empty object", typeNorm
+	}
+	if len(idx.alertIDs) > 0 && len(out.SupportingAlertIDs) == 0 {
+		return out, warnings, "supporting_alert_ids is required when open alerts exist in context", typeNorm
 	}
 
 	switch out.EntityType {
@@ -256,34 +242,34 @@ func (v *OutputValidator) validateOne(in AIRecommendationCandidate, idx contextI
 		// account-level recommendation can omit concrete identifiers.
 	case "sku":
 		if out.EntitySKU == nil && emptyStringPtr(out.EntityOfferID) && emptyStringPtr(out.EntityID) {
-			return out, warnings, "sku entity must include entity_sku, entity_offer_id, or entity_id"
+			return out, warnings, "sku entity must include entity_sku, entity_offer_id, or entity_id", typeNorm
 		}
 	case "product", "campaign", "pricing_constraint":
 		if emptyStringPtr(out.EntityID) {
-			return out, warnings, "entity_id is required for selected entity_type"
+			return out, warnings, "entity_id is required for selected entity_type", typeNorm
 		}
 	}
 	if !entityExistsInContext(out, idx) {
-		return out, warnings, "entity does not exist in provided context"
+		return out, warnings, "entity does not exist in provided context", typeNorm
 	}
 
 	if len(idx.alertIDs) > 0 {
 		for _, id := range out.SupportingAlertIDs {
 			if _, ok := idx.alertIDs[id]; !ok {
-				return out, warnings, "supporting_alert_ids contain unknown alert id"
+				return out, warnings, "supporting_alert_ids contain unknown alert id", typeNorm
 			}
 		}
 	}
 	if len(out.RelatedAlertTypes) > 0 {
 		for _, t := range out.RelatedAlertTypes {
 			if _, ok := idx.alertTypes[t]; !ok {
-				return out, warnings, "related_alert_types contain unknown alert type"
+				return out, warnings, "related_alert_types contain unknown alert type", typeNorm
 			}
 		}
 		if len(out.SupportingAlertIDs) > 0 {
 			for _, id := range out.SupportingAlertIDs {
 				if expected, ok := idx.alertTypeByID[id]; ok && !containsString(out.RelatedAlertTypes, expected) {
-					return out, warnings, "related_alert_types mismatch with supporting_alert_ids"
+					return out, warnings, "related_alert_types mismatch with supporting_alert_ids", typeNorm
 				}
 			}
 		}
@@ -307,10 +293,10 @@ func (v *OutputValidator) validateOne(in AIRecommendationCandidate, idx contextI
 			maxPrice, hasMax := idx.maxPriceBySKU[*out.EntitySKU]
 			for _, p := range prices {
 				if hasMin && p < minPrice {
-					return out, warnings, "suggested price is below effective_min_price"
+					return out, warnings, "suggested price is below effective_min_price", typeNorm
 				}
 				if hasMax && p > maxPrice {
-					return out, warnings, "suggested price is above effective_max_price"
+					return out, warnings, "suggested price is above effective_max_price", typeNorm
 				}
 			}
 		}
@@ -320,14 +306,14 @@ func (v *OutputValidator) validateOne(in AIRecommendationCandidate, idx contextI
 		expectedMargin, hasExpectedMargin := numberFromMetrics(out.SupportingMetrics, "expected_margin")
 		hasMarginRiskSignal := containsString(out.RelatedAlertTypes, "margin_risk_at_current_price")
 		if hasExpectedMargin && expectedMargin < 0 {
-			return out, warnings, "expected_margin is below 0"
+			return out, warnings, "expected_margin is below 0", typeNorm
 		}
 		if hasExpectedMargin && expectedMargin < 0.05 {
-			return out, warnings, "expected_margin is below 0.05"
+			return out, warnings, "expected_margin is below 0.05", typeNorm
 		}
 		if hasMarginRiskSignal || (hasExpectedMargin && expectedMargin < 0.10) {
 			if !constraintBool(out.Constraints, "margin_checked") {
-				return out, warnings, "margin_checked must be true for price decrease under margin risk"
+				return out, warnings, "margin_checked must be true for price decrease under margin risk", typeNorm
 			}
 		}
 	}
@@ -338,12 +324,12 @@ func (v *OutputValidator) validateOne(in AIRecommendationCandidate, idx contextI
 			_, lowStock = idx.lowStockSKUs[*out.EntitySKU]
 		}
 		if lowStock || containsString(out.RelatedAlertTypes, "stock_oos_risk") || containsString(out.RelatedAlertTypes, "stock_low_coverage") || containsString(out.RelatedAlertTypes, "ad_budget_on_low_stock_sku") {
-			return out, warnings, "cannot increase ads for low-stock sku"
+			return out, warnings, "cannot increase ads for low-stock sku", typeNorm
 		}
 	}
 
 	if reason := evidenceCheck(out, idx); reason != "" {
-		return out, warnings, reason
+		return out, warnings, reason, typeNorm
 	}
 
 	if isStockOrAdOrPrice(out.RecommendationType) {
@@ -352,7 +338,7 @@ func (v *OutputValidator) validateOne(in AIRecommendationCandidate, idx contextI
 			warnings = append(warnings, flag+" is missing")
 		}
 	}
-	return out, warnings, ""
+	return out, warnings, "", typeNorm
 }
 
 func oneOf(v string, allowed ...string) bool {
@@ -502,21 +488,25 @@ func entityExistsInContext(rec AIRecommendationCandidate, idx contextIndexes) bo
 
 func evidenceCheck(rec AIRecommendationCandidate, idx contextIndexes) string {
 	switch rec.RecommendationType {
-	case "replenish_sku", "prioritize_key_sku_replenishment":
+	case "replenish_sku":
 		if !idx.hasStockData && len(idx.lowStockSKUs) == 0 {
 			return "replenish_sku requires stock evidence"
 		}
-	case "review_campaign_without_result":
+	case "review_ad_spend", "pause_or_reduce_ads":
 		if !idx.hasAdData {
-			return "review_campaign_without_result requires advertising evidence"
+			return rec.RecommendationType + " requires advertising evidence"
 		}
-	case "review_price_below_min", "review_price_above_max", "review_margin_risk":
+	case "avoid_ads_for_low_stock_sku":
+		if !idx.hasStockData && len(idx.lowStockSKUs) == 0 && !idx.hasAdData {
+			return "avoid_ads_for_low_stock_sku requires stock or advertising evidence"
+		}
+	case "review_price_margin":
 		if !idx.hasPriceData {
 			return "price recommendation requires pricing evidence"
 		}
-	case "add_pricing_constraints_for_key_sku":
-		if !idx.hasMissingConstraintsSignal && !idx.hasPriceData {
-			return "add_pricing_constraints_for_key_sku requires missing constraints evidence"
+	case "review_price_floor":
+		if !idx.hasPriceData && !idx.hasMissingConstraintsSignal {
+			return "review_price_floor requires pricing or missing-constraints evidence"
 		}
 	}
 	return ""
@@ -524,15 +514,27 @@ func evidenceCheck(rec AIRecommendationCandidate, idx contextIndexes) string {
 
 func expectedCheckFlag(recType string) string {
 	switch recType {
-	case "replenish_sku", "prioritize_key_sku_replenishment", "reduce_ads_until_stock_recovers", "rebalance_ads_and_stock":
+	case "replenish_sku", "avoid_ads_for_low_stock_sku", "discount_overstock":
 		return "stock_checked"
-	case "review_campaign_without_result", "reduce_or_pause_inefficient_campaign", "redirect_ad_budget_from_low_stock_sku", "review_price_and_ads_for_sku":
+	case "review_ad_spend", "pause_or_reduce_ads":
 		return "ads_checked"
-	case "review_price_below_min", "review_price_above_max", "review_margin_risk", "add_pricing_constraints_for_key_sku":
+	case "review_price_margin", "review_price_floor":
 		return "pricing_checked"
 	default:
 		return ""
 	}
+}
+
+func extractRecommendationTypeFromRaw(raw any) string {
+	switch v := raw.(type) {
+	case map[string]any:
+		if s, ok := v["recommendation_type"].(string); ok {
+			return strings.TrimSpace(s)
+		}
+	case AIRecommendationCandidate:
+		return strings.TrimSpace(v.RecommendationType)
+	}
+	return ""
 }
 
 func isStockOrAdOrPrice(recType string) bool {

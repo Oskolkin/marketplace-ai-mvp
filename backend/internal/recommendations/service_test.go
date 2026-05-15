@@ -24,6 +24,7 @@ type mockServiceRepo struct {
 	links       int
 	lastRunType string
 	lastRaw     json.RawMessage
+	lastDiag    *CreateRunDiagnosticInput
 	feedback    *RecommendationFeedback
 	feedbackErr error
 }
@@ -102,6 +103,12 @@ func (m *mockServiceRepo) CountOpenRecommendationsByConfidence(ctx context.Conte
 func (m *mockServiceRepo) GetLatestRecommendationRun(ctx context.Context, sellerAccountID int64) (*RunInfo, error) {
 	return nil, nil
 }
+func (m *mockServiceRepo) CreateRunDiagnostic(ctx context.Context, input CreateRunDiagnosticInput) error {
+	in := input
+	m.lastDiag = &in
+	return nil
+}
+
 func (m *mockServiceRepo) CreateFeedback(ctx context.Context, input AddRecommendationFeedbackInput) (*RecommendationFeedback, error) {
 	if m.feedbackErr != nil {
 		return nil, m.feedbackErr
@@ -155,14 +162,40 @@ func (m mockValidator) Validate(output *GenerateRecommendationsOutput, ctx *AIRe
 	return m.res, nil
 }
 
+func TestServiceGenerateForAccount_StockReplenishmentAliasSavedAsCanonical(t *testing.T) {
+	repo := &mockServiceRepo{}
+	ctx := sampleContext()
+	ctx.Alerts.OpenTotal = int64(len(ctx.Alerts.TopOpen))
+	builder := mockBuilder{ctx: ctx}
+	content := `{"recommendations":[{"recommendation_type":"stock_replenishment","horizon":"short_term","entity_type":"sku","entity_sku":1001,"title":"Пополнить","what_happened":"w","why_it_matters":"y","recommended_action":"a","priority_score":80,"priority_level":"high","urgency":"high","confidence_level":"high","supporting_metrics":{"stock_available":0},"constraints_checked":{"stock_checked":true},"supporting_alert_ids":[101],"related_alert_types":["stock_oos_risk"]}]}`
+	client := mockAIClient{out: &GenerateRecommendationsOutput{
+		Model: "gpt-test", Content: content, RawResponse: json.RawMessage(`{}`), InputTokens: 1, OutputTokens: 1,
+	}}
+	svc := NewService(repo, builder, client, NewOutputValidator(), ServiceConfig{Model: "gpt-test", PromptVersion: "v1"})
+	sum, err := svc.GenerateForAccount(context.Background(), 1, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("GenerateForAccount: %v", err)
+	}
+	if sum.UpsertedTotal != 1 {
+		t.Fatalf("expected 1 upsert, got %d (valid=%d rejected=%d)", sum.UpsertedTotal, sum.ValidTotal, sum.RejectedTotal)
+	}
+	if repo.upserts != 1 {
+		t.Fatalf("expected 1 repo upsert")
+	}
+}
+
 func TestServiceGenerateForAccount_Success(t *testing.T) {
 	repo := &mockServiceRepo{}
+	sku := int64(1001)
 	builder := mockBuilder{ctx: &AIRecommendationContext{
-		Alerts: AlertsContext{TopOpen: []AlertSignal{{ID: 10}}},
+		Alerts: AlertsContext{
+			OpenTotal: 1,
+			TopOpen:   []AlertSignal{{ID: 10, Severity: "high", AlertType: "stock_oos_risk", EntitySKU: &sku}},
+		},
 	}}
 	raw := json.RawMessage(`{"id":"resp"}`)
 	client := mockAIClient{out: &GenerateRecommendationsOutput{
-		Model: "gpt-test", RawResponse: raw, InputTokens: 12, OutputTokens: 8, TotalTokens: 20,
+		Model: "gpt-test", Content: `{"recommendations":[]}`, RawResponse: raw, InputTokens: 12, OutputTokens: 8, TotalTokens: 20,
 	}}
 	validator := mockValidator{res: &ValidationResult{
 		TotalRecommendations: 2,
@@ -206,7 +239,7 @@ func TestServiceGenerateForAccount_Success(t *testing.T) {
 	if repo.deletes != 1 {
 		t.Fatalf("expected 1 delete old links call, got %d", repo.deletes)
 	}
-	if sum.ValidTotal != 1 || sum.RejectedTotal != 1 || sum.WarningsTotal != 1 || sum.TotalTokens != 20 {
+	if sum.ValidTotal != 1 || sum.RejectedTotal != 1 || sum.WarningsTotal != 2 || sum.TotalTokens != 20 {
 		t.Fatalf("unexpected summary: %+v", sum)
 	}
 }
@@ -258,16 +291,87 @@ func TestServiceGenerateForAccount_FailRunOnValidatorError(t *testing.T) {
 
 func TestServiceGenerateForAccount_AllRejected(t *testing.T) {
 	repo := &mockServiceRepo{}
-	svc := NewService(repo, mockBuilder{ctx: &AIRecommendationContext{}}, mockAIClient{out: &GenerateRecommendationsOutput{}}, mockValidator{res: &ValidationResult{
+	svc := NewService(repo, mockBuilder{ctx: &AIRecommendationContext{Alerts: AlertsContext{OpenTotal: 3}}}, mockAIClient{out: &GenerateRecommendationsOutput{Content: `{"recommendations":[{}]}`}}, mockValidator{res: &ValidationResult{
 		TotalRecommendations:    2,
 		RejectedRecommendations: []RejectedRecommendation{{Index: 0, Reason: "x"}, {Index: 1, Reason: "y"}},
+	}}, ServiceConfig{})
+	_, err := svc.GenerateForAccount(context.Background(), 1, time.Now().UTC())
+	if err == nil {
+		t.Fatalf("expected error when all candidates rejected")
+	}
+	if !repo.failed || repo.completed {
+		t.Fatalf("expected failed run, got failed=%v completed=%v", repo.failed, repo.completed)
+	}
+	if !strings.Contains(err.Error(), errMsgAllRejectedByValidator) {
+		t.Fatalf("expected validator rejection message, got: %v", err)
+	}
+}
+
+func TestServiceGenerateForAccount_SavesDiagnosticsOnFailure(t *testing.T) {
+	repo := &mockServiceRepo{}
+	svc := NewService(repo, mockBuilder{ctx: &AIRecommendationContext{Alerts: AlertsContext{OpenTotal: 2}}}, mockAIClient{out: &GenerateRecommendationsOutput{
+		Content:     `{"recommendations":[]}`,
+		RawResponse: json.RawMessage(`{"parsed":{"recommendations":[]}}`),
+	}}, mockValidator{res: &ValidationResult{TotalRecommendations: 0}}, ServiceConfig{})
+	_, _ = svc.GenerateForAccount(context.Background(), 1, time.Now().UTC())
+	if repo.lastDiag == nil || len(repo.lastDiag.RawOpenAIResponse) == 0 {
+		t.Fatalf("expected diagnostic with raw_openai_response, got %+v", repo.lastDiag)
+	}
+}
+
+func TestServiceGenerateForAccount_EmptyAIWithOpenAlerts(t *testing.T) {
+	repo := &mockServiceRepo{}
+	svc := NewService(repo, mockBuilder{ctx: &AIRecommendationContext{Alerts: AlertsContext{OpenTotal: 35}}}, mockAIClient{out: &GenerateRecommendationsOutput{
+		Content:     `{"recommendations":[]}`,
+		RawResponse: json.RawMessage(`{"recommendations":[]}`),
+	}}, mockValidator{res: &ValidationResult{TotalRecommendations: 0}}, ServiceConfig{})
+	_, err := svc.GenerateForAccount(context.Background(), 1, time.Now().UTC())
+	if err == nil {
+		t.Fatalf("expected error for empty AI output with open alerts")
+	}
+	if !repo.failed || strings.Contains(err.Error(), errMsgAIEmptyWithAlerts) == false {
+		t.Fatalf("expected failed run with empty-ai message, err=%v failed=%v", err, repo.failed)
+	}
+}
+
+func TestServiceGenerateForAccount_PartialValidationCompletesWithWarning(t *testing.T) {
+	repo := &mockServiceRepo{}
+	sku := int64(1001)
+	svc := NewService(repo, mockBuilder{ctx: &AIRecommendationContext{
+		Alerts: AlertsContext{
+			OpenTotal: 2,
+			TopOpen:   []AlertSignal{{ID: 10, Severity: "high", AlertType: "stock_oos_risk", EntitySKU: &sku}},
+		},
+	}}, mockAIClient{out: &GenerateRecommendationsOutput{Content: `{"recommendations":[{},{}]}`}}, mockValidator{res: &ValidationResult{
+		TotalRecommendations: 2,
+		ValidRecommendations: []ValidatedRecommendation{{
+			Recommendation: AIRecommendationCandidate{
+				RecommendationType: "replenish_sku",
+				Horizon:            "short_term",
+				EntityType:         "sku",
+				EntitySKU:          &sku,
+				Title:              "restock",
+				WhatHappened:       "w",
+				WhyItMatters:       "y",
+				RecommendedAction:  "a",
+				PriorityScore:      50,
+				PriorityLevel:      "high",
+				Urgency:            "high",
+				ConfidenceLevel:    "high",
+				SupportingMetrics:  map[string]any{"stock_available": 0},
+				Constraints:        map[string]any{"stock_checked": true},
+				SupportingAlertIDs: []int64{10},
+			},
+			FinalConfidenceLevel: "high",
+		}},
+		RejectedRecommendations: []RejectedRecommendation{{Index: 1, Reason: "bad"}},
 	}}, ServiceConfig{})
 	sum, err := svc.GenerateForAccount(context.Background(), 1, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !repo.completed || repo.upserts != 0 || sum.ValidTotal != 0 || sum.RejectedTotal != 2 {
-		t.Fatalf("unexpected result for all rejected: %+v repo=%+v", sum, repo)
+	if !repo.completed || repo.upserts != 1 || sum.WarningsTotal < 1 {
+		t.Fatalf("expected completed run with warning, repo=%+v sum=%+v", repo, sum)
 	}
 }
 

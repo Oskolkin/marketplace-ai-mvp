@@ -14,22 +14,25 @@ import (
 )
 
 var (
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrEmailAlreadyExists = errors.New("email already exists")
-	ErrUnauthorized       = errors.New("unauthorized")
+	ErrInvalidCredentials      = errors.New("invalid credentials")
+	ErrEmailAlreadyExists      = errors.New("email already exists")
+	ErrUnauthorized            = errors.New("unauthorized")
+	ErrSellerAccountRequired   = errors.New("seller account required")
 )
 
 type Service struct {
-	db         *pgxpool.Pool
-	queries    *dbgen.Queries
-	sessionTTL time.Duration
+	db          *pgxpool.Pool
+	queries     *dbgen.Queries
+	sessionTTL  time.Duration
+	adminEmails []string
 }
 
-func NewService(db *pgxpool.Pool, sessionTTL time.Duration) *Service {
+func NewService(db *pgxpool.Pool, sessionTTL time.Duration, adminEmails []string) *Service {
 	return &Service{
-		db:         db,
-		queries:    dbgen.New(db),
-		sessionTTL: sessionTTL,
+		db:          db,
+		queries:     dbgen.New(db),
+		sessionTTL:  sessionTTL,
+		adminEmails: adminEmails,
 	}
 }
 
@@ -103,7 +106,7 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (*AuthResul
 
 	return &AuthResult{
 		User:          user,
-		SellerAccount: sellerAccount,
+		SellerAccount: &sellerAccount,
 		SessionToken:  rawToken,
 	}, nil
 }
@@ -131,9 +134,12 @@ func (s *Service) Login(ctx context.Context, input LoginInput) (*AuthResult, err
 		return nil, ErrUnauthorized
 	}
 
-	sellerAccount, err := s.queries.GetSellerAccountByUserID(ctx, user.ID)
+	sellerAccount, err := s.loadSellerAccount(ctx, user.ID)
 	if err != nil {
-		return nil, fmt.Errorf("get seller account: %w", err)
+		return nil, err
+	}
+	if sellerAccount == nil && !IsAdminUser(&user, s.adminEmails) {
+		return nil, ErrSellerAccountRequired
 	}
 
 	rawToken, tokenHash, err := GenerateSessionToken()
@@ -184,9 +190,9 @@ func (s *Service) GetCurrentUser(ctx context.Context, rawSessionToken string) (*
 		return nil, ErrUnauthorized
 	}
 
-	sellerAccount, err := s.queries.GetSellerAccountByUserID(ctx, user.ID)
+	sellerAccount, err := s.loadSellerAccount(ctx, user.ID)
 	if err != nil {
-		return nil, fmt.Errorf("get seller account: %w", err)
+		return nil, err
 	}
 
 	return &AuthResult{
@@ -194,6 +200,17 @@ func (s *Service) GetCurrentUser(ctx context.Context, rawSessionToken string) (*
 		SellerAccount: sellerAccount,
 		SessionToken:  "",
 	}, nil
+}
+
+func (s *Service) loadSellerAccount(ctx context.Context, userID int64) (*dbgen.SellerAccount, error) {
+	sellerAccount, err := s.queries.GetSellerAccountByUserID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get seller account: %w", err)
+	}
+	return &sellerAccount, nil
 }
 
 func (s *Service) Logout(ctx context.Context, rawSessionToken string) error {

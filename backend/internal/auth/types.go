@@ -15,6 +15,6 @@ type LoginInput struct {
 
 type AuthResult struct {
 	User          dbgen.User
-	SellerAccount dbgen.SellerAccount
+	SellerAccount *dbgen.SellerAccount
 	SessionToken  string
 }

@@ -130,7 +130,7 @@ func TestAdminHandler(t *testing.T) {
 	t.Run("returns admin payload for authenticated user", func(t *testing.T) {
 		user := dbgen.User{Email: "admin@example.com"}
 		seller := dbgen.SellerAccount{}
-		ctx := auth.WithAuthContext(context.Background(), user, seller)
+		ctx := auth.WithAuthContext(context.Background(), user, &seller)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/me", nil).WithContext(ctx)
 		rr := httptest.NewRecorder()
@@ -441,13 +441,13 @@ func withChiURLParam(r *http.Request, key, value string) *http.Request {
 }
 
 func withAdminUser(req *http.Request) *http.Request {
-	ctx := auth.WithAuthContext(req.Context(), dbgen.User{ID: 99, Email: "admin@example.com"}, dbgen.SellerAccount{})
+	ctx := auth.WithAuthContext(req.Context(), dbgen.User{ID: 99, Email: "admin@example.com"}, nil)
 	return req.WithContext(ctx)
 }
 
 func TestAdminHandlerActions(t *testing.T) {
 	adminCtx := func(req *http.Request) *http.Request {
-		ctx := auth.WithAuthContext(req.Context(), dbgen.User{ID: 99, Email: "admin@example.com"}, dbgen.SellerAccount{})
+		ctx := auth.WithAuthContext(req.Context(), dbgen.User{ID: 99, Email: "admin@example.com"}, nil)
 		return req.WithContext(ctx)
 	}
 
@@ -909,7 +909,7 @@ func TestAdminFeedbackHandlers(t *testing.T) {
 
 func TestAdminBillingHandlers(t *testing.T) {
 	adminCtx := func(req *http.Request) *http.Request {
-		ctx := auth.WithAuthContext(req.Context(), dbgen.User{ID: 99, Email: "admin@example.com"}, dbgen.SellerAccount{})
+		ctx := auth.WithAuthContext(req.Context(), dbgen.User{ID: 99, Email: "admin@example.com"}, nil)
 		return req.WithContext(ctx)
 	}
 	t.Run("get client billing success", func(t *testing.T) {

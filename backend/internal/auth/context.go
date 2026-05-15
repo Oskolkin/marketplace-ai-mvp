@@ -13,9 +13,11 @@ const (
 	SellerAccountContextKey contextKey = "auth_seller_account"
 )
 
-func WithAuthContext(ctx context.Context, user dbgen.User, sellerAccount dbgen.SellerAccount) context.Context {
+func WithAuthContext(ctx context.Context, user dbgen.User, sellerAccount *dbgen.SellerAccount) context.Context {
 	ctx = context.WithValue(ctx, UserContextKey, user)
-	ctx = context.WithValue(ctx, SellerAccountContextKey, sellerAccount)
+	if sellerAccount != nil {
+		ctx = context.WithValue(ctx, SellerAccountContextKey, *sellerAccount)
+	}
 	return ctx
 }
 

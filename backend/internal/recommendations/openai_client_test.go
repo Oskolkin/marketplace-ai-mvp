@@ -2,6 +2,7 @@ package recommendations
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,6 +10,28 @@ import (
 	"testing"
 	"time"
 )
+
+func TestOpenAIClientGenerateRecommendations_UsesJSONObjectFormat(t *testing.T) {
+	var captured openAIResponsesRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&captured)
+		_, _ = w.Write([]byte(`{"model":"gpt-test","output":[{"type":"message","content":[{"type":"output_text","text":"{\"recommendations\":[]}"}]}],"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}`))
+	}))
+	defer server.Close()
+
+	client := NewOpenAIClient(OpenAIClientConfig{APIKey: "test-key", Model: "gpt-test", BaseURL: server.URL})
+	_, err := client.GenerateRecommendations(context.Background(), GenerateRecommendationsInput{
+		SystemPrompt: "sys",
+		UserPrompt:   "user",
+		Context:      &AIRecommendationContext{SellerAccountID: 1},
+	})
+	if err != nil {
+		t.Fatalf("GenerateRecommendations: %v", err)
+	}
+	if captured.Text.Format.Type != "json_object" {
+		t.Fatalf("expected json_object format, got %+v", captured.Text)
+	}
+}
 
 func TestOpenAIClientGenerateRecommendationsSuccess(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

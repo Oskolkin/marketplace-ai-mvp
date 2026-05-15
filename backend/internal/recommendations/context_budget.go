@@ -92,15 +92,6 @@ func joinReasons(parts []string) string {
 }
 
 func shrinkContextOneStep(ctx *AIRecommendationContext) bool {
-	changed := false
-	if len(ctx.Alerts.TopOpen) > 1 {
-		n := len(ctx.Alerts.TopOpen) / 2
-		if n < 1 {
-			n = 1
-		}
-		ctx.Alerts.TopOpen = ctx.Alerts.TopOpen[:n]
-		return true
-	}
 	if len(ctx.Recommendations.TopOpen) > 1 {
 		n := len(ctx.Recommendations.TopOpen) / 2
 		if n < 1 {
@@ -141,5 +132,13 @@ func shrinkContextOneStep(ctx *AIRecommendationContext) bool {
 		ctx.Pricing.TopConstrainedSKUs = ctx.Pricing.TopConstrainedSKUs[:n]
 		return true
 	}
-	return changed
+	if len(ctx.Alerts.TopOpen) > 1 {
+		n := len(ctx.Alerts.TopOpen) / 2
+		if n < 1 {
+			n = 1
+		}
+		ctx.Alerts.TopOpen = ctx.Alerts.TopOpen[:n]
+		return true
+	}
+	return false
 }

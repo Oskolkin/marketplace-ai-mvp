@@ -88,7 +88,7 @@ export default function SyncStatusScreen() {
         setError("");
         await loadData({ silent: true });
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load sync status");
+        setError(err instanceof Error ? err.message : "Не удалось загрузить статус синхронизации");
       } finally {
         setLoading(false);
       }
@@ -130,9 +130,9 @@ export default function SyncStatusScreen() {
       setError("");
       setSuccessMessage("");
       await loadData({ silent: false });
-      setSuccessMessage("Status refreshed");
+      setSuccessMessage("Статус обновлён");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to refresh sync status");
+      setError(err instanceof Error ? err.message : "Не удалось обновить статус синхронизации");
     }
   }
 
@@ -145,9 +145,9 @@ export default function SyncStatusScreen() {
       await startInitialSync();
       await loadData({ silent: true });
 
-      setSuccessMessage("Initial sync started");
+      setSuccessMessage("Начальная синхронизация запущена");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start sync");
+      setError(err instanceof Error ? err.message : "Не удалось запустить синхронизацию");
     } finally {
       setStartingSync(false);
     }
@@ -156,7 +156,7 @@ export default function SyncStatusScreen() {
   if (loading) {
     return (
       <main className="p-6">
-        <LoadingState message="Loading sync status…" />
+        <LoadingState message="Загрузка статуса синхронизации…" />
       </main>
     );
   }
@@ -165,15 +165,15 @@ export default function SyncStatusScreen() {
     return (
       <main className="space-y-6 p-6">
         <PageHeader
-          title="Sync status"
-          subtitle="Technical ingestion status for Ozon connection and latest import jobs."
+          title="Статус синхронизации"
+          subtitle="Технический статус загрузки данных Ozon и последние задачи импорта."
         />
         <EmptyState
-          title="No Ozon connection"
-          message="Connect Ozon Seller API on the integration page before you can run or monitor sync."
+          title="Нет подключения Ozon"
+          message="Подключите Ozon Seller API на странице интеграции, чтобы запускать и отслеживать синхронизацию."
           action={
             <Link href="/app/integrations/ozon" className={buttonClassNames("primary")}>
-              Open Ozon Integration
+              Открыть интеграцию Ozon
             </Link>
           }
         />
@@ -190,8 +190,8 @@ export default function SyncStatusScreen() {
   return (
     <main className="space-y-6 p-6">
       <PageHeader
-        title="Sync status"
-        subtitle="Technical ingestion status for Ozon connection and latest import jobs."
+        title="Статус синхронизации"
+        subtitle="Технический статус загрузки данных Ozon и последние задачи импорта."
       >
         <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
           <input
@@ -200,10 +200,10 @@ export default function SyncStatusScreen() {
             checked={autoRefresh}
             onChange={(e) => setAutoRefresh(e.target.checked)}
           />
-          Auto refresh 5s
+          Автообновление 5 с
         </label>
         <Button type="button" variant="secondary" onClick={() => void handleRefresh()} disabled={refreshing}>
-          {refreshing ? "Refreshing…" : "Refresh"}
+          {refreshing ? "Обновление…" : "Обновить"}
         </Button>
         <Button
           type="button"
@@ -211,30 +211,30 @@ export default function SyncStatusScreen() {
           onClick={() => void handleStartSync()}
           disabled={startingSync}
         >
-          {startingSync ? "Starting…" : "Start initial sync"}
+          {startingSync ? "Запуск…" : "Запустить начальную синхронизацию"}
         </Button>
       </PageHeader>
 
       <p className="text-sm text-gray-600">
-        After sync completes, metrics and alerts are recalculated automatically. Open the dashboard
-        once you see a successful sync below.
+        После завершения синхронизации метрики и алерты пересчитываются автоматически. Откройте
+        дашборд, когда ниже появится успешная синхронизация.
       </p>
 
       <div className="flex flex-wrap gap-2">
         <Link href="/app/integrations/ozon" className={buttonClassNames("secondary")}>
-          Ozon Integration
+          Интеграция Ozon
         </Link>
         <Link href="/app/dashboard" className={buttonClassNames("secondary")}>
-          Dashboard
+          Дашборд
         </Link>
         {adminNavLink === "show" ? (
           <Link href="/app/admin" className={buttonClassNames("secondary")}>
-            Admin / Support
+            Админка / поддержка
           </Link>
         ) : null}
       </div>
 
-      {error ? <ErrorState title="Could not complete action" message={error} /> : null}
+      {error ? <ErrorState title="Не удалось выполнить действие" message={error} /> : null}
       {successMessage ? (
         <p className="text-sm font-medium text-emerald-800">{successMessage}</p>
       ) : null}
@@ -242,14 +242,14 @@ export default function SyncStatusScreen() {
       {failedImportJob ? (
         <Card className="border-amber-300 bg-amber-50/80">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base text-amber-950">Import job failed</CardTitle>
+            <CardTitle className="text-base text-amber-950">Задача импорта завершилась с ошибкой</CardTitle>
             <CardDescription>
-              Domain <span className="font-medium">{failedImportJob.domain}</span> reported an error.
-              Other domains may still complete; check the table below.
+              Домен <span className="font-medium">{failedImportJob.domain}</span> вернул ошибку.
+              Остальные домены могут завершиться успешно — смотрите таблицу ниже.
             </CardDescription>
           </CardHeader>
           <CardContent className="text-sm text-amber-950">
-            <p className="font-medium">Error</p>
+            <p className="font-medium">Ошибка</p>
             <p className="mt-1 whitespace-pre-wrap">{failedImportJob.error_message}</p>
           </CardContent>
         </Card>
@@ -267,24 +267,24 @@ export default function SyncStatusScreen() {
             ) : null}
           </div>
           <CardDescription>
-            Used for advertising analytics import only. Seller catalog sync does not depend on it.
+            Используется только для импорта рекламной аналитики. Каталог продавца от этого не зависит.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-gray-700">
           <p>
-            <span className="font-medium text-gray-900">Token saved:</span>{" "}
-            {status?.performance_token_set ?? connection?.performance_token_set ? "Yes" : "No"}
+            <span className="font-medium text-gray-900">Токен сохранён:</span>{" "}
+            {status?.performance_token_set ?? connection?.performance_token_set ? "Да" : "Нет"}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Last check at:</span>{" "}
+            <span className="font-medium text-gray-900">Последняя проверка:</span>{" "}
             {formatDateTime(status?.performance_last_check_at ?? connection?.performance_last_check_at)}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Last check result:</span>{" "}
+            <span className="font-medium text-gray-900">Результат проверки:</span>{" "}
             {status?.performance_last_check_result ?? connection?.performance_last_check_result ?? "—"}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Last error:</span>{" "}
+            <span className="font-medium text-gray-900">Последняя ошибка:</span>{" "}
             {status?.performance_last_error ?? connection?.performance_last_error ?? "—"}
           </p>
         </CardContent>
@@ -293,16 +293,16 @@ export default function SyncStatusScreen() {
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle>Connection</CardTitle>
+            <CardTitle>Подключение</CardTitle>
             {connectionStatusRaw !== "—" ? (
               <StatusBadge status={String(connectionStatusRaw)} label={String(connectionStatusRaw)} />
             ) : null}
           </div>
-          <CardDescription>Last check and credential health for the Ozon seller API.</CardDescription>
+          <CardDescription>Последняя проверка и состояние учётных данных Ozon Seller API.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-gray-700">
           <p>
-            <span className="font-medium text-gray-900">Connection status:</span>{" "}
+            <span className="font-medium text-gray-900">Статус подключения:</span>{" "}
             {connectionStatusRaw}
           </p>
           <p>
@@ -310,15 +310,15 @@ export default function SyncStatusScreen() {
             {connection?.client_id_masked || "—"}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Last check at:</span>{" "}
+            <span className="font-medium text-gray-900">Последняя проверка:</span>{" "}
             {formatDateTime(status?.last_check_at ?? connection?.last_check_at)}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Last check result:</span>{" "}
+            <span className="font-medium text-gray-900">Результат проверки:</span>{" "}
             {status?.last_check_result ?? connection?.last_check_result ?? "—"}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Last connection error:</span>{" "}
+            <span className="font-medium text-gray-900">Последняя ошибка подключения:</span>{" "}
             {status?.last_error ?? connection?.last_error ?? "—"}
           </p>
         </CardContent>
@@ -331,43 +331,43 @@ export default function SyncStatusScreen() {
       >
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle>Sync summary</CardTitle>
+            <CardTitle>Сводка синхронизации</CardTitle>
             {syncIsRunning ? (
-              <StatusBadge status="running" label="Running" />
+              <StatusBadge status="running" label="Выполняется" />
             ) : syncStatusRaw !== "missing" ? (
               <StatusBadge status={String(syncStatusRaw)} label={String(syncStatusRaw)} />
             ) : (
-              <StatusBadge status="missing" label="No active job" />
+              <StatusBadge status="missing" label="Нет активной задачи" />
             )}
           </div>
-          <CardDescription>Current job and last successful full sync.</CardDescription>
+          <CardDescription>Текущая задача и последняя успешная полная синхронизация.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-gray-700">
           <p>
-            <span className="font-medium text-gray-900">Current sync type:</span>{" "}
+            <span className="font-medium text-gray-900">Тип текущей синхронизации:</span>{" "}
             {status?.current_sync?.type ?? "—"}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Current sync started at:</span>{" "}
+            <span className="font-medium text-gray-900">Текущая синхронизация начата:</span>{" "}
             {formatDateTime(status?.current_sync?.started_at)}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Current sync finished at:</span>{" "}
+            <span className="font-medium text-gray-900">Текущая синхронизация завершена:</span>{" "}
             {formatDateTime(status?.current_sync?.finished_at)}
           </p>
           <p>
-            <span className="font-medium text-gray-900">Last successful update:</span>{" "}
+            <span className="font-medium text-gray-900">Последнее успешное обновление:</span>{" "}
             {formatDateTime(status?.last_successful_sync_at)}
           </p>
           {!status?.last_successful_sync_at ? (
             <p className="rounded-md border border-amber-200 bg-amber-50/80 px-3 py-2 text-amber-950">
-              No successful full sync yet — the dashboard may stay empty until ingestion completes.
-              Use &quot;Start initial sync&quot; from this page or Ozon Integration if you have not
-              started one.
+              Успешной полной синхронизации ещё не было — дашборд может быть пустым, пока не завершится
+              загрузка. Нажмите «Запустить начальную синхронизацию» на этой странице или в интеграции Ozon,
+              если вы ещё не запускали синхронизацию.
             </p>
           ) : null}
           <p>
-            <span className="font-medium text-gray-900">Last sync error:</span>{" "}
+            <span className="font-medium text-gray-900">Ошибка последней синхронизации:</span>{" "}
             {status?.current_sync?.error_message ?? "—"}
           </p>
         </CardContent>
@@ -375,17 +375,17 @@ export default function SyncStatusScreen() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Latest import jobs by domain</CardTitle>
-          <CardDescription>Per-domain import progress for the latest sync.</CardDescription>
+          <CardTitle>Последние задачи импорта по доменам</CardTitle>
+          <CardDescription>Прогресс импорта по доменам для последней синхронизации.</CardDescription>
         </CardHeader>
         <CardContent>
           {importJobs.length === 0 ? (
             <EmptyState
-              title="No import jobs yet"
-              message="Start initial sync first — import rows appear here while products, orders, stocks, and ads are pulled from Ozon."
+              title="Задач импорта пока нет"
+              message="Сначала запустите начальную синхронизацию — строки появятся здесь по мере загрузки товаров, заказов, остатков и рекламы из Ozon."
               action={
                 <Link href="/app/integrations/ozon" className={buttonClassNames("secondary")}>
-                  Open Ozon Integration
+                  Открыть интеграцию Ozon
                 </Link>
               }
             />
@@ -394,15 +394,15 @@ export default function SyncStatusScreen() {
               <table className="min-w-full border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 text-left">
-                    <th className="px-2 py-2 font-medium text-gray-700">Domain</th>
-                    <th className="px-2 py-2 font-medium text-gray-700">Status</th>
-                    <th className="px-2 py-2 font-medium text-gray-700">Source cursor</th>
-                    <th className="px-2 py-2 font-medium text-gray-700">Received</th>
-                    <th className="px-2 py-2 font-medium text-gray-700">Imported</th>
-                    <th className="px-2 py-2 font-medium text-gray-700">Failed</th>
-                    <th className="px-2 py-2 font-medium text-gray-700">Started</th>
-                    <th className="px-2 py-2 font-medium text-gray-700">Finished</th>
-                    <th className="px-2 py-2 font-medium text-gray-700">Error</th>
+                    <th className="px-2 py-2 font-medium text-gray-700">Домен</th>
+                    <th className="px-2 py-2 font-medium text-gray-700">Статус</th>
+                    <th className="px-2 py-2 font-medium text-gray-700">Курсор</th>
+                    <th className="px-2 py-2 font-medium text-gray-700">Получено</th>
+                    <th className="px-2 py-2 font-medium text-gray-700">Импортировано</th>
+                    <th className="px-2 py-2 font-medium text-gray-700">С ошибкой</th>
+                    <th className="px-2 py-2 font-medium text-gray-700">Начало</th>
+                    <th className="px-2 py-2 font-medium text-gray-700">Конец</th>
+                    <th className="px-2 py-2 font-medium text-gray-700">Ошибка</th>
                   </tr>
                 </thead>
                 <tbody>

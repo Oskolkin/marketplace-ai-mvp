@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getPostLoginPath } from "@/lib/auth-redirect";
 import { getCurrentUserServer } from "@/lib/server-auth";
 
 export default async function HomePage() {
@@ -6,5 +7,7 @@ export default async function HomePage() {
   if (!auth) {
     redirect("/login");
   }
-  redirect("/app");
+
+  const path = getPostLoginPath(auth);
+  redirect(path ?? "/login");
 }

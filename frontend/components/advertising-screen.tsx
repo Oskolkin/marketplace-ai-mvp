@@ -58,11 +58,11 @@ export default function AdvertisingScreen() {
       } else {
         setAnalytics(null);
         const reason = adsRes.reason;
-        setFetchError(reason instanceof Error ? reason.message : "Advertising analytics failed");
+        setFetchError(reason instanceof Error ? reason.message : "Не удалось загрузить аналитику рекламы");
       }
     } catch (e) {
       setAnalytics(null);
-      setFetchError(e instanceof Error ? e.message : "Advertising analytics failed");
+      setFetchError(e instanceof Error ? e.message : "Не удалось загрузить аналитику рекламы");
     } finally {
       setLoading(false);
     }
@@ -84,7 +84,7 @@ export default function AdvertisingScreen() {
   if (loading) {
     return (
       <main className="p-6">
-        <LoadingState message="Loading advertising analytics…" />
+        <LoadingState message="Загрузка аналитики рекламы…" />
       </main>
     );
   }
@@ -92,24 +92,23 @@ export default function AdvertisingScreen() {
   return (
     <main className="space-y-6 p-6">
       <PageHeader
-        title="Advertising"
-        subtitle="Spend, efficiency, and risky campaigns from Ozon advertising analytics."
+        title="Реклама"
+        subtitle="Расходы, эффективность и рискованные кампании по аналитике Ozon Advertising."
       />
 
       {showPerfWarning ? (
         <Card className="border-amber-200 bg-amber-50/90">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base text-amber-950">Performance API token</CardTitle>
+            <CardTitle className="text-base text-amber-950">Токен Performance API</CardTitle>
             <CardDescription className="text-amber-900/90">
               {perfTokenMissing ? (
                 <p>
-                  Ozon Performance API token is not saved for this account. Add it under Ozon Integration to load
-                  advertising metrics.
+                  Токен Ozon Performance API не сохранён для этого аккаунта. Укажите его в разделе интеграции Ozon, чтобы загрузить показатели рекламы.
                 </p>
               ) : null}
               {tokenLikeError ? (
                 <p className={perfTokenMissing ? "mt-2" : ""}>
-                  The advertising endpoint returned an error that often means a missing or invalid Performance token:{" "}
+                  Эндпоинт рекламы вернул ошибку, которая часто означает отсутствующий или неверный токен Performance:{" "}
                   <span className="font-mono text-xs">{fetchError}</span>
                 </p>
               ) : null}
@@ -117,10 +116,10 @@ export default function AdvertisingScreen() {
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2 pt-0">
             <Link href="/app/integrations/ozon" className={buttonClassNames("primary")}>
-              Ozon Integration
+              Интеграция Ozon
             </Link>
             <Link href="/app/sync-status" className={buttonClassNames("secondary")}>
-              Sync Status
+              Статус синхронизации
             </Link>
           </CardContent>
         </Card>
@@ -129,14 +128,14 @@ export default function AdvertisingScreen() {
       {fetchError && !tokenLikeError ? (
         <Card className="border-amber-200 bg-amber-50/80">
           <CardContent className="py-3 text-sm text-amber-950">
-            <p className="font-medium">Advertising data unavailable</p>
+            <p className="font-medium">Данные по рекламе недоступны</p>
             <p className="mt-1 font-mono text-xs text-amber-900/90">{fetchError}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Link href="/app/sync-status" className={buttonClassNames("secondary")}>
-                Sync Status
+                Статус синхронизации
               </Link>
               <Link href="/app/integrations/ozon" className={buttonClassNames("secondary")}>
-                Ozon Integration
+                Интеграция Ozon
               </Link>
             </div>
           </CardContent>
@@ -146,50 +145,48 @@ export default function AdvertisingScreen() {
       {analytics && summary ? (
         <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            <MetricCard title="Total spend" value={fmtMoney(summary.totalSpend)} hint="Reporting window" />
-            <MetricCard title="Weak campaigns" value={fmtNum(summary.weakCampaigns)} hint="ROAS below 1 or low efficiency" />
+            <MetricCard title="Всего расходов" value={fmtMoney(summary.totalSpend)} hint="Отчётный период" />
+            <MetricCard title="Слабые кампании" value={fmtNum(summary.weakCampaigns)} hint="ROAS ниже 1 или низкая эффективность" />
             <MetricCard
-              title="Spend without result"
+              title="Расход без результата"
               value={fmtNum(summary.spendWithoutResult)}
-              hint="Spend with no orders/revenue"
+              hint="Траты без заказов/выручки"
             />
             <MetricCard
-              title="Low-stock advertised SKUs"
+              title="Рекламные SKU с низким остатком"
               value={fmtNum(summary.lowStockAdvertisedSkus)}
-              hint="Stock coverage risk"
+              hint="Риск по покрытию остатка"
             />
             <MetricCard
-              title="Campaigns"
+              title="Кампании"
               value={summary.campaignsCount != null ? fmtNum(summary.campaignsCount) : "—"}
-              hint={summary.campaignsCount != null ? "From summary" : "Count not in response"}
+              hint={summary.campaignsCount != null ? "Из сводки" : "Количество не в ответе"}
             />
           </div>
 
           <Card>
             <CardHeader>
-              <CardTitle>Risky campaigns and SKUs</CardTitle>
+              <CardTitle>Рискованные кампании и SKU</CardTitle>
               <CardDescription>
-                Sorted by severity: spend without results, weak ROAS, then by spend. Parsed defensively from API
-                payload.
+                Отсортированы по серьёзности: траты без результата, слабый ROAS, затем по сумме расходов. Разбор ответа API выполнен устойчиво к сбоям.
               </CardDescription>
             </CardHeader>
             <CardContent className="overflow-x-auto">
               {rows.length === 0 ? (
                 <p className="text-sm text-gray-600">
-                  No risky rows in the current response. After sync and alerts, check the Dashboard ad risks teaser or
-                  run a new sync if you expect campaigns here.
+                  В текущем ответе нет рискованных строк. После синхронизации и алертов загляните в блок рисков рекламы на дашборде или запустите новую синхронизацию, если здесь должны быть кампании.
                 </p>
               ) : (
                 <table className="min-w-full border-collapse text-left text-sm">
                   <thead>
                     <tr className="border-b text-xs uppercase text-gray-500">
-                      <th className="py-2 pr-3 font-medium">Campaign</th>
-                      <th className="py-2 pr-3 font-medium">SKU / offer / product</th>
-                      <th className="py-2 pr-3 font-medium text-right">Spend</th>
-                      <th className="py-2 pr-3 font-medium text-right">Revenue</th>
-                      <th className="py-2 pr-3 font-medium text-right">Orders</th>
+                      <th className="py-2 pr-3 font-medium">Кампания</th>
+                      <th className="py-2 pr-3 font-medium">SKU / offer ID / товар</th>
+                      <th className="py-2 pr-3 font-medium text-right">Расход</th>
+                      <th className="py-2 pr-3 font-medium text-right">Выручка</th>
+                      <th className="py-2 pr-3 font-medium text-right">Заказы</th>
                       <th className="py-2 pr-3 font-medium text-right">ROAS</th>
-                      <th className="py-2 font-medium">Risk / reason</th>
+                      <th className="py-2 font-medium">Риск / причина</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -214,22 +211,22 @@ export default function AdvertisingScreen() {
           </Card>
         </>
       ) : !fetchError ? (
-        <p className="text-sm text-gray-600">No advertising payload returned.</p>
+        <p className="text-sm text-gray-600">Ответ с данными рекламы не получен.</p>
       ) : null}
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Quick links</CardTitle>
+          <CardTitle className="text-base">Быстрые ссылки</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
           <Link href="/app/integrations/ozon" className={buttonClassNames("secondary")}>
-            Ozon Integration
+            Интеграция Ozon
           </Link>
           <Link href="/app/sync-status" className={buttonClassNames("secondary")}>
-            Sync Status
+            Статус синхронизации
           </Link>
           <Link href="/app/dashboard" className={buttonClassNames("secondary")}>
-            Dashboard
+            Дашборд
           </Link>
         </CardContent>
       </Card>

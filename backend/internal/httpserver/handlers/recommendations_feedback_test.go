@@ -27,7 +27,8 @@ func TestRecommendationsHandlerAddFeedback(t *testing.T) {
 
 	makeReq := func(body string, id string) *http.Request {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/recommendations/"+id+"/feedback", strings.NewReader(body))
-		ctx := auth.WithAuthContext(req.Context(), dbgen.User{ID: 1, Email: "u@x.y"}, dbgen.SellerAccount{ID: 7})
+		seller := dbgen.SellerAccount{ID: 7}
+		ctx := auth.WithAuthContext(req.Context(), dbgen.User{ID: 1, Email: "u@x.y"}, &seller)
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("id", id)
 		return req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
@@ -88,7 +89,8 @@ func TestRecommendationsHandlerPublicResponsesOmitRawAIResponse(t *testing.T) {
 
 	makeGET := func(id string) *http.Request {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/recommendations/"+id, nil)
-		ctx := auth.WithAuthContext(req.Context(), dbgen.User{ID: 1, Email: "u@x.y"}, dbgen.SellerAccount{ID: 7})
+		seller := dbgen.SellerAccount{ID: 7}
+		ctx := auth.WithAuthContext(req.Context(), dbgen.User{ID: 1, Email: "u@x.y"}, &seller)
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("id", id)
 		return req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
@@ -96,7 +98,8 @@ func TestRecommendationsHandlerPublicResponsesOmitRawAIResponse(t *testing.T) {
 
 	makeAction := func(id string, action string) *http.Request {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/recommendations/"+id+"/"+action, nil)
-		ctx := auth.WithAuthContext(req.Context(), dbgen.User{ID: 1, Email: "u@x.y"}, dbgen.SellerAccount{ID: 7})
+		seller := dbgen.SellerAccount{ID: 7}
+		ctx := auth.WithAuthContext(req.Context(), dbgen.User{ID: 1, Email: "u@x.y"}, &seller)
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("id", id)
 		return req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
@@ -154,6 +157,9 @@ func (m *mockRecommendationsRepo) CompleteRun(context.Context, recommendations.C
 	return nil
 }
 func (m *mockRecommendationsRepo) FailRun(context.Context, int64, int64, string) error { return nil }
+func (m *mockRecommendationsRepo) CreateRunDiagnostic(context.Context, recommendations.CreateRunDiagnosticInput) error {
+	return nil
+}
 func (m *mockRecommendationsRepo) UpsertRecommendation(context.Context, recommendations.UpsertRecommendationInput) (int64, error) {
 	return 0, nil
 }

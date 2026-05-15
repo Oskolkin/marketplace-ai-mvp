@@ -402,6 +402,49 @@ func (r *SQLCRepository) CompleteRun(ctx context.Context, input CompleteRecommen
 	return nil
 }
 
+func (r *SQLCRepository) CreateRunDiagnostic(ctx context.Context, input CreateRunDiagnosticInput) error {
+	contextSummary, err := json.Marshal(input.ContextPayloadSummary)
+	if err != nil {
+		return fmt.Errorf("marshal context summary: %w", err)
+	}
+	rawResponse := input.RawOpenAIResponse
+	if len(rawResponse) == 0 {
+		rawResponse = []byte("{}")
+	}
+	validationPayload, err := json.Marshal(input.ValidationResultPayload)
+	if err != nil {
+		return fmt.Errorf("marshal validation payload: %w", err)
+	}
+	rejectedPayload, err := json.Marshal(input.RejectedItemsPayload)
+	if err != nil {
+		return fmt.Errorf("marshal rejected payload: %w", err)
+	}
+	estCost, err := numericFromFloat(input.EstimatedCost, 6)
+	if err != nil {
+		return fmt.Errorf("convert estimated cost: %w", err)
+	}
+	_, err = r.queries.CreateRecommendationRunDiagnostic(ctx, dbgen.CreateRecommendationRunDiagnosticParams{
+		RecommendationRunID:     pgtype.Int8{Int64: input.RunID, Valid: true},
+		SellerAccountID:         input.SellerAccountID,
+		OpenaiRequestID:         nullableText(input.OpenAIRequestID),
+		AiModel:                 nullableText(input.AIModel),
+		PromptVersion:           nullableText(input.PromptVersion),
+		ContextPayloadSummary:   contextSummary,
+		RawOpenaiResponse:       rawResponse,
+		ValidationResultPayload: validationPayload,
+		RejectedItemsPayload:    rejectedPayload,
+		ErrorStage:              nullableText(input.ErrorStage),
+		ErrorMessage:            nullableText(input.ErrorMessage),
+		InputTokens:             int64(input.InputTokens),
+		OutputTokens:            int64(input.OutputTokens),
+		EstimatedCost:           estCost,
+	})
+	if err != nil {
+		return fmt.Errorf("create recommendation run diagnostic: %w", err)
+	}
+	return nil
+}
+
 func (r *SQLCRepository) FailRun(ctx context.Context, sellerAccountID int64, runID int64, errorMessage string) error {
 	_, err := r.queries.FailRecommendationRun(ctx, dbgen.FailRecommendationRunParams{
 		ID:              runID,

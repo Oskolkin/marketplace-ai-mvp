@@ -210,9 +210,11 @@ func main() {
 	authService := auth.NewService(
 		postgres.Pool,
 		time.Duration(cfg.Auth.SessionTTLHours)*time.Hour,
+		cfg.Admin.Emails,
 	)
-	authHandler := handlers.NewAuthHandler(authService, cfg.Auth.CookieName)
+	authHandler := handlers.NewAuthHandler(authService, cfg.Auth.CookieName, cfg.Admin.Emails)
 	authMiddleware := auth.Middleware(authService, cfg.Auth.CookieName)
+	sellerMiddleware := auth.RequireSellerAccount()
 	adminMiddleware := auth.AdminMiddleware(cfg.Admin.Emails)
 
 	accountService := account.NewService(postgres.Pool)
@@ -345,6 +347,7 @@ func main() {
 		ozonIngestionSyncHandler,
 		ozonIngestionStatusHandler,
 		authMiddleware,
+		sellerMiddleware,
 		adminMiddleware,
 		log,
 		m,

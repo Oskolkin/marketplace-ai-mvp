@@ -12,7 +12,8 @@ export type SellerAccountDto = {
 
 export type AuthResponse = {
   user: UserDto;
-  seller_account: SellerAccountDto;
+  seller_account: SellerAccountDto | null;
+  is_admin: boolean;
 };
 
 export type RegisterRequest = {
